@@ -5,6 +5,7 @@ import { useMessage } from "@/composables/useMessage";
 import { showModal } from "@/composables/useModal";
 import {
   getFooterAuthorInfo,
+  isUpdaterEnabled,
   openFooterAuthorHome,
 } from "@/services/clientApi";
 import {
@@ -26,6 +27,7 @@ const title = computed(() => route.meta.title ?? "Cursor助手｜永久免费｜
 const directlyClose = computed(() => route.meta.directlyClose === true);
 const showFooter = computed(() => route.path === "/");
 const footerAuthorInfo = ref(null);
+const updaterEnabled = isUpdaterEnabled();
 const { locale } = useLocale();
 
 const localizedAuthorInfo = computed(() => {
@@ -228,7 +230,7 @@ onUnmounted(() => {
         <span class="truncate">{{ proxyBadgeText }}</span>
       </div>
       <button
-        v-if="!updateViewState.footerDownloading"
+        v-if="updaterEnabled && !updateViewState.footerDownloading"
         type="button"
         class="center-row shrink-0 gap-[6px] cursor-pointer rounded-[6px] px-[6px] py-[3px] transition-colors duration-150 hover:bg-[#1f1f1f] hover:text-[#e5e5e5]"
         :disabled="updateViewState.footerBusy"
@@ -237,6 +239,9 @@ onUnmounted(() => {
         <span>{{ updateViewState.footerVersionLabel }}</span>
         <span>检查更新</span>
       </button>
+      <span v-else class="center-row shrink-0 px-[6px] py-[3px]">
+        {{ updateViewState.footerVersionLabel }}
+      </span>
       <button
         type="button"
         class="center-row shrink-0 gap-[2px]  cursor-pointer rounded-[6px] px-[6px] py-[3px] transition-colors duration-150 hover:bg-[#1f1f1f] hover:text-[#e5e5e5]"

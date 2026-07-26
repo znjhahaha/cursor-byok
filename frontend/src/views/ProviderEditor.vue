@@ -1,0 +1,355 @@
+<script setup>
+import ProviderModelPicker from "@/components/config/ProviderModelPicker.vue";
+import Button from "@/components/ui/Button.vue";
+import Input from "@/components/ui/Input.vue";
+import Select from "@/components/ui/Select.vue";
+import Tooltip from "@/components/ui/Tooltip.vue";
+import { getProviderEditorContext } from "@/services/clientApi";
+import {
+  appState,
+  createEmptyProvider,
+  fetchProviderModels,
+  normalizeProvider,
+  saveProvider,
+  toUserError,
+  validateProviders,
+} from "@/state/appState";
+import { Window } from "@wailsio/runtime";
+import { computed, onMounted, reactive, ref } from "vue";
+
+const providerTypeTabs = [
+  { label: "OpenAI", value: "openai", icon: "icon-[bxl--openai]" },
+  { label: "Anthropic", value: "anthropic", icon: "icon-[logos--claude-icon]" },
+];
+
+// 常见站点的 UA 白名单绕过值。agentrouter 只有携带 claude-cli 标识才会进入认证层。
+const userAgentPresets = [
+  { label: "不指定（使用默认）", value: "", icon: "icon-[mdi--web]" },
+  { label: "claude-cli/1.0.60 (external, cli)", value: "claude-cli/1.0.60 (external, cli)", icon: "icon-[logos--claude-icon]" },
+];
+
+const fieldTips = {
+  name: "中转站的展示名称，也会作为该站下模型的默认备注。",
+  type: "决定该站点使用 OpenAI 还是 Anthropic 协议进行认证与请求。",
+  baseURL: "中转站的 API 根地址，例如 https://anyrouter.top。",
+  apiKey: "该中转站的访问密钥。填写后，站点下的所有模型都会继承它。",
+  userAgent: "部分中转站按 User-Agent 做白名单，UA 不匹配会直接拒绝而不进入认证。",
+  headersJSON: "附加请求头 JSON 对象，值必须是字符串。会与模型自身的自定义请求头合并，模型优先。",
+  modelsPath: "拉取模型列表的路径。留空时自动探测 /v1/models、/models、/api/v1/models。",
+  inferencePath: "真实模型请求路径。留空时在模型列表不可用的情况下自动探测；也可手工填写。",
+  note: "仅本地展示的说明文字。",
+};
+
+const draft = reactive(createEmptyProvider());
+const loading = ref(true);
+const errorMessage = ref("");
+const fetching = ref(false);
+const statusMessage = ref("");
+
+const isEditing = computed(() => Boolean(draft.id));
+const title = computed(() => (isEditing.value ? "编辑中转站" : "新增中转站"));
+const catalogKey = computed(() => draft.id || draft.baseURL);
+const catalog = computed(() => appState.providerModelCatalog[catalogKey.value] ?? null);
+const models = computed(() => catalog.value?.models ?? []);
+
+const baseURLPlaceholder = computed(() =>
+  draft.type === "anthropic" ? "例如：https://api.anthropic.com" : "例如：https://anyrouter.top",
+);
+
+const headersPlaceholder = JSON.stringify({ "X-Api-Version": "2024-01-01" });
+
+function handleImported({ added }) {
+  errorMessage.value = "";
+  statusMessage.value = added > 0 ? `已导入 ${added} 个模型` : "所选模型均已存在，未新增";
+}
+
+function handlePickerError(message) {
+  statusMessage.value = "";
+  errorMessage.value = message;
+}
+
+async function loadContext() {
+  try {
+    const ctx = await getProviderEditorContext();
+    const parsed = JSON.parse(ctx?.providerJSON || "{}");
+    Object.assign(draft, normalizeProvider(parsed));
+    if (!draft.type) {
+      draft.type = "openai";
+    }
+  } catch (_error) {
+    Object.assign(draft, createEmptyProvider());
+  } finally {
+    loading.value = false;
+  }
+}
+
+// persistDraft 是「拉取模型」与「导入模型」的共同前置：
+// 这两个动作都需要一个已落盘的 provider id 才能建立归属关系。
+async function persistDraft() {
+  const provider = normalizeProvider(draft);
+  const validationError = validateProviders([provider]);
+  if (validationError) {
+    errorMessage.value = validationError;
+    return { ok: false, error: validationError, provider: null };
+  }
+
+  const result = await saveProvider(provider);
+  if (!result.ok) {
+    errorMessage.value = result.error;
+    return { ok: false, error: result.error, provider: null };
+  }
+  if (result.provider) {
+    Object.assign(draft, result.provider);
+  }
+  errorMessage.value = "";
+  return { ok: true, error: "", provider: result.provider ?? provider };
+}
+
+async function handleSave() {
+  const result = await persistDraft();
+  if (!result.ok) {
+    return;
+  }
+  await Window.Close();
+}
+
+async function handleCancel() {
+  await Window.Close();
+}
+
+async function handleFetchModels() {
+  statusMessage.value = "";
+  fetching.value = true;
+  try {
+    const saved = await persistDraft();
+    if (!saved.ok) {
+      return;
+    }
+    const result = await fetchProviderModels(saved.provider);
+    if (result.provider) {
+      Object.assign(draft, result.provider);
+    }
+    if (!result.ok && !result.result?.reachable) {
+      errorMessage.value = result.error || "拉取模型列表失败";
+      return;
+    }
+    errorMessage.value = "";
+    statusMessage.value = result.ok
+      ? `已获取 ${result.result.models.length} 个模型`
+      : "接口可达，但未提供模型列表；请手动添加模型 ID";
+  } catch (error) {
+    errorMessage.value = toUserError(error);
+  } finally {
+    fetching.value = false;
+  }
+}
+
+onMounted(async () => {
+  await loadContext();
+});
+</script>
+
+<template>
+  <div class="flex h-full flex-col text-[#e5e5e5]">
+    <div class="flex shrink-0 items-center justify-between px-4 pb-2">
+      <h2 class="text-base font-medium text-white">{{ title }}</h2>
+      <div class="flex items-center gap-2">
+        <Button variant="default" @click="handleCancel">取消</Button>
+        <Button
+          variant="default"
+          :disabled="fetching || appState.configSaving"
+          @click="handleFetchModels"
+        >
+          {{ fetching ? "拉取中..." : "保存并拉取模型" }}
+        </Button>
+        <Button variant="primary" :disabled="appState.configSaving" @click="handleSave">
+          {{ appState.configSaving ? "保存中..." : "保存" }}
+        </Button>
+      </div>
+    </div>
+
+    <div v-if="loading" class="flex flex-1 items-center justify-center text-sm text-[#a3a3a3]">
+      加载中...
+    </div>
+
+    <div v-else class="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+      <div class="flex flex-col gap-4">
+        <div class="center-row gap-2">
+          <button
+            v-for="tab in providerTypeTabs"
+            :key="tab.value"
+            type="button"
+            class="center-row gap-2 rounded-[8px] border px-3 py-2 text-sm transition-colors duration-150"
+            :class="draft.type === tab.value
+              ? 'border-[#1ca35a] bg-[#123322] text-white'
+              : 'border-[#343434] bg-[#252525] text-[#a3a3a3] hover:border-[#4a4a4a] hover:text-[#e5e5e5]'"
+            @click="draft.type = tab.value"
+          >
+            <span :class="[tab.icon, 'text-[16px]']"></span>
+            <span>{{ tab.label }}</span>
+          </button>
+          <span
+            v-if="draft.builtin"
+            class="center-row gap-1 rounded-[999px] border border-[#3f3f3f] px-[7px] py-[4px] text-[11px] text-[#cfcfcf]"
+          >
+            内置预设
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label class="flex flex-col gap-1">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.name" />
+              <span>中转站名称</span>
+            </span>
+            <input
+              v-model="draft.name"
+              type="text"
+              placeholder="例如：AnyRouter"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.baseURL" />
+              <span>接口地址</span>
+            </span>
+            <input
+              v-model="draft.baseURL"
+              type="text"
+              :placeholder="baseURLPlaceholder"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.apiKey" />
+              <span>访问密钥</span>
+            </span>
+            <Input
+              v-model="draft.apiKey"
+              type="password"
+              allow-visibility-toggle
+              placeholder="例如：sk-xxxxxx"
+              autocomplete="off"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.modelsPath" />
+              <span>模型列表路径</span>
+            </span>
+            <input
+              v-model="draft.modelsPath"
+              type="text"
+              placeholder="留空自动探测，例如：/v1/models"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.inferencePath" />
+              <span>模型请求路径</span>
+            </span>
+            <input
+              v-model="draft.inferencePath"
+              type="text"
+              :placeholder="draft.type === 'anthropic' ? '留空自动探测，例如：/v1/messages' : '留空自动探测，例如：/v1/chat/completions'"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            />
+          </label>
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+            <Tooltip :content="fieldTips.userAgent" />
+            <span>User-Agent</span>
+          </span>
+          <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,260px)_1fr]">
+            <Select
+              :model-value="userAgentPresets.some((item) => item.value === draft.userAgent) ? draft.userAgent : ''"
+              :options="userAgentPresets"
+              aria-label="User-Agent 预设"
+              @update:model-value="(value) => { draft.userAgent = value; }"
+            />
+            <input
+              v-model="draft.userAgent"
+              type="text"
+              placeholder="也可直接填写自定义 UA"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            />
+          </div>
+        </div>
+
+        <label class="flex flex-col gap-1">
+          <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+            <Tooltip :content="fieldTips.headersJSON" />
+            <span>自定义请求头 JSON</span>
+          </span>
+          <textarea
+            v-model="draft.headersJSON"
+            rows="4"
+            spellcheck="false"
+            :placeholder="headersPlaceholder"
+            class="min-h-[96px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+            <Tooltip :content="fieldTips.note" />
+            <span>备注</span>
+          </span>
+          <textarea
+            v-model="draft.note"
+            rows="2"
+            placeholder="例如：主力站点，额度按天重置"
+            class="min-h-[64px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+          />
+        </label>
+
+        <div class="rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+          <div class="flex items-center justify-between gap-3 pb-2.5">
+            <span class="text-sm text-[#d4d4d4]">可用模型</span>
+          </div>
+
+          <ProviderModelPicker
+            v-if="draft.id"
+            :provider="draft"
+            :models="models"
+            :request-url="catalog?.requestURL || ''"
+            :empty-hint="catalog?.error || '点击「保存并拉取模型」获取该站点的模型列表'"
+            :reachable="catalog?.reachable || false"
+            :attempts="catalog?.attempts || []"
+            @imported="handleImported"
+            @error="handlePickerError"
+          />
+          <div
+            v-else
+            class="rounded-[6px] border border-dashed border-[#3a3a3a] bg-[#232323] px-3 py-6 text-center text-sm text-[#a3a3a3]"
+          >
+            点击「保存并拉取模型」获取该站点的模型列表
+          </div>
+        </div>
+
+        <div
+          v-if="statusMessage"
+          class="rounded-[8px] border border-[#1d4b2f] bg-[#132a1c] px-3 py-2 text-sm text-[#86efac]"
+        >
+          {{ statusMessage }}
+        </div>
+
+        <div
+          v-if="errorMessage"
+          class="rounded-[8px] border border-[#4b1d1d] bg-[#2a1313] px-3 py-2 text-sm text-[#fca5a5]"
+        >
+          {{ errorMessage }}
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

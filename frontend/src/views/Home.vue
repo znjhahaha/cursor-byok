@@ -133,6 +133,17 @@ async function handleOpenModelConfig() {
   }
 }
 
+// 统计页与模型配置共用同一个子窗口，落地 tab 通过 storage 传递：
+// 子窗口 URL 由 Go 侧固定，避免为了一个初始状态去扩展窗口 bindings。
+async function handleOpenUsageStats() {
+  try {
+    window.localStorage.setItem("modelConfig:initialTab", "stats");
+  } catch (_error) {
+    // 隐私模式下 storage 不可用时退化为默认 tab，不阻塞窗口打开。
+  }
+  await handleOpenModelConfig();
+}
+
 async function handleDirectModeChange(enabled) {
   const result = await saveRoutingMode(enabled ? "upstream" : "local");
   if (!result.ok) {
@@ -163,6 +174,8 @@ onBeforeUnmount(() => {
       :home-ads="homeAds"
       @refresh="handleRefreshMetrics"
       @open-ad="handleOpenHomeAd"
+      @open-model-config="handleOpenModelConfig"
+      @open-usage-stats="handleOpenUsageStats"
     />
 
     <Card>

@@ -36,6 +36,10 @@ const (
 // ModelAdapterConfig 定义了当前模块中的 ModelAdapterConfig 类型。
 type ModelAdapterConfig struct {
 	ID string `json:"id,omitempty"`
+	// ProviderID 表示适配器所属中转站的持久化标识，为空表示适配器自带连接信息。
+	ProviderID string `json:"providerID,omitempty"`
+	// ProviderName 表示所属中转站的显示名，仅用于日志与统计展示。
+	ProviderName string `json:"providerName,omitempty"`
 	// DisplayName 表示当前声明中的 DisplayName。
 	DisplayName string `json:"displayName"`
 	// Type 表示当前声明中的 Type。
@@ -103,6 +107,8 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			return nil, err
 		}
 		next := ModelAdapterConfig{
+			ProviderID:           strings.TrimSpace(item.ProviderID),
+			ProviderName:         strings.TrimSpace(item.ProviderName),
 			DisplayName:          strings.TrimSpace(item.DisplayName),
 			Type:                 normalizeModelAdapterType(item.Type),
 			BaseURL:              baseURL,
@@ -239,6 +245,15 @@ func normalizeModelAdapterType(value string) string {
 	}
 }
 
+// resolveChannelGroupName 决定渠道在运行时日志中的分组名。
+// 隶属中转站时用站点名，未归属时沿用历史的 "local"。
+func resolveChannelGroupName(providerName string) string {
+	if name := strings.TrimSpace(providerName); name != "" {
+		return name
+	}
+	return "local"
+}
+
 // ResolvedChannel 表示当前选中的模型渠道。
 type ResolvedChannel struct {
 	// ID 表示当前声明中的 ID。
@@ -247,6 +262,8 @@ type ResolvedChannel struct {
 	Name string
 	// GroupName 表示当前声明中的 GroupName。
 	GroupName string
+	// ProviderID 表示该渠道所属中转站的持久化标识，用于按站聚合用量统计。
+	ProviderID string
 	// Code 表示当前声明中的 Code。
 	Code string
 	// Provider 表示当前声明中的 Provider。
@@ -388,7 +405,8 @@ func (s *FixedChannelService) SelectChannelForModel(ctx context.Context, modelID
 		resolved := ResolvedChannel{
 			ID:                          strings.TrimSpace(adapter.ID),
 			Name:                        strings.TrimSpace(adapter.DisplayName),
-			GroupName:                   "local",
+			GroupName:                   resolveChannelGroupName(adapter.ProviderName),
+			ProviderID:                  strings.TrimSpace(adapter.ProviderID),
 			Code:                        strings.TrimSpace(adapter.ID),
 			Provider:                    strings.TrimSpace(adapter.Type),
 			BaseURL:                     strings.TrimSpace(adapter.BaseURL),

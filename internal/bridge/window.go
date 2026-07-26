@@ -21,14 +21,22 @@ type modelEditorContext struct {
 	AdapterJSON string `json:"adapterJSON"`
 }
 
+// providerEditorContext 保存当前中转站编辑器窗口的初始化上下文。
+// 中转站按 id 定位而非数组下标，因此这里不需要 index。
+type providerEditorContext struct {
+	ProviderJSON string `json:"providerJSON"`
+}
+
 // WindowService 定义了当前模块中的 WindowService 类型。
 type WindowService struct {
-	app               *application.App
-	updater           *updater.Manager
-	modelConfigWindow *application.WebviewWindow
-	modelEditorWindow *application.WebviewWindow
-	editorCtx         *modelEditorContext
-	mu                sync.RWMutex
+	app                  *application.App
+	updater              *updater.Manager
+	modelConfigWindow    *application.WebviewWindow
+	modelEditorWindow    *application.WebviewWindow
+	providerEditorWindow *application.WebviewWindow
+	editorCtx            *modelEditorContext
+	providerCtx          *providerEditorContext
+	mu                   sync.RWMutex
 }
 
 // NewWindowService 用于处理与 NewWindowService 相关的逻辑。
@@ -83,30 +91,32 @@ func (s *WindowService) OpenConfigWindow() {
 	openDirectory(client.ResolveSettingsRootPath())
 }
 
-// OpenModelConfigWindow 打开模型配置独立窗口。如果窗口已存在则聚焦。
-func (s *WindowService) OpenModelConfigWindow() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// childWindowSpec 描述子窗口之间真正有差异的部分。
+// 其余外观选项由 buildChildWindowOptions 统一给出，避免每新增一个窗口就复制一整块配置。
+type childWindowSpec struct {
+	Title      string
+	URL        string
+	Width      int
+	Height     int
+	MinWidth   int
+	MinHeight  int
+	Fullscreen bool
+}
 
-	if s.app == nil {
-		return
+func buildChildWindowOptions(spec childWindowSpec) application.WebviewWindowOptions {
+	fullscreen := u.False
+	if spec.Fullscreen {
+		fullscreen = u.True
 	}
-
-	if s.modelConfigWindow != nil {
-		s.modelConfigWindow.Show()
-		s.modelConfigWindow.Focus()
-		return
-	}
-
-	win := s.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:               "模型配置",
-		Width:               980,
-		Height:              700,
-		MinWidth:            820,
-		MinHeight:           560,
+	return application.WebviewWindowOptions{
+		Title:               spec.Title,
+		Width:               spec.Width,
+		Height:              spec.Height,
+		MinWidth:            spec.MinWidth,
+		MinHeight:           spec.MinHeight,
 		DisableResize:       false,
 		Frameless:           goruntime.GOOS == "windows",
-		URL:                 "/#/model-config",
+		URL:                 spec.URL,
 		Hidden:              false,
 		HideOnEscape:        false,
 		MinimiseButtonState: application.ButtonEnabled,
@@ -125,7 +135,7 @@ func (s *WindowService) OpenModelConfigWindow() {
 				HideToolbarSeparator: true,
 			},
 			WebviewPreferences: application.MacWebviewPreferences{
-				FullscreenEnabled:                   u.True,
+				FullscreenEnabled:                   fullscreen,
 				TextInteractionEnabled:              u.True,
 				AllowsBackForwardNavigationGestures: u.False,
 			},
@@ -133,7 +143,33 @@ func (s *WindowService) OpenModelConfigWindow() {
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: false,
 		},
-	})
+	}
+}
+
+// OpenModelConfigWindow 打开模型配置独立窗口。如果窗口已存在则聚焦。
+func (s *WindowService) OpenModelConfigWindow() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.app == nil {
+		return
+	}
+
+	if s.modelConfigWindow != nil {
+		s.modelConfigWindow.Show()
+		s.modelConfigWindow.Focus()
+		return
+	}
+
+	win := s.app.Window.NewWithOptions(buildChildWindowOptions(childWindowSpec{
+		Title:      "模型配置",
+		URL:        "/#/model-config",
+		Width:      980,
+		Height:     700,
+		MinWidth:   820,
+		MinHeight:  560,
+		Fullscreen: true,
+	}))
 
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		s.mu.Lock()
@@ -171,42 +207,14 @@ func (s *WindowService) OpenModelEditorWindow(index int, adapterJSON string) {
 		title = "编辑模型配置"
 	}
 
-	win := s.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:               title,
-		Width:               840,
-		Height:              680,
-		MinWidth:            740,
-		MinHeight:           600,
-		DisableResize:       false,
-		Frameless:           goruntime.GOOS == "windows",
-		URL:                 fmt.Sprintf("/#/model-editor?index=%d", index),
-		Hidden:              false,
-		HideOnEscape:        false,
-		MinimiseButtonState: application.ButtonEnabled,
-		MaximiseButtonState: application.ButtonEnabled,
-		CloseButtonState:    application.ButtonEnabled,
-		BackgroundColour:    application.RGBA{Red: 25, Green: 25, Blue: 25, Alpha: 255},
-		Mac: application.MacWindow{
-			Backdrop:      application.MacBackdropLiquidGlass,
-			DisableShadow: false,
-			TitleBar: application.MacTitleBar{
-				AppearsTransparent:   true,
-				Hide:                 false,
-				HideTitle:            true,
-				FullSizeContent:      true,
-				UseToolbar:           false,
-				HideToolbarSeparator: true,
-			},
-			WebviewPreferences: application.MacWebviewPreferences{
-				FullscreenEnabled:                   u.False,
-				TextInteractionEnabled:              u.True,
-				AllowsBackForwardNavigationGestures: u.False,
-			},
-		},
-		Windows: application.WindowsWindow{
-			HiddenOnTaskbar: false,
-		},
-	})
+	win := s.app.Window.NewWithOptions(buildChildWindowOptions(childWindowSpec{
+		Title:     title,
+		URL:       fmt.Sprintf("/#/model-editor?index=%d", index),
+		Width:     840,
+		Height:    680,
+		MinWidth:  740,
+		MinHeight: 600,
+	}))
 
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		s.mu.Lock()
@@ -216,6 +224,54 @@ func (s *WindowService) OpenModelEditorWindow(index int, adapterJSON string) {
 	})
 
 	s.modelEditorWindow = win
+}
+
+// OpenProviderEditorWindow 打开中转站编辑独立窗口。
+// providerJSON 为空对象时表示新增；带 id 时表示编辑既有站点。
+func (s *WindowService) OpenProviderEditorWindow(providerJSON string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.app == nil {
+		return
+	}
+
+	s.providerCtx = &providerEditorContext{ProviderJSON: providerJSON}
+
+	if s.providerEditorWindow != nil {
+		s.providerEditorWindow.Show()
+		s.providerEditorWindow.Focus()
+		return
+	}
+
+	win := s.app.Window.NewWithOptions(buildChildWindowOptions(childWindowSpec{
+		Title:     "中转站配置",
+		URL:       "/#/provider-editor",
+		Width:     880,
+		Height:    720,
+		MinWidth:  760,
+		MinHeight: 620,
+	}))
+
+	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.providerEditorWindow = nil
+		s.providerCtx = nil
+	})
+
+	s.providerEditorWindow = win
+}
+
+// GetProviderEditorContext 返回当前中转站编辑窗口的初始化上下文。
+func (s *WindowService) GetProviderEditorContext() map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.providerCtx == nil {
+		return map[string]any{"providerJSON": "{}"}
+	}
+	return map[string]any{"providerJSON": s.providerCtx.ProviderJSON}
 }
 
 // GetModelEditorContext 返回当前编辑器窗口的初始化上下文。

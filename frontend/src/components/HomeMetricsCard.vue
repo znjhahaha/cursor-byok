@@ -1,12 +1,13 @@
 <script setup>
 import CacheHitRateChart from "@/components/charts/CacheHitRateChart.vue";
+import DailyUsageChart from "@/components/charts/DailyUsageChart.vue";
 import Switch from "@/components/ui/Switch.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
-import { appState, saveIncludeCacheWriteInHitRate } from "@/state/appState";
+import { appState, saveIncludeCacheWriteInHitRate, syncUsageSeries } from "@/state/appState";
 import { formatCompactInteger, formatInteger } from "@/utils/numberFormat";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 
-const emit = defineEmits(["refresh", "open-ad"]);
+const emit = defineEmits(["refresh", "open-ad", "open-model-config", "open-usage-stats"]);
 
 const TOKEN_PRICE_PER_MILLION = {
   input: 5,
@@ -230,16 +231,86 @@ const normalizedHomeAds = computed(() => {
 });
 
 const hasHomeAd = computed(() => normalizedHomeAds.value.length > 0);
+
+// ===== 视图切换 =====
+//
+// 总览与趋势共用同一块 130px 展示区：前者回答「累计花了多少」，后者回答「什么时候用得多」。
+// 二者互斥而非同屏，切换不产生高度增量，窗口高度得以保持在 520。
+const HOME_VIEW_TABS = [
+  { value: "summary", label: "总览" },
+  { value: "trend", label: "趋势" },
+];
+
+const HOME_TREND_DAYS = 14;
+
+const activeView = ref("summary");
+const trendLoaded = ref(false);
+
+const usageDays = computed(() => appState.usageSeries.days ?? []);
+const usageLoading = computed(() => appState.usageSeriesLoading);
+const usageError = computed(() => appState.usageSeriesError);
+
+const trendMetrics = computed(() => {
+  const days = usageDays.value;
+  const totalTokens = days.reduce((sum, day) => sum + normalizeNumber(day?.totalTokens), 0);
+  const totalCalls = days.reduce((sum, day) => sum + normalizeNumber(day?.providerCalls), 0);
+  const peak = days.reduce(
+    (best, day) =>
+      normalizeNumber(day?.totalTokens) > best.value
+        ? { date: String(day?.date || ""), value: normalizeNumber(day?.totalTokens) }
+        : best,
+    { date: "", value: 0 },
+  );
+  return {
+    totalTokens,
+    totalCalls,
+    dailyAverage: days.length > 0 ? Math.round(totalTokens / days.length) : 0,
+    peakLabel: peak.date ? `${peak.date.slice(5).replace("-", "/")} · ${formatCompactInteger(peak.value)}` : "-",
+  };
+});
+
+// 趋势数据按需拉取：默认停在总览时不付出这次 IPC。
+watch(
+  activeView,
+  (view) => {
+    if (view === "trend" && !trendLoaded.value) {
+      trendLoaded.value = true;
+      void syncUsageSeries(HOME_TREND_DAYS);
+    }
+  },
+  { immediate: true },
+);
+
+function handleRefresh() {
+  emit("refresh");
+  if (activeView.value === "trend") {
+    void syncUsageSeries(HOME_TREND_DAYS);
+  }
+}
 </script>
 
 <template>
   <div>
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between gap-4 h-[42px]">
-        <div v-if="!hasHomeAd" class="flex flex-col gap-1 w-[200px] shrink-0">
-          <h2 class="text-[14px] font-medium text-white/80">会话统计</h2>
+        <div class="center-row min-w-0 justify-start gap-1 shrink-0">
+          <button
+            v-for="tab in HOME_VIEW_TABS"
+            :key="tab.value"
+            type="button"
+            class="rounded-[6px] border px-2.5 py-1 text-xs transition-colors duration-150"
+            :class="activeView === tab.value
+              ? 'border-[#4a4a4a] bg-[#2f2f2f] text-white'
+              : 'border-transparent text-[#8a8a8a] hover:text-[#d4d4d4]'"
+            @click="activeView = tab.value"
+          >
+            {{ tab.label }}
+          </button>
+          <span v-if="activeView === 'trend'" class="pl-1 text-[11px] text-[#6f6f6f]">
+            近 {{ HOME_TREND_DAYS }} 天
+          </span>
         </div>
-        <div v-else class="grid min-w-0  grid-cols-3 gap-2 shrink-0">
+        <div v-if="hasHomeAd" class="grid min-w-0  grid-cols-3 gap-2 shrink-0">
           <div
             v-for="ad in normalizedHomeAds"
             :key="ad.id"
@@ -271,27 +342,88 @@ const hasHomeAd = computed(() => normalizedHomeAds.value.length > 0);
           </div>
         </div>
         <div
-          class="flex-1 center-row justify-end shrink-0 gap-2 text-xs text-[#6f6f6f] pr-4 w-[200px]"
+          class="flex-1 center-row justify-end shrink-0 gap-1.5 text-xs text-[#6f6f6f]"
         >
-          <span>刷新统计</span>
+          <button
+            type="button"
+            class="rounded-[6px] border border-[#3b3b3b] bg-[#242424] px-2.5 py-1 text-[#c8c8c8] transition-colors duration-150 hover:border-[#4c4c4c] hover:text-white"
+            @click="emit('open-model-config')"
+          >
+            模型配置
+          </button>
+          <button
+            type="button"
+            class="rounded-[6px] border border-transparent px-2 py-1 transition-colors duration-150 hover:text-[#e5e5e5]"
+            @click="emit('open-usage-stats')"
+          >
+            调用统计
+          </button>
+          <span class="pl-1">刷新统计</span>
           <button
             type="button"
             class="center-row justify-center h-[24px] w-[24px] rounded-[6px] border border-[#3b3b3b] bg-[#242424] text-[#9d9d9d] transition-colors duration-150 hover:border-[#4c4c4c] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="loading"
-            :title="loading ? '刷新中' : '刷新统计'"
-            @click="emit('refresh')"
+            :disabled="loading || usageLoading"
+            :title="loading || usageLoading ? '刷新中' : '刷新统计'"
+            @click="handleRefresh"
           >
             <span
               class="icon-[mdi--refresh] text-[14px]"
-              :class="{ '!animate-spin': loading }"
+              :class="{ '!animate-spin': loading || usageLoading }"
             ></span>
           </button>
         </div>
       </div>
 
       <div
-        class="mt-[-4px] grid grid-cols-4 gap-0 overflow-hidden rounded-[8px] border border-[#343434] bg-[#242424] h-[130px]"
+        class="mt-[-4px] overflow-hidden rounded-[8px] border border-[#343434] bg-[#242424] transition-[height] duration-200 ease-out"
+        :class="activeView === 'trend' ? 'h-[168px]' : 'h-[130px]'"
       >
+        <Transition name="home-view" mode="out-in">
+        <div v-if="activeView === 'trend'" key="trend" class="flex h-full flex-col px-3 pb-2 pt-2">
+          <div
+            v-if="usageError"
+            class="flex h-full flex-col items-center justify-center gap-2 text-xs text-[#fca5a5]"
+          >
+            <span class="center-row min-w-0 gap-1.5">
+              <span class="icon-[mdi--alert-circle-outline] shrink-0 text-[14px]"></span>
+              <span class="truncate">{{ usageError }}</span>
+            </span>
+            <button
+              type="button"
+              class="rounded-[6px] border border-[#5b2626] px-2 py-0.5 transition-colors duration-150 hover:bg-[#3a1a1a] disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="usageLoading"
+              @click="handleRefresh"
+            >
+              重试
+            </button>
+          </div>
+          <template v-else>
+            <div class="grid shrink-0 grid-cols-4 gap-2 border-b border-[#343434] pb-2 text-[11px]">
+              <div class="truncate text-[#737373]">
+                总 Token <span class="ml-1 text-[#d4d4d4]" :title="formatInteger(trendMetrics.totalTokens)">{{ formatCompactInteger(trendMetrics.totalTokens) }}</span>
+              </div>
+              <div class="truncate text-[#737373]">
+                总调用 <span class="ml-1 text-[#d4d4d4]">{{ formatInteger(trendMetrics.totalCalls) }}</span>
+              </div>
+              <div class="truncate text-[#737373]">
+                日均 <span class="ml-1 text-[#d4d4d4]" :title="formatInteger(trendMetrics.dailyAverage)">{{ formatCompactInteger(trendMetrics.dailyAverage) }}</span>
+              </div>
+              <div class="truncate text-right text-[#737373]">
+                峰值 <span class="ml-1 text-[#d4d4d4]">{{ trendMetrics.peakLabel }}</span>
+              </div>
+            </div>
+            <div class="min-h-0 flex-1 pt-1">
+              <DailyUsageChart
+                :days="usageDays"
+                metric="totalTokens"
+                dimension="token"
+                compact
+              />
+            </div>
+          </template>
+        </div>
+
+        <div v-else key="summary" class="grid h-full grid-cols-4 gap-0">
         <div class="min-w-0 px-4 py-4 flex flex-col justify-between">
           <div class="center-row justify-start gap-1 text-xs text-[#7f7f7f]">
             <span>缓存命中率</span>
@@ -395,9 +527,26 @@ const hasHomeAd = computed(() => normalizedHomeAds.value.length > 0);
             </div>
           </div>
         </div>
+        </div>
+        </Transition>
       </div>
     </div>
   </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+.home-view-enter-active,
+.home-view-leave-active {
+  transition: opacity 140ms ease, transform 180ms ease;
+}
+
+.home-view-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+
+.home-view-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+</style>

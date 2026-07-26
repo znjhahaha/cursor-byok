@@ -176,7 +176,7 @@ func (service *Service) FetchOnce(ctx context.Context) (FetchResult, error) {
 	var output FetchResult
 	var firstErr error
 	var succeeded bool
-	for _, slot := range Slots {
+	for _, slot := range Slots() {
 		result, err := service.fetchSlotOnce(ctx, slot)
 		if err != nil {
 			if firstErr == nil {
@@ -264,7 +264,7 @@ func (service *Service) GetRuntime(ctx context.Context) (Runtime, error) {
 	runtimeState := Runtime{
 		AssetBaseURL: service.currentAssetBaseURL(),
 	}
-	for _, slot := range Slots {
+	for _, slot := range Slots() {
 		slotRuntime, err := service.getSlotRuntime(ctx, normalizeSlotID(slot.ID))
 		if err != nil {
 			return runtimeState, err
@@ -727,7 +727,7 @@ func normalizeSlotID(value string) string {
 
 func isKnownSlotID(value string) bool {
 	value = normalizeSlotID(value)
-	for _, slot := range Slots {
+	for _, slot := range Slots() {
 		if normalizeSlotID(slot.ID) == value {
 			return true
 		}

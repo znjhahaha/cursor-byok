@@ -18,6 +18,15 @@ type HomeMetricsSummary struct {
 	CacheHitRate       *float64 `json:"cacheHitRate"`
 }
 
+// UsageSeries 定义按天与按中转站的用量序列。
+type UsageSeries = historymetrics.Series
+
+// UsageDayPoint 定义单日用量。
+type UsageDayPoint = historymetrics.DayPoint
+
+// UsageProviderPoint 定义单个中转站的用量。
+type UsageProviderPoint = historymetrics.ProviderPoint
+
 // MetricsService 定义首页统计相关的 Wails service。
 type MetricsService struct{}
 
@@ -47,4 +56,12 @@ func (service *MetricsService) GetHomeMetricsSummary() (HomeMetricsSummary, erro
 		CacheWriteTokens:   summary.CacheWriteTokens,
 		CacheHitRate:       summary.CacheHitRate,
 	}, nil
+}
+
+// GetUsageSeries 返回最近 days 天的按天用量与按中转站聚合。
+func (service *MetricsService) GetUsageSeries(days int) (UsageSeries, error) {
+	if err := appdata.EnsureAssistantHome(); err != nil {
+		return UsageSeries{}, err
+	}
+	return historymetrics.LoadUsageSeries(appdata.UsageFilePath(), days)
 }

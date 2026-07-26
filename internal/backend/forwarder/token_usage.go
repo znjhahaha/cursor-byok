@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -340,11 +341,15 @@ func (service *Service) recordTurnUsageSnapshot(stream *ActiveStream, conversati
 	if strings.TrimSpace(usage.Model) != "" {
 		modelName = strings.TrimSpace(usage.Model)
 	}
+	providerID, providerName := service.resolveUsageProviderIdentity(modelID)
 	effectiveModelCallID := firstNonEmpty(strings.TrimSpace(modelCallID), strings.TrimSpace(requestID))
 	if service.usageStore != nil {
 		if err := service.usageStore.UpsertEvent(usageFileEvent{
 			EventID:          usageEventID(requestID, effectiveModelCallID),
 			Kind:             usageEventKindProvider,
+			ProviderID:       providerID,
+			ProviderName:     providerName,
+			Model:            modelName,
 			At:               lastEventAt,
 			InputTokens:      usage.InputTokens,
 			OutputTokens:     usage.OutputTokens,
@@ -380,6 +385,21 @@ func (service *Service) recordTurnUsageSnapshot(stream *ActiveStream, conversati
 	return nil
 }
 
+// resolveUsageProviderIdentity 反查模型所属的中转站。
+//
+// 复用 resolver 而非扩展 modeladapter 事件链路：归属信息只在统计落盘时需要，
+// 沿事件链透传会让适配器层承担与推理无关的字段。
+func (service *Service) resolveUsageProviderIdentity(modelID string) (string, string) {
+	if service == nil || service.resolver == nil {
+		return "", ""
+	}
+	channel, err := service.resolver.SelectChannelForModel(context.Background(), strings.TrimSpace(modelID))
+	if err != nil || channel == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(channel.ProviderID), strings.TrimSpace(channel.GroupName)
+}
+
 func (service *Service) recordTurnFinalizedSnapshot(stream *ActiveStream, conversationID string, turnSeq int64, requestID string, status string, errorText string) error {
 	_ = stream
 	_ = errorText
@@ -397,6 +417,9 @@ func (service *Service) recordTurnFinalizedSnapshot(stream *ActiveStream, conver
 		EventID:          eventID,
 		Kind:             usageEventKindTurn,
 		Status:           normalizeUsageTurnStatus(status),
+		ProviderID:       usage.ProviderID,
+		ProviderName:     usage.ProviderName,
+		Model:            usage.Model,
 		At:               time.Now().UTC(),
 		InputTokens:      usage.InputTokens,
 		OutputTokens:     usage.OutputTokens,

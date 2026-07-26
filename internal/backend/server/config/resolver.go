@@ -20,14 +20,15 @@ func (manager *Manager) SelectChannelForModel(_ context.Context, modelID string)
 	if manager == nil {
 		return nil, legacyruntime.ErrChannelNotAvailable
 	}
-	adapters, err := NormalizeModelAdapterConfigs(manager.Current().ModelAdapters)
+	cfg := manager.Current()
+	adapters, err := NormalizeModelAdapterConfigs(cfg.ModelAdapters)
 	if err != nil {
 		return nil, err
 	}
-	return resolveModelAdapterChannel(adapters, modelID)
+	return resolveModelAdapterChannel(adapters, cfg.Providers, modelID)
 }
 
-func resolveModelAdapterChannel(adapters []ModelAdapterConfig, requestedModel string) (*legacyruntime.ResolvedChannel, error) {
+func resolveModelAdapterChannel(adapters []ModelAdapterConfig, providers []ProviderConfig, requestedModel string) (*legacyruntime.ResolvedChannel, error) {
 	matchIndex, ok := modelchannel.ResolveAdapterIndex(
 		adapters,
 		requestedModel,
@@ -41,11 +42,17 @@ func resolveModelAdapterChannel(adapters []ModelAdapterConfig, requestedModel st
 		return nil, legacyruntime.ErrChannelNotAvailable
 	}
 	matched := adapters[matchIndex]
+	// 归一化阶段已完成继承物化，这里只需把站点名带出来供运行时日志与统计使用。
+	providerName := ""
+	if provider, ok := FindProvider(providers, matched.ProviderID); ok {
+		providerName = provider.Name
+	}
 
 	resolved := &legacyruntime.ResolvedChannel{
 		ID:                          strings.TrimSpace(matched.ID),
 		Name:                        strings.TrimSpace(matched.DisplayName),
-		GroupName:                   "local",
+		GroupName:                   resolveChannelGroupName(providerName),
+		ProviderID:                  strings.TrimSpace(matched.ProviderID),
 		Code:                        strings.TrimSpace(matched.ID),
 		Provider:                    strings.TrimSpace(matched.Type),
 		BaseURL:                     strings.TrimSpace(matched.BaseURL),
@@ -83,4 +90,13 @@ func resolveModelAdapterChannel(adapters []ModelAdapterConfig, requestedModel st
 		resolved.AnthropicThinkingEffort = strings.TrimSpace(matched.AnthropicThinkingEffort)
 	}
 	return resolved, nil
+}
+
+// resolveChannelGroupName 决定渠道在运行时日志中的分组名。
+// 隶属中转站时用站点名，未归属时沿用历史的 "local"。
+func resolveChannelGroupName(providerName string) string {
+	if name := strings.TrimSpace(providerName); name != "" {
+		return name
+	}
+	return "local"
 }

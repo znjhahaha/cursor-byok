@@ -26,6 +26,13 @@ import (
 
 const checkInterval = 20 * time.Minute
 
+// Enabled 是自动更新模块的总开关。
+//
+// 置为 false 后：不轮询远端 manifest、不下载安装包、托盘与页脚均不暴露入口。
+// 二次开发的构建版本号与上游发布轨道无关，检查更新只会误报或覆盖本地改动。
+// 保留整套实现而非删除，是为了后续与上游合并时不产生持续冲突。
+const Enabled = false
+
 type State string
 
 const (
@@ -88,6 +95,9 @@ func NewManager(app *application.App) *Manager {
 }
 
 func (m *Manager) Start() {
+	if !Enabled {
+		return
+	}
 	m.emitState(StateIdle, nil, "", "", false, "")
 	go m.loop()
 }
@@ -97,10 +107,16 @@ func (m *Manager) Shutdown() {
 }
 
 func (m *Manager) CheckNow(manual bool) {
+	if !Enabled {
+		return
+	}
 	go m.checkNow(manual)
 }
 
 func (m *Manager) InstallReadyUpdate() error {
+	if !Enabled {
+		return nil
+	}
 	return m.installReadyUpdate()
 }
 

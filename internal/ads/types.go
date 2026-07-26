@@ -6,6 +6,12 @@ const (
 	// FetchURL     = "http://localhost:3000/ad.zip"
 	RoutePrefix  = "/ad"
 	EventUpdated = "ad:updated"
+
+	// Enabled 是广告模块的总开关。
+	//
+	// 置为 false 后：不拉取远端包、不注册前端 service、不上报设备与用量指纹。
+	// 保留整套实现而非删除，是为了后续与上游合并时不产生持续冲突。
+	Enabled = false
 )
 
 type Slot struct {
@@ -13,10 +19,18 @@ type Slot struct {
 	FetchURL string
 }
 
-var Slots = []Slot{
+var builtinSlots = []Slot{
 	{ID: "1", FetchURL: "https://ads.leokun.cn/1"},
 	{ID: "2", FetchURL: "https://ads.leokun.cn/2"},
 	{ID: "3", FetchURL: "https://ads.leokun.cn/3"},
+}
+
+// Slots 返回当前生效的广告位；总开关关闭时为空，所有遍历自然空转。
+func Slots() []Slot {
+	if !Enabled {
+		return nil
+	}
+	return builtinSlots
 }
 
 type WindowConfig struct {

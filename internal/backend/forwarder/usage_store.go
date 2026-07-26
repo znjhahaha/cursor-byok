@@ -12,12 +12,19 @@ import (
 
 const (
 	usageFileName          = "usage.json"
-	usageFileSchemaVersion = 2
+	usageFileSchemaVersion = 3
 	usageRecentEventLimit  = 500
 
 	usageEventKindProvider = "provider_call"
 	usageEventKindTurn     = "turn_finalized"
 	usageTurnStatusDone    = "completed"
+
+	// usageProviderUnknownID 收纳未归属中转站的调用，包括本次改造前产生的历史数据。
+	usageProviderUnknownID   = "unknown"
+	usageProviderUnknownName = "未归属"
+
+	// usageModelUnknown 收纳没有解析出模型名的调用，口径与 provider 的 unknown 桶一致。
+	usageModelUnknown = "未知模型"
 )
 
 type UsageFileStore struct {
@@ -33,7 +40,9 @@ type usageFileDocument struct {
 	EventIndex    map[string]usageFileEvent `json:"event_index,omitempty"`
 }
 
-type usageFileTotals struct {
+// usageFileCounters 是所有聚合口径共用的计数字段。
+// 以匿名嵌入方式复用：encoding/json 会把这些字段提升到外层，磁盘格式与 v2 保持一致。
+type usageFileCounters struct {
 	ProviderCalls     int64 `json:"provider_calls"`
 	TurnsTotal        int64 `json:"turns_total"`
 	ValidTurnsTotal   int64 `json:"valid_turns_total"`
@@ -45,23 +54,49 @@ type usageFileTotals struct {
 	TotalTokens       int64 `json:"total_tokens"`
 }
 
+type usageFileTotals struct {
+	usageFileCounters
+	ByProvider map[string]usageFileProviderStat `json:"by_provider,omitempty"`
+	ByModel    map[string]usageFileModelStat    `json:"by_model,omitempty"`
+}
+
 type usageFileDaily struct {
-	Date              string `json:"date"`
-	ProviderCalls     int64  `json:"provider_calls"`
-	TurnsTotal        int64  `json:"turns_total"`
-	ValidTurnsTotal   int64  `json:"valid_turns_total"`
-	InvalidTurnsTotal int64  `json:"invalid_turns_total"`
-	InputTokens       int64  `json:"input_tokens"`
-	OutputTokens      int64  `json:"output_tokens"`
-	CacheReadTokens   int64  `json:"cache_read_tokens"`
-	CacheWriteTokens  int64  `json:"cache_write_tokens"`
-	TotalTokens       int64  `json:"total_tokens"`
+	Date string `json:"date"`
+	usageFileCounters
+	ByProvider map[string]usageFileProviderStat `json:"by_provider,omitempty"`
+	ByModel    map[string]usageFileModelStat    `json:"by_model,omitempty"`
+}
+
+type usageFileProviderStat struct {
+	ProviderID   string `json:"provider_id"`
+	ProviderName string `json:"provider_name,omitempty"`
+	usageFileCounters
+}
+
+type usageFileModelStat struct {
+	Model string `json:"model"`
+	// ProviderID 记录该模型最近一次调用所属的中转站，供前端做「模型 → 来源」的下钻展示。
+	ProviderID   string `json:"provider_id,omitempty"`
+	ProviderName string `json:"provider_name,omitempty"`
+	usageFileCounters
+}
+
+// usageBucketKey 是分桶身份（中转站 + 模型），不参与加减，因此与 usageFileDelta 分开传递。
+// 新增统计维度时只需扩展本结构，applyUsageFileDelta 的签名保持稳定。
+type usageBucketKey struct {
+	ProviderID   string
+	ProviderName string
+	Model        string
 }
 
 type usageFileEvent struct {
-	EventID          string    `json:"event_id"`
-	Kind             string    `json:"kind,omitempty"`
-	Status           string    `json:"status,omitempty"`
+	EventID string `json:"event_id"`
+	Kind    string `json:"kind,omitempty"`
+	Status  string `json:"status,omitempty"`
+	// ProviderID 标识调用所属中转站，空值会归入 unknown 桶。
+	ProviderID       string    `json:"provider_id,omitempty"`
+	ProviderName     string    `json:"provider_name,omitempty"`
+	Model            string    `json:"model,omitempty"`
 	At               time.Time `json:"at"`
 	InputTokens      int64     `json:"input_tokens"`
 	OutputTokens     int64     `json:"output_tokens"`
@@ -97,6 +132,9 @@ func (store *UsageFileStore) UpsertEvent(event usageFileEvent) error {
 	}
 	event.Kind = normalizeUsageEventKind(event.Kind)
 	event.Status = strings.TrimSpace(event.Status)
+	event.ProviderID = strings.TrimSpace(event.ProviderID)
+	event.ProviderName = strings.TrimSpace(event.ProviderName)
+	event.Model = strings.TrimSpace(event.Model)
 	if event.At.IsZero() {
 		event.At = time.Now().UTC()
 	} else {
@@ -126,9 +164,10 @@ func (store *UsageFileStore) UpsertEvent(event usageFileEvent) error {
 	}
 	oldEvent, found := doc.EventIndex[event.EventID]
 	if found {
-		applyUsageFileDelta(&doc, oldEvent.At, negateUsageFileDelta(usageFileEventDelta(oldEvent)))
+		// 按旧事件自身的归属回滚，避免事件改归属后源桶残留计数。
+		applyUsageFileDelta(&doc, oldEvent.At, usageFileEventBucketKey(oldEvent), negateUsageFileDelta(usageFileEventDelta(oldEvent)))
 	}
-	applyUsageFileDelta(&doc, event.At, usageFileEventDelta(event))
+	applyUsageFileDelta(&doc, event.At, usageFileEventBucketKey(event), usageFileEventDelta(event))
 	doc.RecentEvents = upsertRecentUsageEvent(doc.RecentEvents, event)
 	doc.RecentEvents = trimRecentUsageEvents(doc.RecentEvents, usageRecentEventLimit)
 	doc.EventIndex = buildUsageEventIndex(doc.RecentEvents)
@@ -171,6 +210,14 @@ func (store *UsageFileStore) LookupEvent(needle string) (usageFileEvent, bool, e
 		}
 		if event.At.After(aggregate.At) {
 			aggregate.At = event.At
+		}
+		// 同一 requestID 下的多次 provider 调用理论上同源，取最后出现的归属即可。
+		if strings.TrimSpace(event.ProviderID) != "" {
+			aggregate.ProviderID = strings.TrimSpace(event.ProviderID)
+			aggregate.ProviderName = strings.TrimSpace(event.ProviderName)
+		}
+		if strings.TrimSpace(event.Model) != "" {
+			aggregate.Model = strings.TrimSpace(event.Model)
 		}
 		aggregate.InputTokens += nonNegativeInt64(event.InputTokens)
 		aggregate.OutputTokens += nonNegativeInt64(event.OutputTokens)
@@ -257,8 +304,11 @@ func normalizeUsageEventKind(kind string) string {
 	}
 }
 
-func usageFileEventDelta(event usageFileEvent) usageFileDelta {
-	switch normalizeUsageEventKind(event.Kind) {
+func usageFileEventBucketKey(event usageFileEvent) usageBucketKey {
+	return normalizeUsageBucketKey(event.ProviderID, event.ProviderName, event.Model)
+}
+
+func usageFileEventDelta(event usageFileEvent) usageFileDelta {	switch normalizeUsageEventKind(event.Kind) {
 	case usageEventKindTurn:
 		delta := usageFileDelta{turnsTotal: 1}
 		if strings.TrimSpace(event.Status) == usageTurnStatusDone {
@@ -293,46 +343,100 @@ func negateUsageFileDelta(value usageFileDelta) usageFileDelta {
 	}
 }
 
-func applyUsageFileDelta(doc *usageFileDocument, at time.Time, delta usageFileDelta) {
+func applyUsageFileDelta(doc *usageFileDocument, at time.Time, bucket usageBucketKey, delta usageFileDelta) {
 	if doc == nil {
 		return
 	}
-	doc.Totals.ProviderCalls = clampNonNegativeInt64(doc.Totals.ProviderCalls + delta.providerCalls)
-	doc.Totals.TurnsTotal = clampNonNegativeInt64(doc.Totals.TurnsTotal + delta.turnsTotal)
-	doc.Totals.ValidTurnsTotal = clampNonNegativeInt64(doc.Totals.ValidTurnsTotal + delta.validTurnsTotal)
-	doc.Totals.InvalidTurnsTotal = clampNonNegativeInt64(doc.Totals.InvalidTurnsTotal + delta.invalidTurnsTotal)
-	doc.Totals.InputTokens = clampNonNegativeInt64(doc.Totals.InputTokens + delta.inputTokens)
-	doc.Totals.OutputTokens = clampNonNegativeInt64(doc.Totals.OutputTokens + delta.outputTokens)
-	doc.Totals.CacheReadTokens = clampNonNegativeInt64(doc.Totals.CacheReadTokens + delta.cacheReadTokens)
-	doc.Totals.CacheWriteTokens = clampNonNegativeInt64(doc.Totals.CacheWriteTokens + delta.cacheWriteTokens)
-	doc.Totals.TotalTokens = clampNonNegativeInt64(doc.Totals.TotalTokens + delta.totalTokens)
+	applyUsageCounters(&doc.Totals.usageFileCounters, delta)
+	doc.Totals.ByProvider = applyUsageProviderDelta(doc.Totals.ByProvider, bucket, delta)
+	doc.Totals.ByModel = applyUsageModelDelta(doc.Totals.ByModel, bucket, delta)
 
 	date := at.UTC().Format("2006-01-02")
 	for index := range doc.Daily {
 		if doc.Daily[index].Date != date {
 			continue
 		}
-		applyUsageDailyDelta(&doc.Daily[index], delta)
+		applyUsageCounters(&doc.Daily[index].usageFileCounters, delta)
+		doc.Daily[index].ByProvider = applyUsageProviderDelta(doc.Daily[index].ByProvider, bucket, delta)
+		doc.Daily[index].ByModel = applyUsageModelDelta(doc.Daily[index].ByModel, bucket, delta)
 		return
 	}
 	item := usageFileDaily{Date: date}
-	applyUsageDailyDelta(&item, delta)
+	applyUsageCounters(&item.usageFileCounters, delta)
+	item.ByProvider = applyUsageProviderDelta(item.ByProvider, bucket, delta)
+	item.ByModel = applyUsageModelDelta(item.ByModel, bucket, delta)
 	doc.Daily = append(doc.Daily, item)
 }
 
-func applyUsageDailyDelta(item *usageFileDaily, delta usageFileDelta) {
-	if item == nil {
+// applyUsageCounters 是全部聚合口径唯一的累加实现，新增统计维度时只需复用它。
+func applyUsageCounters(counters *usageFileCounters, delta usageFileDelta) {
+	if counters == nil {
 		return
 	}
-	item.ProviderCalls = clampNonNegativeInt64(item.ProviderCalls + delta.providerCalls)
-	item.TurnsTotal = clampNonNegativeInt64(item.TurnsTotal + delta.turnsTotal)
-	item.ValidTurnsTotal = clampNonNegativeInt64(item.ValidTurnsTotal + delta.validTurnsTotal)
-	item.InvalidTurnsTotal = clampNonNegativeInt64(item.InvalidTurnsTotal + delta.invalidTurnsTotal)
-	item.InputTokens = clampNonNegativeInt64(item.InputTokens + delta.inputTokens)
-	item.OutputTokens = clampNonNegativeInt64(item.OutputTokens + delta.outputTokens)
-	item.CacheReadTokens = clampNonNegativeInt64(item.CacheReadTokens + delta.cacheReadTokens)
-	item.CacheWriteTokens = clampNonNegativeInt64(item.CacheWriteTokens + delta.cacheWriteTokens)
-	item.TotalTokens = clampNonNegativeInt64(item.TotalTokens + delta.totalTokens)
+	counters.ProviderCalls = clampNonNegativeInt64(counters.ProviderCalls + delta.providerCalls)
+	counters.TurnsTotal = clampNonNegativeInt64(counters.TurnsTotal + delta.turnsTotal)
+	counters.ValidTurnsTotal = clampNonNegativeInt64(counters.ValidTurnsTotal + delta.validTurnsTotal)
+	counters.InvalidTurnsTotal = clampNonNegativeInt64(counters.InvalidTurnsTotal + delta.invalidTurnsTotal)
+	counters.InputTokens = clampNonNegativeInt64(counters.InputTokens + delta.inputTokens)
+	counters.OutputTokens = clampNonNegativeInt64(counters.OutputTokens + delta.outputTokens)
+	counters.CacheReadTokens = clampNonNegativeInt64(counters.CacheReadTokens + delta.cacheReadTokens)
+	counters.CacheWriteTokens = clampNonNegativeInt64(counters.CacheWriteTokens + delta.cacheWriteTokens)
+	counters.TotalTokens = clampNonNegativeInt64(counters.TotalTokens + delta.totalTokens)
+}
+
+func applyUsageProviderDelta(buckets map[string]usageFileProviderStat, bucket usageBucketKey, delta usageFileDelta) map[string]usageFileProviderStat {
+	if buckets == nil {
+		buckets = make(map[string]usageFileProviderStat, 1)
+	}
+	stat, exists := buckets[bucket.ProviderID]
+	if !exists {
+		stat = usageFileProviderStat{ProviderID: bucket.ProviderID}
+	}
+	// 站点可能被改名，以最近一次调用携带的名称为准。
+	if strings.TrimSpace(bucket.ProviderName) != "" {
+		stat.ProviderName = bucket.ProviderName
+	}
+	applyUsageCounters(&stat.usageFileCounters, delta)
+	buckets[bucket.ProviderID] = stat
+	return buckets
+}
+
+// applyUsageModelDelta 与 provider 分桶同构，差异只在身份字段，
+// 因此复用同一套 usageFileCounters 累加语义。
+func applyUsageModelDelta(buckets map[string]usageFileModelStat, bucket usageBucketKey, delta usageFileDelta) map[string]usageFileModelStat {
+	if buckets == nil {
+		buckets = make(map[string]usageFileModelStat, 1)
+	}
+	stat, exists := buckets[bucket.Model]
+	if !exists {
+		stat = usageFileModelStat{Model: bucket.Model}
+	}
+	// 同名模型可能先后挂在不同中转站下，记录最近一次的归属即可满足下钻展示。
+	stat.ProviderID = bucket.ProviderID
+	if strings.TrimSpace(bucket.ProviderName) != "" {
+		stat.ProviderName = bucket.ProviderName
+	}
+	applyUsageCounters(&stat.usageFileCounters, delta)
+	buckets[bucket.Model] = stat
+	return buckets
+}
+
+// normalizeUsageBucketKey 把空归属折叠成固定的 unknown 桶，
+// 让改造前的历史数据与未绑定中转站的模型有统一去处。
+func normalizeUsageBucketKey(providerID string, providerName string, model string) usageBucketKey {
+	id := strings.TrimSpace(providerID)
+	name := strings.TrimSpace(providerName)
+	if id == "" {
+		id = usageProviderUnknownID
+		name = usageProviderUnknownName
+	} else if name == "" {
+		name = id
+	}
+	modelName := strings.TrimSpace(model)
+	if modelName == "" {
+		modelName = usageModelUnknown
+	}
+	return usageBucketKey{ProviderID: id, ProviderName: name, Model: modelName}
 }
 
 func clampNonNegativeInt64(value int64) int64 {

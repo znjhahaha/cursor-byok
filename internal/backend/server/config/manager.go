@@ -145,8 +145,14 @@ func (manager *Manager) LegacyRuntimeSnapshot(_ context.Context) (legacyruntime.
 	cfg := manager.Current()
 	adapters := make([]legacyruntime.ModelAdapterConfig, 0, len(cfg.ModelAdapters))
 	for _, item := range cfg.ModelAdapters {
+		providerName := ""
+		if provider, ok := FindProvider(cfg.Providers, item.ProviderID); ok {
+			providerName = provider.Name
+		}
 		adapters = append(adapters, legacyruntime.ModelAdapterConfig{
 			ID:                       item.ID,
+			ProviderID:               item.ProviderID,
+			ProviderName:             providerName,
 			DisplayName:              item.DisplayName,
 			Type:                     item.Type,
 			BaseURL:                  item.BaseURL,
@@ -157,11 +163,16 @@ func (manager *Manager) LegacyRuntimeSnapshot(_ context.Context) (legacyruntime.
 			OpenAIEndpoint:           item.OpenAIEndpoint,
 			OpenAIExtraParamsEnabled: item.OpenAIExtraParamsEnabled,
 			OpenAIExtraParamsJSON:    item.OpenAIExtraParamsJSON,
-			ContextWindowTokens:      item.ContextWindowTokens,
-			MaxCompletionTokens:      item.MaxCompletionTokens,
-			AnthropicMaxTokens:       item.AnthropicMaxTokens,
-			AnthropicThinkingEffort:  item.AnthropicThinkingEffort,
-			ThinkingBudgetTokens:     item.ThinkingBudgetTokens,
+			// 中转站的 User-Agent 白名单依赖这两个字段下发，漏拷会导致该路径被站点拒绝。
+			CustomHeadersEnabled:        item.CustomHeadersEnabled,
+			CustomHeadersJSON:           item.CustomHeadersJSON,
+			AnthropicExtraParamsEnabled: item.AnthropicExtraParamsEnabled,
+			AnthropicExtraParamsJSON:    item.AnthropicExtraParamsJSON,
+			ContextWindowTokens:         item.ContextWindowTokens,
+			MaxCompletionTokens:         item.MaxCompletionTokens,
+			AnthropicMaxTokens:          item.AnthropicMaxTokens,
+			AnthropicThinkingEffort:     item.AnthropicThinkingEffort,
+			ThinkingBudgetTokens:        item.ThinkingBudgetTokens,
 		})
 	}
 	return legacyruntime.RuntimeConfigSnapshot{

@@ -15,7 +15,7 @@
     @cancel="resolveModal(false)"
   />
   <Modal
-    v-if="isMainWindow"
+    v-if="isMainWindow && updaterEnabled"
     :visible="appState.updatePromptVisible"
     :title="updateViewState.promptTitle"
     :content="updateViewState.promptContent"
@@ -47,9 +47,11 @@ import { modalState, resolveModal } from "@/composables/useModal";
 import InputModal from "@/components/ui/InputModal.vue";
 import { inputModalState, resolveInputModal } from "@/composables/useInputModal";
 import { appState, confirmUpdatePrompt, dismissUpdatePrompt, updateViewState } from "@/state/appState";
+import { isUpdaterEnabled } from "@/services/clientApi";
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 
 const route = useRoute();
 const isMainWindow = computed(() => route.path === "/");
+const updaterEnabled = isUpdaterEnabled();
 </script>

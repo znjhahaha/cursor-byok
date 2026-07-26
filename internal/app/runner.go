@@ -93,6 +93,10 @@ func Run(resources EmbeddedResources) error {
 		AssetBaseURL: adAssetBaseURL + ads.RoutePrefix,
 		DeviceID:     cursor.GetDeviceID,
 		Metrics: func(context.Context) (ads.MetricsSnapshot, error) {
+			// 广告关闭时不回传任何用量指标，避免设备指纹随请求头外泄。
+			if !ads.Enabled {
+				return ads.MetricsSnapshot{}, nil
+			}
 			if err := appdata.EnsureAssistantHome(); err != nil {
 				return ads.MetricsSnapshot{}, err
 			}
@@ -109,6 +113,9 @@ func Run(resources EmbeddedResources) error {
 			}, nil
 		},
 		ProviderCount: func(context.Context) (int, error) {
+			if !ads.Enabled {
+				return 0, nil
+			}
 			cfg, err := proxyService.LoadUserConfig()
 			if err != nil {
 				return 0, err
@@ -155,6 +162,9 @@ func Run(resources EmbeddedResources) error {
 	})
 
 	refreshAdAssetBaseURL := func() bool {
+		if !ads.Enabled {
+			return false
+		}
 		state := proxyService.GetState()
 		backendListenAddr := strings.TrimSpace(state.BackendListenAddr)
 		if backendListenAddr == "" {
@@ -163,6 +173,9 @@ func Run(resources EmbeddedResources) error {
 		return adCore.SetAssetBaseURL(browserReachableLoopbackBaseURL(backendListenAddr) + ads.RoutePrefix)
 	}
 	refreshAdRuntime := func() {
+		if !ads.Enabled {
+			return
+		}
 		runtimeState, err := adCore.GetRuntime(context.Background())
 		if err != nil {
 			return
@@ -170,6 +183,10 @@ func Run(resources EmbeddedResources) error {
 		app.Event.Emit(ads.EventUpdated, runtimeState)
 	}
 	refreshAd := func(ctx context.Context) {
+		// 唯一的出网点：开关关闭时直接返回，不产生任何对广告服务端的请求。
+		if !ads.Enabled {
+			return
+		}
 		if ctx == nil {
 			ctx = context.Background()
 		}
@@ -185,6 +202,9 @@ func Run(resources EmbeddedResources) error {
 		}()
 	}
 	startAdRefreshLoop := func(ctx context.Context) {
+		if !ads.Enabled {
+			return
+		}
 		go func() {
 			refreshAd(ctx)
 			ticker := time.NewTicker(adRefreshInterval)
@@ -268,9 +288,13 @@ func Run(resources EmbeddedResources) error {
 	menu.AddSeparator()
 	startItem := menu.Add("启动服务")
 	stopItem := menu.Add("停止服务")
-	updateItem := menu.Add("检查更新").OnClick(func(ctx *application.Context) {
-		updateManager.CheckNow(true)
-	})
+	// 二开版本不跟随上游发布轨道，更新入口随 updater.Enabled 一并隐藏。
+	var updateItem *application.MenuItem
+	if updater.Enabled {
+		updateItem = menu.Add("检查更新").OnClick(func(ctx *application.Context) {
+			updateManager.CheckNow(true)
+		})
+	}
 	menu.AddSeparator()
 	showItem := menu.Add("显示窗口").OnClick(func(ctx *application.Context) {
 		showMainWindow()
@@ -310,24 +334,32 @@ func Run(resources EmbeddedResources) error {
 		if locale == "en-US" {
 			startItem.SetLabel("Start Service")
 			stopItem.SetLabel("Stop Service")
-			updateItem.SetLabel("Check for Updates")
 			showItem.SetLabel("Show Window")
 			hideItem.SetLabel("Hide Window")
 			quitItem.SetLabel("Exit")
 		} else if locale == "ja-JP" {
 			startItem.SetLabel("サービス起動")
 			stopItem.SetLabel("サービス停止")
-			updateItem.SetLabel("アップデートを確認")
 			showItem.SetLabel("ウィンドウを表示")
 			hideItem.SetLabel("ウィンドウを非表示")
 			quitItem.SetLabel("終了")
 		} else {
 			startItem.SetLabel("启动服务")
 			stopItem.SetLabel("停止服务")
-			updateItem.SetLabel("检查更新")
 			showItem.SetLabel("显示窗口")
 			hideItem.SetLabel("隐藏窗口")
 			quitItem.SetLabel("退出")
+		}
+		// updateItem 仅在更新模块启用时存在，未启用时保持 nil 且不参与本地化。
+		if updateItem != nil {
+			switch locale {
+			case "en-US":
+				updateItem.SetLabel("Check for Updates")
+			case "ja-JP":
+				updateItem.SetLabel("アップデートを確認")
+			default:
+				updateItem.SetLabel("检查更新")
+			}
 		}
 	}
 

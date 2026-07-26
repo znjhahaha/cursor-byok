@@ -24,6 +24,15 @@ type ModelAdapterTestResult = client.ModelAdapterTestResult
 // ModelAdapterTestResultsPayload 定义测速结果事件载荷。
 type ModelAdapterTestResultsPayload = client.ModelAdapterTestResultsPayload
 
+// ProviderConfig 定义 API 中转站配置结构。
+type ProviderConfig = serverconfig.ProviderConfig
+
+// ProviderModel 定义中转站返回的单个模型条目。
+type ProviderModel = client.ProviderModel
+
+// ProviderModelsResult 定义一次中转站模型列表拉取结果。
+type ProviderModelsResult = client.ProviderModelsResult
+
 // LicenseActionRequest 定义了当前模块中的 LicenseActionRequest 类型。
 type LicenseActionRequest = client.LicenseActionRequest
 
@@ -99,6 +108,11 @@ func (s *ProxyService) TestModelAdapter(adapter ModelAdapterConfig) (ModelAdapte
 // GetModelAdapterTestResults 用于处理与 GetModelAdapterTestResults 相关的逻辑。
 func (s *ProxyService) GetModelAdapterTestResults() []ModelAdapterTestResult {
 	return s.core.GetModelAdapterTestResults()
+}
+
+// ListProviderModels 拉取指定中转站的可用模型列表。
+func (s *ProxyService) ListProviderModels(provider ProviderConfig) (ProviderModelsResult, error) {
+	return s.core.ListProviderModels(provider)
 }
 
 // GetDeviceID 用于处理与 GetDeviceID 相关的逻辑。

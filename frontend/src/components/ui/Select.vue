@@ -206,16 +206,17 @@ function updatePosition() {
         apply({ rects, elements, availableHeight }) {
           Object.assign(elements.floating.style, {
             minWidth: `${rects.reference.width}px`,
-            maxHeight: `${Math.max(availableHeight, 160)}px`,
+            maxHeight: `${Math.max(96, Math.min(availableHeight, 320))}px`,
           });
         },
         padding: 12,
       }),
     ],
-  }).then(({ x, y }) => {
+  }).then(({ x, y, placement }) => {
     menuStyle.value = {
       left: `${x}px`,
       top: `${y}px`,
+      transformOrigin: placement.startsWith("top") ? "bottom" : "top",
     };
   });
 }
@@ -298,8 +299,8 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <Transition
       enter-active-class="transition duration-150 ease-out"
-      enter-from-class="translate-y-1 opacity-0"
-      enter-to-class="translate-y-0 opacity-100"
+      enter-from-class="translate-y-1 scale-[0.98] opacity-0"
+      enter-to-class="translate-y-0 scale-100 opacity-100"
       leave-active-class="transition duration-100 ease-in"
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-1 opacity-0"

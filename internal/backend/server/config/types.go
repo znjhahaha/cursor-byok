@@ -21,7 +21,10 @@ const (
 )
 
 type ModelAdapterConfig struct {
-	ID                          string `json:"id,omitempty" yaml:"-"`
+	ID string `json:"id,omitempty" yaml:"-"`
+	// ProviderID 为空表示适配器自带连接信息（旧行为）；非空表示隶属于某个中转站，
+	// baseURL / apiKey / 请求头由中转站统一提供。
+	ProviderID                  string `json:"providerID" yaml:"providerID,omitempty"`
 	DisplayName                 string `json:"displayName" yaml:"displayName"`
 	Type                        string `json:"type" yaml:"type"`
 	BaseURL                     string `json:"baseURL" yaml:"baseURL"`
@@ -56,6 +59,7 @@ type Config struct {
 	ProviderStreamIdleTimeout int                  `json:"providerStreamIdleTimeout" yaml:"providerStreamIdleTimeout"`
 	BackendListenAddr         string               `json:"backendListenAddr" yaml:"backendListenAddr"`
 	ProxyListenAddr           string               `json:"proxyListenAddr" yaml:"proxyListenAddr"`
+	Providers                 []ProviderConfig     `json:"providers" yaml:"providers"`
 	ModelAdapters             []ModelAdapterConfig `json:"modelAdapters" yaml:"modelAdapters"`
 	Routing                   RoutingConfig        `json:"routing" yaml:"routing"`
 	HomeMetrics               HomeMetricsConfig    `json:"homeMetrics" yaml:"homeMetrics"`
@@ -68,6 +72,7 @@ func DefaultConfig() Config {
 		ProviderStreamIdleTimeout: DefaultProviderStreamIdleTimeoutSeconds,
 		BackendListenAddr:         DefaultBackendListenAddr,
 		ProxyListenAddr:           DefaultProxyListenAddr,
+		Providers:                 append([]ProviderConfig{}, BuiltinProviders...),
 		ModelAdapters:             []ModelAdapterConfig{},
 		Routing: RoutingConfig{
 			Mode: DefaultRoutingMode,
@@ -95,7 +100,15 @@ func NormalizeConfig(input Config) (Config, error) {
 	if output.Routing.Mode == "" {
 		output.Routing.Mode = DefaultRoutingMode
 	}
-	adapters, err := NormalizeModelAdapterConfigs(input.ModelAdapters)
+	providers, err := NormalizeProviderConfigs(input.Providers)
+	if err != nil {
+		return Config{}, err
+	}
+	output.Providers = providers
+	if err := ValidateProviderReferences(input.ModelAdapters, providers); err != nil {
+		return Config{}, err
+	}
+	adapters, err := NormalizeModelAdapterConfigs(ApplyProviderInheritanceAll(input.ModelAdapters, providers))
 	if err != nil {
 		return Config{}, err
 	}
@@ -117,6 +130,7 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 		}
 		nextType := normalizeModelAdapterType(item.Type)
 		next := ModelAdapterConfig{
+			ProviderID:           strings.TrimSpace(item.ProviderID),
 			DisplayName:          strings.TrimSpace(item.DisplayName),
 			Type:                 nextType,
 			BaseURL:              baseURL,
