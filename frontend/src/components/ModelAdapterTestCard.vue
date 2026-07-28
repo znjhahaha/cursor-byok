@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import Spinner from "@/components/ui/Spinner.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
 import { formatDuration } from "@/state/appState";
 
@@ -100,10 +101,17 @@ const summaryClass = computed(() => {
 </script>
 
 <template>
-  <div class="rounded-[8px] border px-3 py-3" :class="panelClass">
+  <!-- panelClass / summaryClass 会在 idle→running→success/error 之间换掉整块的
+       边框、背景与文字色。批量测速是 10 并发，缺了 transition 就是一片色块乱闪。 -->
+  <div
+    class="rounded-[8px] border px-3 py-3 transition-colors duration-enter"
+    :class="panelClass"
+    :aria-busy="normalizedStatus === 'running' || undefined"
+  >
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5">
+          <Spinner v-if="normalizedStatus === 'running'" class="text-[#67e8f9]" />
           <div
             :class="compact ? 'text-[11px] uppercase tracking-[0.08em] text-[#666]' : 'text-sm font-medium text-white'"
           >

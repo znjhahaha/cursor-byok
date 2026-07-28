@@ -22,7 +22,7 @@ import {
   PointElement,
   Tooltip,
 } from "chart.js";
-import { computed, onBeforeUnmount } from "vue";
+import { computed, onBeforeUnmount, onDeactivated } from "vue";
 import { Chart } from "vue-chartjs";
 
 ChartJS.register(
@@ -53,6 +53,9 @@ const props = defineProps({
 
 const externalTooltip = createExternalTooltip();
 onBeforeUnmount(externalTooltip.destroy);
+// 外部 tooltip 是挂在 body 上的游离 DOM。父面板被 KeepAlive 缓存时不会 unmount，
+// 若切走那一刻指针正停在图上，就会留下一个摘不掉的孤儿 tooltip。
+onDeactivated(externalTooltip.destroy);
 
 function parseDate(value) {
   const text = String(value || "").trim();

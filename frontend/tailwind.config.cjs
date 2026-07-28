@@ -84,6 +84,48 @@ module.exports = {
         9999: "9999",
         99999: "99999",
       },
+      // 动效 token 全部指向 src/style/motion.css 里的 CSS 变量。
+      // 覆盖 DEFAULT 是关键：Tailwind 给每个 transition-* utility 都内联了
+      // transitionDuration.DEFAULT 与 transitionTimingFunction.DEFAULT，
+      // 所以这两行等于一次性接管了代码里全部裸 `transition-*` 的时长与曲线，
+      // prefers-reduced-motion 因此只要改变量、不用改模板。
+      //
+      // 每个值都带 fallback：万一 motion.css 没被引入，var() 解析失败会让
+      // transition-duration 退化成初始值 0s，所有 hover 过渡会静默消失。
+      transitionDuration: {
+        DEFAULT: "var(--mo-hover, 150ms)",
+        100: "var(--mo-quick, 100ms)",
+        150: "var(--mo-hover, 150ms)",
+        200: "var(--mo-enter, 200ms)",
+        fast: "var(--mo-fast, 140ms)",
+        leave: "var(--mo-leave, 160ms)",
+        mask: "var(--mo-mask, 180ms)",
+        enter: "var(--mo-enter, 200ms)",
+        panel: "var(--mo-panel, 220ms)",
+      },
+      transitionTimingFunction: {
+        DEFAULT: "var(--mo-ease, cubic-bezier(0, 0, 0.2, 1))",
+        out: "var(--mo-ease, cubic-bezier(0, 0, 0.2, 1))",
+        in: "var(--mo-ease-in, cubic-bezier(0.4, 0, 1, 1))",
+      },
+      transitionDelay: {
+        stagger: "var(--mo-stagger, 60ms)",
+      },
+      transitionProperty: {
+        // transition-colors 不含 opacity —— 所以凡是配了 disabled:opacity-* 的地方
+        // 都必须用这个，否则禁用态是瞬间变灰。
+        interactive: "color, background-color, border-color, opacity, transform, box-shadow",
+        size: "grid-template-rows, height, width, margin, opacity",
+      },
+      keyframes: {
+        "mo-skeleton": {
+          "0%, 100%": { opacity: "0.45" },
+          "50%": { opacity: "0.85" },
+        },
+      },
+      animation: {
+        "mo-skeleton": "mo-skeleton 1.4s linear infinite",
+      },
     },
   },
   plugins: [addDynamicIconSelectors()],

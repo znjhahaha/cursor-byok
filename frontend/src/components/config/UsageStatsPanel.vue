@@ -2,9 +2,11 @@
 import DailyUsageChart from "@/components/charts/DailyUsageChart.vue";
 import Button from "@/components/ui/Button.vue";
 import Select from "@/components/ui/Select.vue";
+import Skeleton from "@/components/ui/Skeleton.vue";
+import { useWindowFocus } from "@/composables/useWindowFocus";
 import { appState, syncUsageSeries } from "@/state/appState";
 import { formatCompactInteger, formatInteger } from "@/utils/numberFormat";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 
 const rangeOptions = [
   { label: "最近 7 天", value: "7" },
@@ -48,6 +50,12 @@ const focusProviderName = computed(
   () =>
     providers.value.find((item) => item.providerID === focusProviderID.value)?.providerName ??
     focusProviderID.value,
+);
+
+// 只在「加载中且还没有任何数据」时上骨架屏。
+// 已有数据时刷新保留旧图，否则每次刷新都会闪一次骨架，比不加更烦人。
+const showChartSkeleton = computed(
+  () => appState.usageSeriesLoading && days.value.length === 0,
 );
 
 // 过滤在面板层完成，图表只负责渲染传入的序列，不需要理解下钻语义。
@@ -148,13 +156,32 @@ watch(dimension, (value) => {
   }
 });
 
+const STATS_STALE_MS = 60_000;
+const lastFetchedAt = ref(0);
+
 async function refresh() {
   await syncUsageSeries(Number(range.value));
+  lastFetchedAt.value = Date.now();
+}
+
+// 切回本 tab 时只在数据确实旧了才重拉。
+// 改成 KeepAlive 之前是每次进入都无条件重发一轮 IPC，那正是要消掉的浪费；
+// 但完全不刷又会让用户看到过时数字，所以用一个新鲜度阈值折中。
+async function refreshIfStale() {
+  if (Date.now() - lastFetchedAt.value < STATS_STALE_MS) {
+    return;
+  }
+  await refresh();
 }
 
 watch(range, refresh);
 
 onMounted(refresh);
+onActivated(refreshIfStale);
+// 回焦时同样只在数据旧了才刷；useWindowFocus 已过滤掉拖动窗口造成的假回焦。
+useWindowFocus(() => {
+  void refreshIfStale();
+});
 </script>
 
 <template>
@@ -184,7 +211,12 @@ onMounted(refresh);
             <span :class="[item.icon, 'text-[15px]']"></span>
           </button>
         </div>
-        <Button variant="default" :disabled="appState.usageSeriesLoading" @click="refresh">
+        <Button
+          variant="default"
+          :disabled="appState.usageSeriesLoading"
+          :loading="appState.usageSeriesLoading"
+          @click="refresh"
+        >
           {{ appState.usageSeriesLoading ? "刷新中..." : "刷新" }}
         </Button>
       </div>
@@ -210,8 +242,16 @@ onMounted(refresh);
       </button>
     </div>
 
-    <div class="min-h-[220px] flex-1 rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+    <div
+      class="min-h-[220px] flex-1 rounded-[8px] border border-[#343434] bg-[#252525] p-3"
+      :aria-busy="showChartSkeleton || undefined"
+    >
+      <!-- 首次加载才上骨架屏：已有数据时刷新保留旧图，避免每次刷新都闪一下。
+           这里也刻意不给图表容器套面板过渡 —— Chart.js 自带 220ms 入场动画，
+           两层叠起来观感会发飘。 -->
+      <Skeleton v-if="showChartSkeleton" variant="chart" />
       <DailyUsageChart
+        v-else
         :days="chartDays"
         :metric="metric"
         :dimension="dimension"
@@ -246,9 +286,15 @@ onMounted(refresh);
           v-for="item in rankedItems"
           :key="item.id"
           class="flex flex-col gap-1 rounded-[6px] px-1 py-0.5 transition-colors duration-150"
-          :class="canDrillDown ? 'cursor-pointer hover:bg-[#2f2f2f]' : ''"
+          :class="canDrillDown
+            ? 'cursor-pointer hover:bg-[#2f2f2f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10AD5D]/35'
+            : ''"
           :title="canDrillDown ? `查看 ${item.name} 的模型构成` : ''"
+          :role="canDrillDown ? 'button' : undefined"
+          :tabindex="canDrillDown ? 0 : undefined"
           @click="handleDrillDown(item)"
+          @keydown.enter.prevent="handleDrillDown(item)"
+          @keydown.space.prevent="handleDrillDown(item)"
         >
           <div class="flex items-center justify-between gap-3 text-sm">
             <span class="center-row min-w-0 gap-2">
@@ -266,7 +312,7 @@ onMounted(refresh);
           </div>
           <div class="h-1.5 overflow-hidden rounded-[999px] bg-[#1f1f1f]">
             <div
-              class="h-full rounded-[999px] bg-[#1ca35a]"
+              class="h-full rounded-[999px] bg-[#1ca35a] transition-[width] duration-enter ease-out"
               :style="{ width: `${(item.share * 100).toFixed(1)}%` }"
             ></div>
           </div>

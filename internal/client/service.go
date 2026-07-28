@@ -65,6 +65,8 @@ type ProxyService struct {
 	modelTestMu sync.RWMutex
 	// modelTestResults 保存当前进程内的模型测速结果。
 	modelTestResults map[string]ModelAdapterTestResult
+	// providerModels 保存中转站模型列表缓存，跨窗口共享并落盘。
+	providerModels *providerModelsCache
 }
 
 // NewProxyService 用于处理与 NewProxyService 相关的逻辑。
@@ -83,6 +85,7 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 		caCertPEM:        copiedCert,
 		publicClient:     netproxy.NewHTTPClient(publicAPITimeout),
 		modelTestResults: make(map[string]ModelAdapterTestResult),
+		providerModels:   newProviderModelsCache(appdata.ProviderModelsCachePath()),
 	}
 	service.store = serverconfig.NewStore(service.configPath, service.logsRoot)
 	host, err := backend.NewHost(service.store)

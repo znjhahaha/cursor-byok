@@ -1,7 +1,7 @@
 <script setup>
-import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
+import { useFloating } from "@/composables/useFloating";
 import copyTextToClipboard from "copy-text-to-clipboard";
-import { computed, nextTick, onBeforeUnmount, ref, useSlots, watchPostEffect } from "vue";
+import { computed, onBeforeUnmount, ref, useSlots } from "vue";
 
 const props = defineProps({
   content: { type: String, default: "" },
@@ -15,8 +15,14 @@ const COPY_RESET_DELAY_MS = 1500;
 const triggerRef = ref(null);
 const tooltipRef = ref(null);
 const isOpen = ref(false);
-const tooltipStyle = ref({});
 const copied = ref(false);
+// 定位与 autoUpdate 生命周期交给 useFloating，它同时负责首帧不闪。
+const { floatingStyle: tooltipStyle } = useFloating(
+  () => triggerRef.value,
+  () => tooltipRef.value,
+  isOpen,
+  { placement: "top", offset: 10, padding: 12 },
+);
 let hideTimer = null;
 let copyResetTimer = null;
 
@@ -30,9 +36,6 @@ function showTooltip() {
   }
   clearHideTimer();
   isOpen.value = true;
-  nextTick(() => {
-    updatePosition();
-  });
 }
 
 function hideTooltip() {
@@ -61,26 +64,6 @@ function scheduleHideTooltip() {
   }, HIDE_DELAY_MS);
 }
 
-function updatePosition() {
-  if (!triggerRef.value || !tooltipRef.value) {
-    return;
-  }
-
-  computePosition(triggerRef.value, tooltipRef.value, {
-    placement: "top",
-    middleware: [
-      offset(10),
-      flip({ padding: 12 }),
-      shift({ padding: 12 }),
-    ],
-  }).then(({ x, y }) => {
-    tooltipStyle.value = {
-      left: `${x}px`,
-      top: `${y}px`,
-    };
-  });
-}
-
 function handleCopy() {
   if (!copyValue.value) {
     return;
@@ -93,17 +76,6 @@ function handleCopy() {
     copyResetTimer = null;
   }, COPY_RESET_DELAY_MS);
 }
-
-watchPostEffect((cleanup) => {
-  if (!isOpen.value || !triggerRef.value || !tooltipRef.value) {
-    return;
-  }
-
-  const stop = autoUpdate(triggerRef.value, tooltipRef.value, updatePosition);
-  cleanup(() => {
-    stop();
-  });
-});
 
 onBeforeUnmount(() => {
   clearHideTimer();
@@ -127,14 +99,15 @@ onBeforeUnmount(() => {
     </button>
 
     <Teleport to="body">
-      <div
-        v-if="isOpen"
-        ref="tooltipRef"
-        class="fixed z-[10000] flex max-h-[320px] max-w-[420px] flex-col overflow-hidden rounded-[8px] border border-[#3f3f3f] bg-[#202020] px-3 py-2 text-left text-[12px] leading-relaxed text-[#d4d4d4] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
-        :style="tooltipStyle"
-        @mouseenter="showTooltip"
-        @mouseleave="scheduleHideTooltip"
-      >
+      <Transition name="mo-pop">
+        <div
+          v-if="isOpen"
+          ref="tooltipRef"
+          class="fixed z-[10000] flex max-h-[320px] max-w-[420px] flex-col overflow-hidden rounded-[8px] border border-[#3f3f3f] bg-[#202020] px-3 py-2 text-left text-[12px] leading-relaxed text-[#d4d4d4] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+          :style="tooltipStyle"
+          @mouseenter="showTooltip"
+          @mouseleave="scheduleHideTooltip"
+        >
         <div v-if="showCopyButton" class="mb-2 flex shrink-0 justify-end">
           <button
             type="button"
@@ -150,7 +123,8 @@ onBeforeUnmount(() => {
             <div class="whitespace-pre-wrap">{{ content }}</div>
           </slot>
         </div>
-      </div>
+        </div>
+      </Transition>
     </Teleport>
   </span>
 </template>

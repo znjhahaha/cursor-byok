@@ -297,14 +297,9 @@ onBeforeUnmount(() => {
   </div>
 
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-150 ease-out"
-      enter-from-class="translate-y-1 scale-[0.98] opacity-0"
-      enter-to-class="translate-y-0 scale-100 opacity-100"
-      leave-active-class="transition duration-100 ease-in"
-      leave-from-class="translate-y-0 opacity-100"
-      leave-to-class="translate-y-1 opacity-0"
-    >
+    <!-- 之前的 leave 类漏了 scale，导致菜单「缩着进、不缩着出」。
+         共享的 mo-pop 两端对称。 -->
+    <Transition name="mo-pop">
       <div
         v-if="isOpen"
         ref="menuRef"

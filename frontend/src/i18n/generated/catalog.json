@@ -7,7 +7,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 166,
+          "line": 167,
           "column": 51
         }
       ]
@@ -19,7 +19,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 105,
+          "line": 112,
           "column": 34
         },
         {
@@ -36,7 +36,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1161,
+          "line": 1174,
           "column": 14
         }
       ]
@@ -48,7 +48,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 76,
+          "line": 93,
           "column": 9
         }
       ]
@@ -60,7 +60,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 13,
+          "line": 15,
           "column": 12
         }
       ]
@@ -101,7 +101,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 65,
+          "line": 66,
           "column": 22
         }
       ]
@@ -125,7 +125,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 561,
+          "line": 564,
           "column": 14
         }
       ]
@@ -137,12 +137,12 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 136,
+          "line": 160,
           "column": 139
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 120,
+          "line": 140,
           "column": 108
         }
       ]
@@ -171,7 +171,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 56,
+          "line": 59,
           "column": 12
         }
       ]
@@ -195,7 +195,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 31,
+          "line": 32,
           "column": 15
         }
       ]
@@ -207,7 +207,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 123,
+          "line": 146,
           "column": 20
         }
       ]
@@ -231,7 +231,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 528,
+          "line": 531,
           "column": 14
         }
       ]
@@ -243,12 +243,12 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 129,
+          "line": 138,
           "column": 30
         },
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 129,
+          "line": 138,
           "column": 48
         }
       ]
@@ -272,7 +272,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 77,
+          "line": 79,
           "column": 15
         }
       ]
@@ -284,7 +284,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 152,
+          "line": 161,
           "column": 27
         }
       ]
@@ -308,7 +308,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 50,
+          "line": 51,
           "column": 49
         }
       ]
@@ -356,7 +356,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 131,
+          "line": 132,
           "column": 24
         }
       ]
@@ -368,7 +368,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 98,
+          "line": 105,
           "column": 39
         }
       ]
@@ -380,7 +380,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 77,
+          "line": 79,
           "column": 15
         }
       ]
@@ -404,7 +404,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1215,
+          "line": 1228,
           "column": 38
         }
       ]
@@ -416,7 +416,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 314,
+          "line": 317,
           "column": 14
         }
       ]
@@ -428,7 +428,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1114,
+          "line": 1127,
           "column": 47
         }
       ]
@@ -440,12 +440,12 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 25,
+          "line": 27,
           "column": 12
         },
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 102,
+          "line": 110,
           "column": 16
         }
       ]
@@ -457,7 +457,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 39,
+          "line": 47,
           "column": 46
         }
       ]
@@ -469,7 +469,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 587,
+          "line": 590,
           "column": 12
         }
       ]
@@ -481,7 +481,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 71,
+          "line": 80,
           "column": 9
         }
       ]
@@ -493,7 +493,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 100,
+          "line": 101,
           "column": 67
         }
       ]
@@ -522,7 +522,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 23,
+          "line": 25,
           "column": 12
         }
       ]
@@ -534,7 +534,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 105,
+          "line": 106,
           "column": 22
         }
       ]
@@ -546,7 +546,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 38,
+          "line": 46,
           "column": 7
         }
       ]
@@ -558,7 +558,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1178,
+          "line": 1191,
           "column": 40
         }
       ]
@@ -575,7 +575,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 340,
+          "line": 343,
           "column": 36
         },
         {
@@ -597,7 +597,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 50,
+          "line": 51,
           "column": 59
         }
       ]
@@ -609,7 +609,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 83,
+          "line": 85,
           "column": 12
         }
       ]
@@ -626,7 +626,7 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 103,
+          "line": 105,
           "column": 17
         },
         {
@@ -665,7 +665,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 35,
+          "line": 36,
           "column": 11
         }
       ]
@@ -677,7 +677,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1105,
+          "line": 1118,
           "column": 12
         }
       ]
@@ -689,7 +689,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 98,
+          "line": 105,
           "column": 39
         }
       ]
@@ -701,12 +701,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 84,
+          "line": 86,
           "column": 9
         },
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 98,
+          "line": 100,
           "column": 9
         }
       ]
@@ -718,7 +718,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 570,
+          "line": 573,
           "column": 14
         }
       ]
@@ -742,7 +742,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 34,
+          "line": 35,
           "column": 12
         }
       ]
@@ -754,7 +754,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 10,
+          "line": 12,
           "column": 12
         }
       ]
@@ -771,12 +771,12 @@
         },
         {
           "file": "src/components/ui/InputModal.vue",
-          "line": 32,
+          "line": 37,
           "column": 66
         },
         {
           "file": "src/components/ui/Modal.vue",
-          "line": 9,
+          "line": 11,
           "column": 40
         },
         {
@@ -786,12 +786,12 @@
         },
         {
           "file": "src/composables/useModal.js",
-          "line": 25,
+          "line": 32,
           "column": 51
         },
         {
           "file": "src/state/appState.js",
-          "line": 1220,
+          "line": 1233,
           "column": 12
         },
         {
@@ -837,12 +837,12 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 139,
+          "line": 163,
           "column": 95
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 121,
+          "line": 141,
           "column": 107
         }
       ]
@@ -878,22 +878,22 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 479,
+          "line": 482,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 542,
+          "line": 545,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 548,
+          "line": 551,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 554,
+          "line": 557,
           "column": 16
         }
       ]
@@ -905,12 +905,12 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 24,
+          "line": 26,
           "column": 12
         },
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 103,
+          "line": 111,
           "column": 16
         }
       ]
@@ -922,7 +922,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 49,
+          "line": 56,
           "column": 7
         }
       ]
@@ -934,7 +934,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 511,
+          "line": 514,
           "column": 14
         }
       ]
@@ -946,7 +946,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 160,
+          "line": 169,
           "column": 27
         }
       ]
@@ -982,7 +982,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 11,
+          "line": 13,
           "column": 12
         }
       ]
@@ -994,7 +994,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 28,
+          "line": 35,
           "column": 60
         }
       ]
@@ -1006,12 +1006,12 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 174,
+          "line": 175,
           "column": 27
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 183,
+          "line": 184,
           "column": 13
         }
       ]
@@ -1023,7 +1023,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 77,
+          "line": 94,
           "column": 47
         }
       ]
@@ -1035,7 +1035,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 139,
+          "line": 140,
           "column": 9
         }
       ]
@@ -1047,7 +1047,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1205,
+          "line": 1218,
           "column": 14
         }
       ]
@@ -1069,12 +1069,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 40,
+          "line": 41,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 48,
+          "line": 49,
           "column": 12
         }
       ]
@@ -1134,7 +1134,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 55,
+          "line": 58,
           "column": 12
         }
       ]
@@ -1146,12 +1146,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 471,
+          "line": 474,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 519,
+          "line": 522,
           "column": 14
         }
       ]
@@ -1163,7 +1163,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 80,
+          "line": 82,
           "column": 12
         }
       ]
@@ -1180,7 +1180,7 @@
         },
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 104,
+          "line": 114,
           "column": 12
         },
         {
@@ -1197,7 +1197,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1159,
+          "line": 1172,
           "column": 5
         }
       ]
@@ -1221,7 +1221,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 91,
+          "line": 106,
           "column": 20
         }
       ]
@@ -1233,7 +1233,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 484,
+          "line": 487,
           "column": 16
         }
       ]
@@ -1245,7 +1245,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 57,
+          "line": 58,
           "column": 16
         }
       ]
@@ -1269,7 +1269,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 37,
+          "line": 44,
           "column": 75
         }
       ]
@@ -1293,7 +1293,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 71,
+          "line": 84,
           "column": 14
         }
       ]
@@ -1305,7 +1305,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 103,
+          "line": 111,
           "column": 102
         }
       ]
@@ -1317,7 +1317,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 39,
+          "line": 40,
           "column": 18
         }
       ]
@@ -1341,7 +1341,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 85,
+          "line": 87,
           "column": 36
         }
       ]
@@ -1353,7 +1353,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 81,
+          "line": 82,
           "column": 65
         }
       ]
@@ -1377,7 +1377,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 37,
+          "line": 45,
           "column": 7
         }
       ]
@@ -1389,7 +1389,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 531,
+          "line": 534,
           "column": 14
         }
       ]
@@ -1425,7 +1425,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 78,
+          "line": 91,
           "column": 71
         }
       ]
@@ -1461,7 +1461,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 52,
+          "line": 53,
           "column": 22
         }
       ]
@@ -1473,7 +1473,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 107,
+          "line": 109,
           "column": 11
         }
       ]
@@ -1509,12 +1509,12 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 118,
+          "line": 126,
           "column": 54
         },
         {
           "file": "src/state/appState.js",
-          "line": 124,
+          "line": 127,
           "column": 12
         }
       ]
@@ -1526,7 +1526,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 76,
+          "line": 85,
           "column": 9
         }
       ]
@@ -1538,7 +1538,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 23,
+          "line": 30,
           "column": 9
         }
       ]
@@ -1550,7 +1550,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 138,
+          "line": 139,
           "column": 23
         }
       ]
@@ -1562,7 +1562,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 41,
+          "line": 50,
           "column": 20
         }
       ]
@@ -1574,7 +1574,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 159,
+          "line": 160,
           "column": 14
         }
       ]
@@ -1603,7 +1603,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 26,
+          "line": 27,
           "column": 50
         },
         {
@@ -1632,7 +1632,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 317,
+          "line": 320,
           "column": 12
         }
       ]
@@ -1656,7 +1656,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 133,
+          "line": 134,
           "column": 24
         }
       ]
@@ -1668,7 +1668,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 43,
+          "line": 60,
           "column": 11
         }
       ]
@@ -1692,7 +1692,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 75,
+          "line": 84,
           "column": 9
         }
       ]
@@ -1716,7 +1716,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1152,
+          "line": 1165,
           "column": 7
         }
       ]
@@ -1728,7 +1728,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 102,
+          "line": 110,
           "column": 86
         }
       ]
@@ -1752,7 +1752,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 29,
+          "line": 34,
           "column": 15
         }
       ]
@@ -1776,7 +1776,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 61,
+          "line": 62,
           "column": 16
         }
       ]
@@ -1822,7 +1822,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 507,
+          "line": 510,
           "column": 20
         }
       ]
@@ -1834,7 +1834,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 137,
+          "line": 161,
           "column": 156
         }
       ]
@@ -1846,7 +1846,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 333,
+          "line": 336,
           "column": 14
         }
       ]
@@ -1858,7 +1858,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 12,
+          "line": 19,
           "column": 20
         }
       ]
@@ -1870,7 +1870,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1128,
+          "line": 1141,
           "column": 14
         }
       ]
@@ -1882,7 +1882,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1103,
+          "line": 1116,
           "column": 14
         }
       ]
@@ -1906,7 +1906,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 525,
+          "line": 528,
           "column": 14
         }
       ]
@@ -1930,12 +1930,12 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 29,
+          "line": 30,
           "column": 14
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 97,
+          "line": 98,
           "column": 54
         }
       ]
@@ -1947,7 +1947,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 68,
+          "line": 69,
           "column": 12
         }
       ]
@@ -1976,7 +1976,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 84,
+          "line": 85,
           "column": 16
         }
       ]
@@ -1988,12 +1988,12 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 122,
+          "line": 145,
           "column": 20
         },
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 134,
+          "line": 158,
           "column": 23
         }
       ]
@@ -2015,17 +2015,17 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 96,
+          "line": 98,
           "column": 51
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 96,
+          "line": 98,
           "column": 69
         },
         {
           "file": "src/state/appState.js",
-          "line": 27,
+          "line": 29,
           "column": 31
         },
         {
@@ -2057,7 +2057,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 56,
+          "line": 57,
           "column": 65
         }
       ]
@@ -2093,7 +2093,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1120,
+          "line": 1133,
           "column": 20
         }
       ]
@@ -2117,7 +2117,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 27,
+          "line": 28,
           "column": 12
         }
       ]
@@ -2141,7 +2141,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 97,
+          "line": 98,
           "column": 16
         }
       ]
@@ -2165,7 +2165,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 38,
+          "line": 39,
           "column": 15
         }
       ]
@@ -2218,7 +2218,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 47,
+          "line": 48,
           "column": 12
         },
         {
@@ -2240,7 +2240,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 127,
+          "line": 128,
           "column": 16
         }
       ]
@@ -2281,17 +2281,17 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 134,
+          "line": 158,
           "column": 23
         },
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 44,
+          "line": 45,
           "column": 12
         },
         {
           "file": "src/state/appState.js",
-          "line": 218,
+          "line": 221,
           "column": 12
         },
         {
@@ -2332,7 +2332,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1204,
+          "line": 1217,
           "column": 38
         }
       ]
@@ -2356,13 +2356,25 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 60,
+          "line": 70,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 1187,
+          "line": 1200,
           "column": 16
+        }
+      ]
+    },
+    "7fb5327ecf8e55ca": {
+      "source": "上次更新 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 132,
+          "column": 28
         }
       ]
     },
@@ -2373,7 +2385,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 169,
+          "line": 172,
           "column": 24
         }
       ]
@@ -2397,7 +2409,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 52,
+          "line": 54,
           "column": 12
         }
       ]
@@ -2414,7 +2426,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 78,
+          "line": 79,
           "column": 22
         }
       ]
@@ -2426,7 +2438,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 136,
+          "line": 137,
           "column": 18
         }
       ]
@@ -2438,7 +2450,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 118,
+          "line": 125,
           "column": 23
         }
       ]
@@ -2462,7 +2474,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1571,
+          "line": 1665,
           "column": 32
         }
       ]
@@ -2479,7 +2491,7 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 41,
+          "line": 42,
           "column": 12
         }
       ]
@@ -2491,7 +2503,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1100,
+          "line": 1113,
           "column": 14
         }
       ]
@@ -2515,7 +2527,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 148,
+          "line": 150,
           "column": 13
         }
       ]
@@ -2551,7 +2563,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 74,
+          "line": 76,
           "column": 68
         }
       ]
@@ -2563,7 +2575,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 29,
+          "line": 31,
           "column": 12
         }
       ]
@@ -2587,7 +2599,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 25,
+          "line": 26,
           "column": 14
         }
       ]
@@ -2648,7 +2660,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 40,
+          "line": 49,
           "column": 19
         }
       ]
@@ -2684,7 +2696,7 @@
       "refs": [
         {
           "file": "src/components/ui/Tooltip.vue",
-          "line": 31,
+          "line": 32,
           "column": 23
         }
       ]
@@ -2720,7 +2732,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 537,
+          "line": 540,
           "column": 14
         }
       ]
@@ -2742,7 +2754,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 15,
+          "line": 16,
           "column": 15
         }
       ]
@@ -2778,7 +2790,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 128,
+          "line": 129,
           "column": 12
         }
       ]
@@ -2790,7 +2802,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 36,
+          "line": 37,
           "column": 14
         }
       ]
@@ -2814,7 +2826,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 108,
+          "line": 117,
           "column": 44
         }
       ]
@@ -2850,7 +2862,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 17,
+          "line": 19,
           "column": 12
         },
         {
@@ -2903,12 +2915,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1672,
+          "line": 1766,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1693,
+          "line": 1787,
           "column": 32
         }
       ]
@@ -2920,7 +2932,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 129,
+          "line": 130,
           "column": 12
         }
       ]
@@ -2932,7 +2944,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 466,
+          "line": 469,
           "column": 20
         }
       ]
@@ -3016,7 +3028,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1216,
+          "line": 1229,
           "column": 14
         }
       ]
@@ -3033,23 +3045,6 @@
         }
       ]
     },
-    "9dc0825fba5422e4": {
-      "source": "加载中...",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/views/ModelEditor.vue",
-          "line": 16,
-          "column": 97
-        },
-        {
-          "file": "src/views/ProviderEditor.vue",
-          "line": 20,
-          "column": 97
-        }
-      ]
-    },
     "9e02529bcaef36c6": {
       "source": "模型渠道重复，请检查 url、modelID、apiKey、displayName、endpoint 组合",
       "kind": "text",
@@ -3057,7 +3052,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 578,
+          "line": 581,
           "column": 14
         }
       ]
@@ -3069,7 +3064,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 41,
+          "line": 48,
           "column": 75
         }
       ]
@@ -3081,7 +3076,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 558,
+          "line": 561,
           "column": 14
         }
       ]
@@ -3093,12 +3088,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1130,
+          "line": 1143,
           "column": 12
         },
         {
           "file": "src/state/appState.js",
-          "line": 1197,
+          "line": 1210,
           "column": 87
         }
       ]
@@ -3120,7 +3115,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 15,
+          "line": 16,
           "column": 15
         }
       ]
@@ -3137,7 +3132,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1411,
+          "line": 1424,
           "column": 14
         }
       ]
@@ -3161,7 +3156,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 110,
+          "line": 111,
           "column": 30
         }
       ]
@@ -3185,7 +3180,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 137,
+          "line": 138,
           "column": 25
         }
       ]
@@ -3219,12 +3214,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 38,
+          "line": 39,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 46,
+          "line": 47,
           "column": 12
         }
       ]
@@ -3236,7 +3231,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 130,
+          "line": 131,
           "column": 11
         }
       ]
@@ -3260,7 +3255,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 37,
+          "line": 38,
           "column": 16
         }
       ]
@@ -3272,7 +3267,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 118,
+          "line": 125,
           "column": 23
         }
       ]
@@ -3284,12 +3279,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 190,
+          "line": 231,
           "column": 44
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 63,
+          "line": 64,
           "column": 58
         }
       ]
@@ -3328,12 +3323,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 37,
+          "line": 38,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 45,
+          "line": 46,
           "column": 12
         }
       ]
@@ -3350,7 +3345,7 @@
         },
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 18,
+          "line": 20,
           "column": 12
         }
       ]
@@ -3362,7 +3357,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 40,
+          "line": 41,
           "column": 9
         }
       ]
@@ -3374,7 +3369,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1179,
+          "line": 1192,
           "column": 16
         }
       ]
@@ -3386,7 +3381,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 42,
+          "line": 51,
           "column": 22
         }
       ]
@@ -3422,7 +3417,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 107,
+          "line": 109,
           "column": 11
         }
       ]
@@ -3446,7 +3441,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 29,
+          "line": 34,
           "column": 15
         }
       ]
@@ -3458,7 +3453,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 118,
+          "line": 125,
           "column": 23
         }
       ]
@@ -3492,12 +3487,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 39,
+          "line": 40,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 47,
+          "line": 48,
           "column": 12
         }
       ]
@@ -3521,7 +3516,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1186,
+          "line": 1199,
           "column": 40
         }
       ]
@@ -3533,7 +3528,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 55,
+          "line": 56,
           "column": 12
         }
       ]
@@ -3569,7 +3564,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 134,
+          "line": 135,
           "column": 19
         }
       ]
@@ -3593,7 +3588,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 49,
+          "line": 54,
           "column": 9
         },
         {
@@ -3610,7 +3605,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 12,
+          "line": 13,
           "column": 15
         }
       ]
@@ -3634,7 +3629,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 74,
+          "line": 76,
           "column": 35
         }
       ]
@@ -3646,7 +3641,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 63,
+          "line": 72,
           "column": 12
         }
       ]
@@ -3711,7 +3706,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 79,
+          "line": 88,
           "column": 12
         }
       ]
@@ -3723,7 +3718,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 468,
+          "line": 471,
           "column": 14
         }
       ]
@@ -3747,7 +3742,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 133,
+          "line": 134,
           "column": 44
         }
       ]
@@ -3769,7 +3764,7 @@
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 45,
+          "line": 53,
           "column": 30
         }
       ]
@@ -3781,7 +3776,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 30,
+          "line": 32,
           "column": 12
         }
       ]
@@ -3805,7 +3800,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 108,
+          "line": 131,
           "column": 27
         },
         {
@@ -3822,7 +3817,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 139,
+          "line": 140,
           "column": 28
         }
       ]
@@ -3834,7 +3829,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 12,
+          "line": 14,
           "column": 12
         }
       ]
@@ -3846,7 +3841,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 31,
+          "line": 33,
           "column": 12
         }
       ]
@@ -3870,7 +3865,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 111,
+          "line": 112,
           "column": 66
         }
       ]
@@ -3882,7 +3877,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 31,
+          "line": 32,
           "column": 15
         }
       ]
@@ -3906,17 +3901,17 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1382,
+          "line": 1395,
           "column": 28
         },
         {
           "file": "src/state/appState.js",
-          "line": 1384,
+          "line": 1397,
           "column": 38
         },
         {
           "file": "src/state/appState.js",
-          "line": 1419,
+          "line": 1432,
           "column": 93
         }
       ]
@@ -3928,7 +3923,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 77,
+          "line": 79,
           "column": 12
         }
       ]
@@ -3952,7 +3947,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1112,
+          "line": 1125,
           "column": 51
         }
       ]
@@ -3976,7 +3971,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 309,
+          "line": 312,
           "column": 12
         }
       ]
@@ -4024,7 +4019,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 32,
+          "line": 33,
           "column": 9
         }
       ]
@@ -4036,7 +4031,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 122,
+          "line": 131,
           "column": 19
         }
       ]
@@ -4048,7 +4043,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 516,
+          "line": 519,
           "column": 14
         }
       ]
@@ -4060,7 +4055,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 100,
+          "line": 101,
           "column": 56
         }
       ]
@@ -4077,7 +4072,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1363,
+          "line": 1376,
           "column": 14
         }
       ]
@@ -4089,7 +4084,7 @@
       "refs": [
         {
           "file": "src/components/ui/Tooltip.vue",
-          "line": 31,
+          "line": 32,
           "column": 23
         }
       ]
@@ -4101,12 +4096,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 221,
+          "line": 224,
           "column": 38
         },
         {
           "file": "src/state/appState.js",
-          "line": 251,
+          "line": 254,
           "column": 50
         }
       ]
@@ -4118,7 +4113,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 125,
+          "line": 136,
           "column": 17
         }
       ]
@@ -4130,7 +4125,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 323,
+          "line": 326,
           "column": 49
         },
         {
@@ -4140,7 +4135,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 140,
+          "line": 141,
           "column": 20
         }
       ]
@@ -4152,7 +4147,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 344,
+          "line": 347,
           "column": 36
         },
         {
@@ -4169,7 +4164,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1479,
+          "line": 1495,
           "column": 32
         }
       ]
@@ -4222,7 +4217,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 273,
+          "line": 276,
           "column": 18
         },
         {
@@ -4232,7 +4227,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 154,
+          "line": 155,
           "column": 20
         }
       ]
@@ -4244,12 +4239,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 190,
+          "line": 231,
           "column": 23
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 63,
+          "line": 64,
           "column": 37
         }
       ]
@@ -4273,7 +4268,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 534,
+          "line": 537,
           "column": 14
         }
       ]
@@ -4285,12 +4280,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 474,
+          "line": 477,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 522,
+          "line": 525,
           "column": 14
         }
       ]
@@ -4302,7 +4297,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 43,
+          "line": 44,
           "column": 13
         }
       ]
@@ -4314,7 +4309,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1158,
+          "line": 1171,
           "column": 5
         }
       ]
@@ -4350,7 +4345,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 181,
+          "line": 184,
           "column": 54
         },
         {
@@ -4367,7 +4362,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 135,
+          "line": 136,
           "column": 22
         }
       ]
@@ -4379,7 +4374,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 125,
+          "line": 126,
           "column": 16
         }
       ]
@@ -4420,7 +4415,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1182,
+          "line": 1195,
           "column": 40
         }
       ]
@@ -4432,7 +4427,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 28,
+          "line": 29,
           "column": 110
         }
       ]
@@ -4456,12 +4451,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 85,
+          "line": 87,
           "column": 35
         },
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 99,
+          "line": 101,
           "column": 35
         }
       ]
@@ -4473,12 +4468,12 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 81,
+          "line": 82,
           "column": 32
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 56,
+          "line": 57,
           "column": 32
         }
       ]
@@ -4502,7 +4497,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 227,
+          "line": 230,
           "column": 10
         }
       ]
@@ -4514,7 +4509,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1183,
+          "line": 1196,
           "column": 16
         }
       ]
@@ -4526,7 +4521,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 12,
+          "line": 13,
           "column": 15
         }
       ]
@@ -4538,7 +4533,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 73,
+          "line": 76,
           "column": 29
         }
       ]
@@ -4550,7 +4545,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 70,
+          "line": 79,
           "column": 9
         }
       ]
@@ -4562,7 +4557,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 92,
+          "line": 93,
           "column": 22
         }
       ]
@@ -4574,7 +4569,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 131,
+          "line": 132,
           "column": 16
         }
       ]
@@ -4586,7 +4581,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 140,
+          "line": 141,
           "column": 16
         }
       ]
@@ -4598,7 +4593,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 66,
+          "line": 83,
           "column": 11
         }
       ]
@@ -4610,7 +4605,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 132,
+          "line": 133,
           "column": 20
         }
       ]
@@ -4634,7 +4629,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 330,
+          "line": 333,
           "column": 14
         }
       ]
@@ -4646,7 +4641,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1114,
+          "line": 1127,
           "column": 38
         }
       ]
@@ -4697,12 +4692,12 @@
       "refs": [
         {
           "file": "src/components/ui/InputModal.vue",
-          "line": 6,
+          "line": 8,
           "column": 35
         },
         {
           "file": "src/components/ui/Modal.vue",
-          "line": 6,
+          "line": 8,
           "column": 35
         },
         {
@@ -4712,7 +4707,7 @@
         },
         {
           "file": "src/composables/useInputModal.js",
-          "line": 20,
+          "line": 25,
           "column": 46
         },
         {
@@ -4722,7 +4717,7 @@
         },
         {
           "file": "src/composables/useModal.js",
-          "line": 22,
+          "line": 29,
           "column": 41
         },
         {
@@ -4739,7 +4734,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 138,
+          "line": 139,
           "column": 9
         }
       ]
@@ -4751,12 +4746,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 564,
+          "line": 567,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 567,
+          "line": 570,
           "column": 14
         }
       ]
@@ -4768,7 +4763,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 44,
+          "line": 53,
           "column": 25
         }
       ]
@@ -4780,7 +4775,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 81,
+          "line": 90,
           "column": 10
         }
       ]
@@ -4804,7 +4799,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 72,
+          "line": 75,
           "column": 29
         }
       ]
@@ -4816,12 +4811,12 @@
       "refs": [
         {
           "file": "src/components/ui/InputModal.vue",
-          "line": 33,
+          "line": 38,
           "column": 67
         },
         {
           "file": "src/components/ui/Modal.vue",
-          "line": 8,
+          "line": 10,
           "column": 41
         },
         {
@@ -4831,17 +4826,17 @@
         },
         {
           "file": "src/composables/useModal.js",
-          "line": 24,
+          "line": 31,
           "column": 53
         },
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 130,
+          "line": 139,
           "column": 18
         },
         {
           "file": "src/state/appState.js",
-          "line": 1209,
+          "line": 1222,
           "column": 12
         }
       ]
@@ -4853,7 +4848,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1112,
+          "line": 1125,
           "column": 40
         }
       ]
@@ -4865,7 +4860,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 110,
+          "line": 111,
           "column": 30
         }
       ]
@@ -4877,7 +4872,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 33,
+          "line": 34,
           "column": 9
         }
       ]
@@ -4889,7 +4884,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1576,
+          "line": 1670,
           "column": 32
         }
       ]
@@ -4901,7 +4896,7 @@
       "refs": [
         {
           "file": "src/layouts/MainLayout.vue",
-          "line": 71,
+          "line": 81,
           "column": 16
         }
       ]

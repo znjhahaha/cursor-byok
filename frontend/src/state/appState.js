@@ -7,6 +7,7 @@ import {
   getAppVersion,
   getHomeMetricsSummary,
   getModelAdapterTestResults,
+  getProviderModelsCache,
   getUsageSeries,
   installReadyUpdate,
   getProxyState,
@@ -17,6 +18,7 @@ import {
   openModelConfig,
   openModelEditor,
   openProviderEditor,
+  refreshProviderModels as refreshProviderModelsAPI,
   saveUserConfig,
   startProxyService,
   stopProxyService,
@@ -48,6 +50,7 @@ const UPDATE_PROGRESS_EVENT = "update:progress";
 const UPDATE_READY_EVENT = "update:ready";
 const UPDATE_ERROR_EVENT = "update:error";
 const MODEL_ADAPTER_TEST_UPDATED_EVENT = "model-adapter-test:updated";
+const PROVIDER_MODELS_UPDATED_EVENT = "provider-models:updated";
 const SUPPORTED_MODEL_ADAPTER_TEST_STATUSES = new Set(["idle", "running", "success", "error"]);
 const HOME_METRICS_MIN_LOADING_MS = 600;
 
@@ -1058,6 +1061,16 @@ watchSyncEffect((onCleanup) => {
   if (typeof window === "undefined") {
     return;
   }
+  const unsubscribe = Events.On(PROVIDER_MODELS_UPDATED_EVENT, handleProviderModelsUpdatedEvent);
+  onCleanup(() => {
+    unsubscribe();
+  });
+});
+
+watchSyncEffect((onCleanup) => {
+  if (typeof window === "undefined") {
+    return;
+  }
   const unsubscribe = Events.On(UPDATE_STATE_EVENT, handleUpdateStateEvent);
   onCleanup(() => {
     unsubscribe();
@@ -1463,6 +1476,9 @@ export async function saveProvider(provider) {
   if (!result.ok) {
     return result;
   }
+  // 连接信息变了之后旧的模型列表缓存就不再对应当前配置，让 Go 侧按新配置的哈希
+  // 重新裁一遍快照，过期条目会自动从展示镜像里消失。纯读缓存，不发网络请求。
+  await refreshProviderModelsCache().catch(() => {});
   // 新建时 id 由后端派生，前端只能按内容特征（baseURL + 名称）取回，
   // 后续的模型导入依赖这个 id。
   const saved = normalizeProviders(appState.providers).find(
@@ -1512,6 +1528,9 @@ function normalizeProviderModelsResult(source) {
     reachable: asBoolean(raw.reachable),
     ok: asBoolean(raw.ok),
     error: asString(raw.error),
+    requestHash: asString(raw.requestHash),
+    fetchedAt: Number(raw.fetchedAt) || 0,
+    fromCache: asBoolean(raw.fromCache),
     attempts: asArray(raw.attempts).map(asString).filter(Boolean),
     models: asArray(raw.models)
       .map((item) => {
@@ -1526,14 +1545,90 @@ function normalizeProviderModelsResult(source) {
   };
 }
 
-export async function fetchProviderModels(provider) {
+// providerModelsInflight 按 catalog key 归并同一窗口内的并发拉取。
+// 跨窗口去重由 Go 侧的单一缓存负责，这里只防连点。
+const providerModelsInflight = new Map();
+
+function providerModelCatalogKey(provider) {
+  return provider.id || provider.baseURL;
+}
+
+function writeProviderModelCatalog(key, result) {
+  if (!key) {
+    return;
+  }
+  appState.providerModelCatalog = {
+    ...appState.providerModelCatalog,
+    [key]: result,
+  };
+}
+
+// applyProviderModelsCache 用 Go 侧的快照整体替换展示镜像。
+//
+// 这里是整体替换而不是合并：Go 只回传哈希与当前配置一致的成功结果，所以它就是
+// 真值。整体替换顺带解决了「改完密钥仍显示旧模型列表」——那条记录会因为哈希不匹配
+// 而不再出现在快照里，于是自动从镜像里消失。
+function applyProviderModelsCache(source) {
+  const raw = source && typeof source === "object" ? source : {};
+  const next = {};
+  for (const item of asArray(raw.results)) {
+    const result = normalizeProviderModelsResult(item);
+    if (result.providerID && result.ok) {
+      next[result.providerID] = result;
+    }
+  }
+  appState.providerModelCatalog = next;
+  return next;
+}
+
+function handleProviderModelsUpdatedEvent(event) {
+  if (event?.data) {
+    applyProviderModelsCache(event.data);
+    return;
+  }
+  void refreshProviderModelsCache().catch(() => {});
+}
+
+export async function refreshProviderModelsCache() {
+  const payload = await getProviderModelsCache();
+  applyProviderModelsCache(payload);
+  return appState.providerModelCatalog;
+}
+
+export function getProviderModelsResult(provider) {
+  const key = providerModelCatalogKey(normalizeProvider(provider));
+  return key ? appState.providerModelCatalog[key] : undefined;
+}
+
+export function hasCachedProviderModels(provider) {
+  return Boolean(getProviderModelsResult(provider)?.ok);
+}
+
+export async function fetchProviderModels(provider, { force = false } = {}) {
   const normalized = normalizeProvider(provider);
+  const key = providerModelCatalogKey(normalized);
+  const inflightKey = `${force ? "refresh" : "list"}:${key}`;
+  const pending = providerModelsInflight.get(inflightKey);
+  if (pending) {
+    return pending;
+  }
+
+  const task = runProviderModelsFetch(normalized, key, force).finally(() => {
+    providerModelsInflight.delete(inflightKey);
+  });
+  providerModelsInflight.set(inflightKey, task);
+  return task;
+}
+
+async function runProviderModelsFetch(normalized, key, force) {
   try {
-    const result = normalizeProviderModelsResult(await listProviderModels(normalized));
-    appState.providerModelCatalog = {
-      ...appState.providerModelCatalog,
-      [normalized.id || normalized.baseURL]: result,
-    };
+    const call = force ? refreshProviderModelsAPI(normalized) : listProviderModels(normalized);
+    const result = normalizeProviderModelsResult(await call);
+    // 失败结果不落进 catalog：一次网络抖动或临时鉴权失败会让用户在修好配置之后
+    // 仍然看到旧错误。失败只作为本次调用的返回值。
+    if (result.ok) {
+      writeProviderModelCatalog(key, result);
+    }
 
     // 探测结果属于连接配置：命中后立即物化到 provider，后续拉取与真实推理都直接走已知路径。
     const resolvedProvider = {
@@ -1554,12 +1649,11 @@ export async function fetchProviderModels(provider) {
     return { ok: result.ok, error: result.error, result, provider: resolvedProvider };
   } catch (error) {
     const message = toUserError(error);
-    const result = normalizeProviderModelsResult({ providerID: normalized.id, error: message });
-    appState.providerModelCatalog = {
-      ...appState.providerModelCatalog,
-      [normalized.id || normalized.baseURL]: result,
+    return {
+      ok: false,
+      error: message,
+      result: normalizeProviderModelsResult({ providerID: normalized.id, error: message }),
     };
-    return { ok: false, error: message, result };
   }
 }
 
@@ -1774,6 +1868,8 @@ export async function bootstrapAppState() {
     // keep cached config if loading fails
   }
   await refreshModelAdapterTestResults().catch(() => {});
+  // 纯读缓存，不会触发任何对中转站的网络请求。
+  await refreshProviderModelsCache().catch(() => {});
   try {
     appState.appVersion = await getAppVersion();
   } catch (_error) {

@@ -18,6 +18,13 @@ export const modalState = reactive({
  */
 export function showModal(options = {}) {
   return new Promise((resolve) => {
+    // 上一个弹窗还没结算就被覆盖时，先按「取消」把它结算掉。
+    // 否则它的 Promise 永远不 settle，await 它的调用方会永久挂住 ——
+    // 加了 Escape 关闭之后用户更容易快速连开弹窗，这条会更容易被触发。
+    const pending = modalState._resolve;
+    modalState._resolve = null;
+    pending?.(false);
+
     modalState.visible = true;
     modalState.title = options.title ?? "提示";
     modalState.content = options.content ?? "";

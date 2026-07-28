@@ -192,17 +192,17 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <Transition name="modal-mask">
+    <Transition name="mo-mask">
       <div
         v-show="visible"
-        class="modal-mask-layer fixed inset-0 z-999 flex items-center justify-center bg-black/50 p-4"
+        class="fixed inset-0 z-999 flex items-center justify-center bg-black/50 p-4"
       >
-        <Transition name="ad-frame">
+        <Transition name="mo-dialog">
           <iframe
             v-show="visible && iframeSrc"
             :src="iframeSrc"
             :style="frameStyle"
-            class="block overflow-hidden rounded-none border-none bg-transparent shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)]"
+            class="mo-dialog--soft block overflow-hidden rounded-none border-none bg-transparent shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)]"
             sandbox="allow-scripts allow-forms allow-same-origin"
             title="Advertisement"
           />
@@ -211,27 +211,3 @@ onBeforeUnmount(() => {
     </Transition>
   </Teleport>
 </template>
-
-<style scoped>
-.modal-mask-enter-active,
-.modal-mask-leave-active {
-  transition: opacity 0.25s ease, backdrop-filter 0.25s ease;
-}
-
-.modal-mask-enter-from,
-.modal-mask-leave-to {
-  opacity: 0;
-  backdrop-filter: blur(0);
-}
-
-.ad-frame-enter-active,
-.ad-frame-leave-active {
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.ad-frame-enter-from,
-.ad-frame-leave-to {
-  opacity: 0;
-  transform: scale(0.96) translateY(-8px);
-}
-</style>

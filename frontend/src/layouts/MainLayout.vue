@@ -14,6 +14,7 @@ import {
   syncServiceState,
   updateViewState,
 } from "@/state/appState";
+import { useWindowFocus } from "@/composables/useWindowFocus";
 import { isWindows } from "@/utils/isWindows";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
@@ -24,6 +25,14 @@ const route = useRoute();
 const message = useMessage();
 const showIcon = computed(() => route.meta.showIcon !== false);
 const title = computed(() => route.meta.title ?? "Cursor助手｜永久免费｜自定义API");
+
+// 回焦时补一次状态同步（失焦期间轮询是停着的）。
+// useWindowFocus 内部已按「确实曾失焦」闸门过，拖动窗口不会触发。
+const windowFocused = useWindowFocus(() => {
+  if (showFooter.value) {
+    void syncServiceState().catch(() => {});
+  }
+});
 const directlyClose = computed(() => route.meta.directlyClose === true);
 const showFooter = computed(() => route.path === "/");
 const footerAuthorInfo = ref(null);
@@ -164,7 +173,9 @@ async function handleOpenUsageDocs() {
 onMounted(() => {
   void loadFooterAuthorInfo();
   proxyStateTimer = window.setInterval(() => {
-    if (showFooter.value) {
+    // 窗口失焦时停掉轮询：既省掉无谓的 IPC，也避免一个看不见的窗口
+    // 继续改写共享的 appState。回焦时下面的 useWindowFocus 会立刻补一次。
+    if (showFooter.value && windowFocused.value) {
       void syncServiceState().catch(() => {});
     }
   }, proxyStatePollIntervalMs);
@@ -190,8 +201,18 @@ onUnmounted(() => {
       style="--wails-draggable: drag"
       :class="{ '!justify-center': !isWindows }"
     >
-      <div class="center-row gap-2" style="font-family: var(--font-num);">
-        <img v-if="showIcon" :src="Logo" class="w-[18px] h-[18px]" />
+      <!-- 失焦调暗是原生窗口的标准语义；纯颜色变化，不新增任何文案。 -->
+      <div
+        class="center-row gap-2 transition-colors duration-150"
+        :class="windowFocused ? 'text-[#F7F7F7]' : 'text-[#8f8f8f]'"
+        style="font-family: var(--font-num);"
+      >
+        <img
+          v-if="showIcon"
+          :src="Logo"
+          class="w-[18px] h-[18px] transition-opacity duration-150"
+          :class="windowFocused ? 'opacity-100' : 'opacity-60'"
+        />
         <div>{{ title }}</div>
       </div>
       <div
@@ -199,13 +220,13 @@ onUnmounted(() => {
         class="absolute right-[10px] top-[8px] z-99999 center-row gap-[1px]"
       >
         <button
-          class="text-[20px] center-row justify-center w-[30px] h-[23px] rounded-[4px] text-[#777] hover:bg-[#333] hover:text-[#ddd] cursor-pointer"
+          class="text-[20px] center-row justify-center w-[30px] h-[23px] rounded-[4px] text-[#777] transition-colors duration-150 hover:bg-[#333] hover:text-[#ddd] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10AD5D]/35 cursor-pointer"
           @click="minimizeWindow"
         >
           <span class="icon-[ic--round-minus]"></span>
         </button>
         <button
-          class="text-[20px] center-row justify-center w-[30px] h-[23px] rounded-[4px] text-[#777] hover:bg-[#333] hover:text-[#ddd] cursor-pointer"
+          class="text-[20px] center-row justify-center w-[30px] h-[23px] rounded-[4px] text-[#777] transition-colors duration-150 hover:bg-[#333] hover:text-[#ddd] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10AD5D]/35 cursor-pointer"
           @click="closeWindow"
         >
           <span class="icon-[ic--round-close]"></span>
@@ -269,7 +290,7 @@ onUnmounted(() => {
             class="h-[6px] w-[120px] overflow-hidden rounded-full bg-[#1f1f1f]"
           >
             <div
-              class="h-full rounded-full bg-gradient-to-r from-[#10AD5D] to-[#29c776]"
+              class="h-full rounded-full bg-gradient-to-r from-[#10AD5D] to-[#29c776] transition-[width] duration-enter ease-out"
               :style="updateViewState.footerProgressStyle"
             ></div>
           </div>

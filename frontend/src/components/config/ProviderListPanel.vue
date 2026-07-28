@@ -7,10 +7,12 @@ import {
   countProviderModels,
   deleteProvider,
   fetchProviderModels,
+  hasCachedProviderModels,
   openProviderEditorWindow,
   toUserError,
 } from "@/state/appState";
-import { computed, onBeforeUnmount, ref } from "vue";
+import dayjs from "dayjs";
+import { computed, onBeforeUnmount, onDeactivated, ref } from "vue";
 
 const emit = defineEmits(["error", "confirm-delete"]);
 
@@ -104,23 +106,32 @@ async function openEditor(provider = null) {
   }
 }
 
-async function handleProbe(provider) {
+// 路径轮播只是给多秒级探测填等待感的假进度。命中缓存时整个调用是瞬时的，
+// 这时候再播一遍「正在尝试 /v1/models」反而显得假，所以只在真会走网络时才启动。
+function startProbeIndicator(providerID) {
+  const candidates = ["/v1/models", "/models", "/api/v1/models", "模型请求接口"];
+  let index = 0;
+  probingPath.value = { ...probingPath.value, [providerID]: candidates[index] };
+  probeTimers.set(
+    providerID,
+    window.setInterval(() => {
+      index = Math.min(index + 1, candidates.length - 1);
+      probingPath.value = { ...probingPath.value, [providerID]: candidates[index] };
+    }, 1100),
+  );
+}
+
+async function handleProbe(provider, { force = false } = {}) {
   if (probing.value.has(provider.id)) {
     return;
   }
-  const candidates = ["/v1/models", "/models", "/api/v1/models", "模型请求接口"];
-  let index = 0;
+  const willHitCache = !force && hasCachedProviderModels(provider);
   probing.value = new Set(probing.value).add(provider.id);
-  probingPath.value = { ...probingPath.value, [provider.id]: candidates[index] };
-  probeTimers.set(
-    provider.id,
-    window.setInterval(() => {
-      index = Math.min(index + 1, candidates.length - 1);
-      probingPath.value = { ...probingPath.value, [provider.id]: candidates[index] };
-    }, 1100),
-  );
+  if (!willHitCache) {
+    startProbeIndicator(provider.id);
+  }
   try {
-    await fetchProviderModels(provider);
+    await fetchProviderModels(provider, { force });
   } catch (error) {
     reportError("获取模型失败", toUserError(error));
   } finally {
@@ -135,12 +146,42 @@ async function handleProbe(provider) {
   }
 }
 
+function handleRefresh(provider) {
+  return handleProbe(provider, { force: true });
+}
+
+function fetchedAtLabel(provider) {
+  const fetchedAt = provider.catalog?.fetchedAt;
+  if (!fetchedAt) {
+    return "";
+  }
+  return dayjs(fetchedAt).format("MM-DD HH:mm");
+}
+
+// grid-column 不可动画，所以变宽是瞬时的、只能靠延时把它藏在高度动画里。
+// 时长必须与 motion.css 的 --mo-panel 一致 —— 写死数字的话，
+// 系统开启「减少动态效果」后 CSS 1ms 就结束了、JS 还在等 220ms，
+// 中间会露出一段可见空白。所以这里直接读同一个变量。
+function motionDurationMS(name, fallback) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  const raw = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!raw) {
+    return fallback;
+  }
+  const parsed = raw.endsWith("ms")
+    ? Number.parseFloat(raw)
+    : Number.parseFloat(raw) * 1000;
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function closeExpanded() {
   expandedID.value = "";
   window.clearTimeout(expandTimer);
   expandTimer = window.setTimeout(() => {
     wideID.value = "";
-  }, 220);
+  }, motionDurationMS("--mo-panel", 220));
 }
 
 function openExpanded(providerID) {
@@ -152,7 +193,7 @@ function openExpanded(providerID) {
       requestAnimationFrame(() => {
         expandedID.value = providerID;
       });
-    }, 180);
+    }, motionDurationMS("--mo-mask", 180));
     return;
   }
   wideID.value = providerID;
@@ -194,13 +235,19 @@ function handleImported(provider, { added }) {
   }, 3000);
 }
 
-onBeforeUnmount(() => {
+function clearAllTimers() {
   window.clearTimeout(expandTimer);
   window.clearTimeout(hintTimer);
   for (const timer of probeTimers.values()) {
     window.clearInterval(timer);
   }
-});
+  probeTimers.clear();
+}
+
+onBeforeUnmount(clearAllTimers);
+// 本面板被 ModelConfig 用 KeepAlive 缓存，切走时不会触发 unmount。
+// 少了这一句，路径轮播的 setInterval 会在隐藏的面板上一直滴答。
+onDeactivated(clearAllTimers);
 
 // 删除必须级联，否则残留的悬空引用会让整份配置校验失败、用户再也存不进任何修改。
 // 确认交互交给父级统一处理，面板本身不持有弹窗状态。
@@ -283,16 +330,23 @@ function handleDelete(provider) {
                 >
                   <div class="center-row justify-between gap-2">
                     <span class="text-[11px] uppercase tracking-[0.08em] text-[#666]">状态</span>
-                    <span
-                      v-if="provider.catalog"
-                      class="shrink-0 text-[14px] text-[#8f8f8f]"
-                      :class="provider.expanded ? 'icon-[mdi--chevron-up]' : 'icon-[mdi--chevron-down]'"
-                    ></span>
+                    <span class="center-row shrink-0 gap-1.5">
+                      <!-- 只显示数字时间戳，不加文案：新增中文字面量会带来三语补译成本。 -->
+                      <span
+                        v-if="fetchedAtLabel(provider) && !provider.probing"
+                        class="font-num text-[11px] tabular-nums text-[#666]"
+                      >{{ fetchedAtLabel(provider) }}</span>
+                      <span
+                        v-if="provider.catalog"
+                        class="text-[14px] text-[#8f8f8f]"
+                        :class="provider.expanded ? 'icon-[mdi--chevron-up]' : 'icon-[mdi--chevron-down]'"
+                      ></span>
+                    </span>
                   </div>
                   <div class="mt-1 truncate" :class="probeClass(provider)">{{ probeText(provider) }}</div>
                 </button>
 
-                <Transition name="hint-fade">
+                <Transition name="mo-fade-down">
                   <div
                     v-if="importHint.id === provider.id && importHint.text"
                     class="rounded-[8px] border border-[#1d4b2f] bg-[#132a1c] px-3 py-1.5 text-xs text-[#86efac]"
@@ -302,8 +356,8 @@ function handleDelete(provider) {
                 </Transition>
 
                 <div
-                  class="provider-expand-grid"
-                  :class="provider.expanded ? 'provider-expand-grid--open' : ''"
+                  class="mo-collapse"
+                  :class="provider.expanded ? 'mo-collapse--open' : ''"
                 >
                   <div class="min-h-0 overflow-hidden">
                     <div class="rounded-[8px] border border-[#343434] bg-[#232323] p-3">
@@ -332,6 +386,19 @@ function handleDelete(provider) {
                 >
                   {{ provider.probing ? "获取中..." : provider.expanded ? "收起" : "获取模型" }}
                 </Button>
+                <!-- 模型列表长期缓存，这里是唯一的强制刷新入口；纯图标，零新增文案。 -->
+                <Button
+                  v-if="provider.catalog"
+                  variant="default"
+                  :disabled="provider.probing"
+                  :title="`上次更新 ${fetchedAtLabel(provider) || '-'}`"
+                  @click="handleRefresh(provider)"
+                >
+                  <span
+                    class="icon-[mdi--refresh] text-[14px]"
+                    :class="{ 'animate-spin': provider.probing }"
+                  ></span>
+                </Button>
                 <Button variant="default" :disabled="appState.configSaving" @click="openEditor(provider)">编辑</Button>
                 <Button variant="text" :disabled="appState.configSaving" @click="handleDelete(provider)">删除</Button>
               </div>
@@ -342,40 +409,3 @@ function handleDelete(provider) {
     </div>
   </div>
 </template>
-
-<style scoped>
-.provider-expand-grid {
-  display: grid;
-  grid-template-rows: 0fr;
-  margin-top: -10px;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    grid-template-rows 220ms ease,
-    margin-top 220ms ease,
-    opacity 160ms ease,
-    visibility 0s linear 220ms;
-}
-
-.provider-expand-grid--open {
-  grid-template-rows: 1fr;
-  margin-top: 0;
-  opacity: 1;
-  visibility: visible;
-  transition:
-    grid-template-rows 220ms ease,
-    opacity 180ms ease,
-    visibility 0s;
-}
-
-.hint-fade-enter-active,
-.hint-fade-leave-active {
-  transition: opacity 160ms ease, transform 180ms ease;
-}
-
-.hint-fade-enter-from,
-.hint-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-3px);
-}
-</style>

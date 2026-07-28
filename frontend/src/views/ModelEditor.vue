@@ -3,6 +3,7 @@ import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
 import ModelAdapterTestCard from "@/components/ModelAdapterTestCard.vue";
 import Select from "@/components/ui/Select.vue";
+import Skeleton from "@/components/ui/Skeleton.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
 import { getModelEditorContext } from "@/services/clientApi";
 import {
@@ -284,17 +285,17 @@ onMounted(async () => {
       <h2 class="text-base font-medium text-white">{{ title }}</h2>
       <div class="flex items-center gap-2">
         <Button variant="default" @click="handleCancel">取消</Button>
-        <Button variant="default" :disabled="isCurrentConfigTesting || appState.configSaving" @click="handleTest">
+        <Button variant="default" :disabled="isCurrentConfigTesting || appState.configSaving" :loading="isCurrentConfigTesting" @click="handleTest">
           {{ isCurrentConfigTesting ? "测试中..." : "保存并测试" }}
         </Button>
-        <Button variant="primary" :disabled="appState.configSaving" @click="handleSave">
+        <Button variant="primary" :disabled="appState.configSaving" :loading="appState.configSaving" @click="handleSave">
           {{ appState.configSaving ? "保存中..." : "保存" }}
         </Button>
       </div>
     </div>
 
-    <div v-if="loading" class="flex flex-1 items-center justify-center text-sm text-[#a3a3a3]">
-      加载中...
+    <div v-if="loading" class="min-h-0 flex-1 overflow-hidden px-4 pb-4" aria-busy="true">
+      <Skeleton variant="text" :lines="6" />
     </div>
 
     <div v-else class="flex-1 overflow-y-auto min-h-0 px-4 pb-4">
@@ -325,7 +326,7 @@ onMounted(async () => {
               v-model="draft.displayName"
               type="text"
               placeholder="例如：OpenAI - GPT-4.1"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -338,7 +339,7 @@ onMounted(async () => {
               v-model="draft.modelID"
               type="text"
               placeholder="例如：gpt-4.1"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -365,7 +366,7 @@ onMounted(async () => {
               v-model="draft.baseURL"
               type="text"
               :placeholder="interfacePlaceholder"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -379,7 +380,7 @@ onMounted(async () => {
               type="text"
               inputmode="numeric"
               placeholder="例如：200000（留空用默认值）"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -404,7 +405,7 @@ onMounted(async () => {
               type="text"
               inputmode="numeric"
               placeholder="例如：65536（留空用默认值）"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -432,7 +433,7 @@ onMounted(async () => {
               type="text"
               inputmode="numeric"
               placeholder="例如：65536（留空用默认值）"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -468,7 +469,7 @@ onMounted(async () => {
             v-model="draft.openAIExtraParamsJSON"
             rows="5"
             spellcheck="false"
-            class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
         </div>
 
@@ -492,7 +493,7 @@ onMounted(async () => {
             v-model="draft.anthropicExtraParamsJSON"
             rows="5"
             spellcheck="false"
-            class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
         </div>
 
@@ -516,7 +517,7 @@ onMounted(async () => {
             v-model="draft.customHeadersJSON"
             rows="5"
             spellcheck="false"
-            class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
         </div>
 
@@ -529,7 +530,7 @@ onMounted(async () => {
             v-model="draft.tooltipData"
             rows="3"
             placeholder="例如：用于日常代码补全与问答"
-            class="min-h-[96px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            class="min-h-[96px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
         </label>
 

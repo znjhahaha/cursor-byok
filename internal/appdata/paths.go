@@ -57,6 +57,11 @@ func DocsIndexRootPath() string {
 	return filepath.Join(DataRootPath(), "docs-index")
 }
 
+// ProviderModelsCachePath 返回中转站模型列表缓存文件路径。
+func ProviderModelsCachePath() string {
+	return filepath.Join(DataRootPath(), "provider-models.json")
+}
+
 func RulesRootPath() string {
 	return filepath.Join(RootDir(), "rules")
 }

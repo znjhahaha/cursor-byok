@@ -130,13 +130,13 @@ function handleSave() {
 
 <template>
   <Teleport to="body">
-    <Transition name="modal-mask">
+    <Transition name="mo-mask">
       <div
         v-show="visible"
         class="fixed inset-0 z-999 flex items-center justify-center bg-black/50 p-4"
         @click.self="handleCancel"
       >
-        <Transition name="modal-content">
+        <Transition name="mo-dialog">
           <div
             v-show="visible"
             class="relative z-10 w-full max-w-[560px] overflow-hidden rounded-[8px] p-px shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)]"
@@ -152,7 +152,7 @@ function handleSave() {
                   <input
                     v-model="draft.displayName"
                     type="text"
-                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                   />
                 </label>
 
@@ -161,7 +161,7 @@ function handleSave() {
                   <input
                     v-model="draft.modelID"
                     type="text"
-                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                   />
                 </label>
 
@@ -178,7 +178,7 @@ function handleSave() {
                   <input
                     v-model="draft.apiKey"
                     type="text"
-                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                   />
                 </label>
               </div>
@@ -188,7 +188,7 @@ function handleSave() {
                 <input
                   v-model="draft.baseURL"
                   type="text"
-                  class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                  class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                 />
               </label>
 
@@ -199,7 +199,7 @@ function handleSave() {
                   type="text"
                   inputmode="numeric"
                   placeholder="留空时默认 200000"
-                  class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                  class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                 />
               </label>
 
@@ -219,7 +219,7 @@ function handleSave() {
                     type="text"
                     inputmode="numeric"
                     placeholder="留空时默认 65536"
-                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                   />
                 </label>
 
@@ -252,7 +252,7 @@ function handleSave() {
                   v-model="draft.openAIExtraParamsJSON"
                   rows="5"
                   spellcheck="false"
-                  class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                  class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                 />
               </div>
 
@@ -264,7 +264,7 @@ function handleSave() {
                     type="text"
                     inputmode="numeric"
                     placeholder="留空时默认 65536"
-                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                   />
                 </label>
 
@@ -282,7 +282,7 @@ function handleSave() {
                 <textarea
                   v-model="draft.tooltipData"
                   rows="5"
-                  class="min-h-[120px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+                  class="min-h-[120px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
                 />
               </label>
 
@@ -304,25 +304,3 @@ function handleSave() {
     </Transition>
   </Teleport>
 </template>
-
-<style scoped>
-.modal-mask-enter-active,
-.modal-mask-leave-active {
-  transition: opacity 0.25s ease, backdrop-filter 0.25s ease;
-}
-.modal-mask-enter-from,
-.modal-mask-leave-to {
-  opacity: 0;
-  backdrop-filter: blur(0);
-}
-
-.modal-content-enter-active,
-.modal-content-leave-active {
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.modal-content-enter-from,
-.modal-content-leave-to {
-  opacity: 0;
-  transform: scale(0.9) translateY(-10px);
-}
-</style>

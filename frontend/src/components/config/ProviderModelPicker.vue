@@ -202,7 +202,7 @@ function handleManualImport() {
             type="text"
             spellcheck="false"
             placeholder="搜索模型 ID"
-            class="h-8 w-full rounded-[6px] border border-[#3f3f3f] bg-[#232323] pl-7 pr-2 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            class="h-8 w-full rounded-[6px] border border-[#3f3f3f] bg-[#232323] pl-7 pr-2 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
         </div>
         <label class="center-row shrink-0 cursor-pointer gap-1.5 text-xs text-[#a3a3a3]">
@@ -217,6 +217,7 @@ function handleManualImport() {
         <Button
           variant="default"
           :disabled="importing || selectedCount === 0 || appState.configSaving"
+          :loading="importing"
           @click="handleImport"
         >
           {{ importing ? "导入中..." : `导入所选 (${selectedCount})` }}
@@ -257,12 +258,13 @@ function handleManualImport() {
           type="text"
           spellcheck="false"
           placeholder="输入模型 ID，例如 claude-sonnet-4-5"
-          class="h-8 min-w-0 flex-1 rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-2.5 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+          class="h-8 min-w-0 flex-1 rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-2.5 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           @keydown.enter.prevent="handleManualImport"
         />
         <Button
           variant="primary"
           :disabled="importing || !manualModelID.trim() || appState.configSaving"
+          :loading="importing"
           @click="handleManualImport"
         >
           {{ importing ? "添加中..." : "添加模型" }}

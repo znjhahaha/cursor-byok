@@ -1,8 +1,10 @@
 import {
   GetModelAdapterTestResults,
+  GetProviderModelsCache,
   GetState,
   ListProviderModels,
   LoadUserConfig,
+  RefreshProviderModels,
   SaveUserConfig,
   StartProxy,
   StopProxy,
@@ -179,6 +181,14 @@ export function getModelAdapterTestResults() {
 
 export function listProviderModels(provider) {
   return withApiLogging("ListProviderModels", provider, () => ListProviderModels(provider));
+}
+
+export function refreshProviderModels(provider) {
+  return withApiLogging("RefreshProviderModels", provider, () => RefreshProviderModels(provider));
+}
+
+export function getProviderModelsCache() {
+  return withApiLogging("GetProviderModelsCache", undefined, () => GetProviderModelsCache());
 }
 
 export function getUsageSeries(days) {

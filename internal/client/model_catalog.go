@@ -63,11 +63,28 @@ type ProviderModelsResult struct {
 	Error         string          `json:"error"`
 	Attempts      []string        `json:"attempts"`
 	Models        []ProviderModel `json:"models"`
+	// RequestHash 是本次请求的内容指纹，供前端判断缓存是否已过期。
+	RequestHash string `json:"requestHash"`
+	// FetchedAt 是结果产生时间（unix 毫秒），供 UI 显示「上次更新」。
+	FetchedAt int64 `json:"fetchedAt"`
+	// FromCache 表示本次结果直接来自缓存，没有发起网络请求。
+	FromCache bool `json:"fromCache"`
 }
 
 // ListProviderModels 拉取中转站的模型列表，供批量导入与探活使用。
+//
+// 缓存优先：探测一个陌生站点最坏要串行发 7 个各带 8s 超时的请求，
+// 而中转站的模型列表几乎不变，所以命中缓存就直接返回，不重复付这个代价。
 func (s *ProxyService) ListProviderModels(provider serverconfig.ProviderConfig) (ProviderModelsResult, error) {
-	_ = s
+	return s.resolveProviderModels(provider, false)
+}
+
+// RefreshProviderModels 跳过缓存强制重新拉取，供 UI 上的刷新入口使用。
+func (s *ProxyService) RefreshProviderModels(provider serverconfig.ProviderConfig) (ProviderModelsResult, error) {
+	return s.resolveProviderModels(provider, true)
+}
+
+func (s *ProxyService) resolveProviderModels(provider serverconfig.ProviderConfig, force bool) (ProviderModelsResult, error) {
 	normalized, err := serverconfig.NormalizeProviderConfig(provider)
 	if err != nil {
 		return ProviderModelsResult{
@@ -79,6 +96,40 @@ func (s *ProxyService) ListProviderModels(provider serverconfig.ProviderConfig) 
 		}, err
 	}
 
+	requestHash := buildProviderModelsRequestHash(normalized)
+	if !force && s != nil && s.providerModels != nil {
+		if cached, ok := s.providerModels.Get(requestHash); ok {
+			cached.FromCache = true
+			return cached, nil
+		}
+	}
+
+	result := fetchProviderModelsResult(normalized)
+	result.RequestHash = requestHash
+	result.FetchedAt = time.Now().UnixMilli()
+	result.FromCache = false
+	s.storeAndEmitProviderModels(normalized, result)
+	return result, nil
+}
+
+// effectiveProviderAfterProbe 返回把探测结果回填之后的 provider。
+//
+// 调用方拿到结果后会把 ResolvedPath / InferencePath 物化进配置，而这两个字段参与
+// 请求哈希，所以下一次带着物化后的配置进来时哈希必然不同。缓存必须同时按物化后的
+// 哈希存一份，否则第二次调用永远命中不了。
+func effectiveProviderAfterProbe(provider serverconfig.ProviderConfig, result ProviderModelsResult) serverconfig.ProviderConfig {
+	effective := provider
+	if resolved := strings.TrimSpace(result.ResolvedPath); resolved != "" {
+		effective.ModelsPath = resolved
+	}
+	if inference := strings.TrimSpace(result.InferencePath); inference != "" {
+		effective.InferencePath = inference
+	}
+	return effective
+}
+
+// fetchProviderModelsResult 执行真实的探测与拉取，不涉及缓存。
+func fetchProviderModelsResult(normalized serverconfig.ProviderConfig) ProviderModelsResult {
 	result := ProviderModelsResult{
 		ProviderID: normalized.ID,
 		Attempts:   []string{},
@@ -107,7 +158,7 @@ func (s *ProxyService) ListProviderModels(provider serverconfig.ProviderConfig) 
 			result.InferencePath = inferencePath
 			result.Attempts = append(result.Attempts, inferenceAttempts...)
 		}
-		return result, nil
+		return result
 	}
 
 	inferencePath, inferenceAttempts, reachable := probeProviderInferencePath(normalized)
@@ -116,10 +167,10 @@ func (s *ProxyService) ListProviderModels(provider serverconfig.ProviderConfig) 
 	result.Attempts = append(result.Attempts, inferenceAttempts...)
 	if reachable {
 		result.Error = "站点可达，但没有可识别的模型列表；可手动添加模型 ID"
-		return result, nil
+		return result
 	}
 	result.Error = "无法连接中转站，请检查地址、密钥与 API 路径"
-	return result, nil
+	return result
 }
 
 type providerURLCandidate struct {

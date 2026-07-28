@@ -6,6 +6,9 @@ import router from "@/router";
 import { bootstrapAppState } from "@/state/appState";
 import "@/style/global.css";
 import "@/style/tailwind.css";
+// 必须放在 tailwind.css 之后：motion.css 里的 reduced-motion 覆盖需要
+// 在 @tailwind utilities 之后出现才能以同权重胜出。
+import "@/style/motion.css";
 
 if (typeof window !== "undefined" && typeof window.ResizeObserver === "undefined") {
   window.ResizeObserver = ResizeObserver;

@@ -1,0 +1,231 @@
+/*
+ * motion.css —— 全局动效 token 与共享 Transition 定义。
+ *
+ * 两条规则：
+ *
+ * 1. 时长与曲线的唯一真相源是这里的 CSS 自定义属性。tailwind.config.cjs 把
+ *    transitionDuration / transitionTimingFunction 的 scale key 映射到这些变量上，
+ *    所以覆盖 DEFAULT 就等于接管了代码里全部 51 处裸 `transition-*` utility，
+ *    一行模板都不用改。因此 `prefers-reduced-motion` 只需要在这里改一次变量值。
+ *
+ * 2. Transition 的 CSS 必须是全局的，不能 scoped。被过渡的元素往往是子组件的根节点
+ *    或 Teleport 出去的浮层（Modal / Select / Tooltip 都 teleport 到 body），
+ *    scoped 的 data-v 属性选择器匹配不到它们。
+ */
+
+:root {
+  /* ---- 时长 ---- */
+  --mo-quick: 100ms;  /* 浮层离场 */
+  --mo-fast: 140ms;   /* 下拉 / Tooltip / 通用小 fade */
+  --mo-hover: 150ms;  /* hover / 颜色 / 按下（等于现状值，只是变量化） */
+  --mo-leave: 160ms;  /* 面板切换的「旧」半程 */
+  --mo-mask: 180ms;   /* Modal 遮罩 */
+  --mo-enter: 200ms;  /* 面板切换的「新」半程、Modal 卡片 */
+  --mo-panel: 220ms;  /* 高度 / grid-template-rows 折叠 */
+
+  /* ---- 错开量：「新」相对「旧」的延迟 ---- */
+  --mo-stagger: 60ms;
+
+  /* ---- 曲线 ---- */
+  --mo-ease: cubic-bezier(0, 0, 0.2, 1);
+  --mo-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---- 位移 / 缩放：让这些数值也是 token 而不是散落的魔数 ---- */
+  --mo-shift: 4px;
+  --mo-shift-up: -4px;
+  --mo-scale-in: 0.97;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    /* 用 1ms 而不是 0ms：带延迟的属性（例如 mo-collapse 的 visibility）
+       和任何 transitionend 监听都需要一个非零时长才会触发。 */
+    --mo-quick: 1ms;
+    --mo-fast: 1ms;
+    --mo-hover: 1ms;
+    --mo-leave: 1ms;
+    --mo-mask: 1ms;
+    --mo-enter: 1ms;
+    --mo-panel: 1ms;
+    --mo-stagger: 0ms;
+    --mo-shift: 0px;
+    --mo-shift-up: 0px;
+    --mo-scale-in: 1;
+  }
+
+  /* 兜住没有走 token 的硬编码 transition。
+     只重置 transition-duration —— 不要动 animation-duration，
+     那会让 spinner 疯转（1ms 一圈），而 spinner 是「正在工作」的唯一信号。 */
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  /* 骨架屏的微光是装饰性的，可以停；spinner 不能停。 */
+  .animate-mo-skeleton {
+    animation: none !important;
+  }
+}
+
+/* ===== 遮罩 ===== */
+.mo-mask-enter-active,
+.mo-mask-leave-active {
+  transition: opacity var(--mo-mask) var(--mo-ease);
+}
+.mo-mask-enter-from,
+.mo-mask-leave-to {
+  opacity: 0;
+}
+
+/* ===== 对话框卡片 =====
+   靠一个局部变量参数化缩放量，避免为了 0.01 的差别再开一个 transition name。 */
+.mo-dialog-enter-active,
+.mo-dialog-leave-active {
+  transition: opacity var(--mo-enter) var(--mo-ease), transform var(--mo-enter) var(--mo-ease);
+}
+.mo-dialog-enter-from,
+.mo-dialog-leave-to {
+  opacity: 0;
+  transform: scale(var(--mo-dialog-scale, var(--mo-scale-in)));
+}
+.mo-dialog--soft {
+  --mo-dialog-scale: 0.96;
+}
+
+/* ===== 通用 fade ===== */
+.mo-fade-enter-active,
+.mo-fade-leave-active {
+  transition: opacity var(--mo-fast) var(--mo-ease);
+}
+.mo-fade-enter-from,
+.mo-fade-leave-to {
+  opacity: 0;
+}
+
+/* ===== fade + 下落到位（顶部锚定的东西：toast、错误横幅、导入提示） ===== */
+.mo-fade-down-enter-active,
+.mo-fade-down-leave-active {
+  transition: opacity var(--mo-fast) var(--mo-ease), transform var(--mo-fast) var(--mo-ease);
+}
+.mo-fade-down-enter-from,
+.mo-fade-down-leave-to {
+  opacity: 0;
+  transform: translateY(var(--mo-shift-up));
+}
+
+/* ===== fade + 上移到位（从下方出现的内容） ===== */
+.mo-fade-up-enter-active,
+.mo-fade-up-leave-active {
+  transition: opacity var(--mo-fast) var(--mo-ease), transform var(--mo-fast) var(--mo-ease);
+}
+.mo-fade-up-enter-from,
+.mo-fade-up-leave-to {
+  opacity: 0;
+  transform: translateY(var(--mo-shift));
+}
+
+/* ===== 浮层（下拉 / Tooltip）：入场稍慢、离场更快 ===== */
+.mo-pop-enter-active {
+  transition: opacity var(--mo-fast) var(--mo-ease), transform var(--mo-fast) var(--mo-ease);
+}
+.mo-pop-leave-active {
+  transition: opacity var(--mo-quick) var(--mo-ease-in), transform var(--mo-quick) var(--mo-ease-in);
+}
+.mo-pop-enter-from,
+.mo-pop-leave-to {
+  opacity: 0;
+  transform: translateY(var(--mo-shift)) scale(0.98);
+}
+
+/* ===== 面板切换（重叠式） =====
+   宿主加 .mo-swap，只让离场的那个脱离文档流。
+   面板高度是 flex-1 未知值，两个同时在流里会各占满高度、闪出双滚动条。 */
+.mo-swap {
+  position: relative;
+}
+.mo-panel-leave-active {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity var(--mo-leave) var(--mo-ease), transform var(--mo-leave) var(--mo-ease);
+}
+.mo-panel-enter-active {
+  transition: opacity var(--mo-enter) var(--mo-ease) var(--mo-stagger),
+    transform var(--mo-enter) var(--mo-ease) var(--mo-stagger);
+}
+.mo-panel-enter-from {
+  opacity: 0;
+  transform: translateY(var(--mo-shift));
+}
+.mo-panel-leave-to {
+  opacity: 0;
+  transform: translateY(var(--mo-shift-up));
+}
+
+/* ===== 面板切换（串行式，配 mode="out-in"，容器高度确定时用） ===== */
+.mo-panel-seq-leave-active {
+  transition: opacity var(--mo-leave) var(--mo-ease), transform var(--mo-leave) var(--mo-ease);
+}
+.mo-panel-seq-enter-active {
+  transition: opacity var(--mo-enter) var(--mo-ease), transform var(--mo-enter) var(--mo-ease);
+}
+.mo-panel-seq-enter-from {
+  opacity: 0;
+  transform: translateY(var(--mo-shift));
+}
+.mo-panel-seq-leave-to {
+  opacity: 0;
+  transform: translateY(var(--mo-shift-up));
+}
+
+/* ===== 列表增删 ===== */
+.mo-list-enter-active,
+.mo-list-leave-active {
+  transition: opacity var(--mo-fast) var(--mo-ease), transform var(--mo-fast) var(--mo-ease);
+}
+.mo-list-enter-from,
+.mo-list-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
+}
+/* 离场项脱流，剩余项的 FLIP 位移才不会被它占位干扰 */
+.mo-list-leave-active {
+  position: absolute;
+}
+.mo-list-move {
+  transition: transform var(--mo-enter) var(--mo-ease);
+}
+
+/* ===== 自动高度折叠 =====
+   从 ProviderListPanel 的局部实现提升为共享原语。
+   grid-template-rows: 0fr → 1fr 是唯一不需要测量就能动画到 auto 高度的做法。 */
+.mo-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -10px;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows var(--mo-panel) var(--mo-ease),
+    margin-top var(--mo-panel) var(--mo-ease), opacity var(--mo-leave) var(--mo-ease),
+    visibility 0s linear var(--mo-panel);
+}
+.mo-collapse--open {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows var(--mo-panel) var(--mo-ease),
+    margin-top var(--mo-panel) var(--mo-ease), opacity var(--mo-mask) var(--mo-ease), visibility 0s;
+}
+.mo-collapse > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ===== 窗口失焦：降低强调，不做位移 ===== */
+.mo-window-blurred {
+  --mo-title-color: #8f8f8f;
+}

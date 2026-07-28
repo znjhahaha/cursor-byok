@@ -3,6 +3,7 @@ import ProviderModelPicker from "@/components/config/ProviderModelPicker.vue";
 import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
+import Skeleton from "@/components/ui/Skeleton.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
 import { getProviderEditorContext } from "@/services/clientApi";
 import {
@@ -158,18 +159,19 @@ onMounted(async () => {
         <Button
           variant="default"
           :disabled="fetching || appState.configSaving"
+          :loading="fetching"
           @click="handleFetchModels"
         >
           {{ fetching ? "拉取中..." : "保存并拉取模型" }}
         </Button>
-        <Button variant="primary" :disabled="appState.configSaving" @click="handleSave">
+        <Button variant="primary" :disabled="appState.configSaving" :loading="appState.configSaving" @click="handleSave">
           {{ appState.configSaving ? "保存中..." : "保存" }}
         </Button>
       </div>
     </div>
 
-    <div v-if="loading" class="flex flex-1 items-center justify-center text-sm text-[#a3a3a3]">
-      加载中...
+    <div v-if="loading" class="min-h-0 flex-1 overflow-hidden px-4 pb-4" aria-busy="true">
+      <Skeleton variant="text" :lines="6" />
     </div>
 
     <div v-else class="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
@@ -206,7 +208,7 @@ onMounted(async () => {
               v-model="draft.name"
               type="text"
               placeholder="例如：AnyRouter"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -219,7 +221,7 @@ onMounted(async () => {
               v-model="draft.baseURL"
               type="text"
               :placeholder="baseURLPlaceholder"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -246,7 +248,7 @@ onMounted(async () => {
               v-model="draft.modelsPath"
               type="text"
               placeholder="留空自动探测，例如：/v1/models"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
 
@@ -259,7 +261,7 @@ onMounted(async () => {
               v-model="draft.inferencePath"
               type="text"
               :placeholder="draft.type === 'anthropic' ? '留空自动探测，例如：/v1/messages' : '留空自动探测，例如：/v1/chat/completions'"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </label>
         </div>
@@ -280,7 +282,7 @@ onMounted(async () => {
               v-model="draft.userAgent"
               type="text"
               placeholder="也可直接填写自定义 UA"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
           </div>
         </div>
@@ -295,7 +297,7 @@ onMounted(async () => {
             rows="4"
             spellcheck="false"
             :placeholder="headersPlaceholder"
-            class="min-h-[96px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            class="min-h-[96px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
         </label>
 
@@ -308,7 +310,7 @@ onMounted(async () => {
             v-model="draft.note"
             rows="2"
             placeholder="例如：主力站点，额度按天重置"
-            class="min-h-[64px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none focus:border-[#10AD5D]"
+            class="min-h-[64px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
         </label>
 

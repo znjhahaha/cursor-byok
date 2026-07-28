@@ -23,6 +23,7 @@
     :cancel-text="updateViewState.promptCancelText"
     :show-cancel="updateViewState.promptShowCancel"
     :confirm-disabled="appState.updatePromptBusy"
+    :confirm-loading="appState.updatePromptBusy"
     @confirm="confirmUpdatePrompt"
     @cancel="dismissUpdatePrompt"
   />

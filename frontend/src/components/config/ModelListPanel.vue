@@ -14,7 +14,7 @@ import {
   startModelAdapterTest,
   toUserError,
 } from "@/state/appState";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onDeactivated, ref, watch } from "vue";
 
 const emit = defineEmits(["error"]);
 
@@ -257,6 +257,11 @@ async function handleTestAllModelAdapters() {
 onBeforeUnmount(() => {
   void stopBatchTesting();
 });
+// KeepAlive 下切 tab 不触发 unmount。批量测速是 10 并发、且会持续改写 appState，
+// 留一个用户看不见也停不掉的后台任务比丢进度更糟，所以切走时同样停掉。
+onDeactivated(() => {
+  void stopBatchTesting();
+});
 </script>
 
 <template>
@@ -282,12 +287,29 @@ onBeforeUnmount(() => {
           <Button
             variant="default"
             :disabled="appState.configSaving || (!batchTesting && filteredAdapters.length === 0)"
+            :loading="batchStopping"
             @click="handleTestAllModelAdapters"
           >
             {{ batchButtonText }}
           </Button>
           <Button variant="primary" :disabled="appState.configSaving || batchTesting" @click="openEditor()">新增模型</Button>
         </div>
+      </div>
+
+      <!-- batchCompleted / batchTotal 一直算着，之前只体现在按钮文案里。
+           10 并发的批处理值得一条真进度条；纯视觉，不新增任何文案。 -->
+      <div
+        v-if="batchTesting && batchTotal > 0"
+        class="mt-3 h-[2px] overflow-hidden rounded-full bg-[#2c2c2c]"
+        role="progressbar"
+        :aria-valuenow="batchCompleted"
+        :aria-valuemin="0"
+        :aria-valuemax="batchTotal"
+      >
+        <div
+          class="h-full rounded-full bg-[#10AD5D] transition-[width] duration-enter ease-out"
+          :style="{ width: `${Math.round((batchCompleted / batchTotal) * 100)}%` }"
+        ></div>
       </div>
 
       <div
@@ -339,7 +361,13 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else class="h-full min-h-0 overflow-y-auto pr-1">
-        <div class="grid gap-3 pb-1 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">
+        <!-- 卡片数量在几十以内，FLIP 重排负担得起。
+             复制模型时会凭空多出一张卡，没有进场动画的话用户看不出是哪张。 -->
+        <TransitionGroup
+          tag="div"
+          name="mo-list"
+          class="relative grid gap-3 pb-1 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]"
+        >
           <Card
             v-for="(adapter, index) in filteredAdapters"
             :key="adapter.id || `${adapter.baseURL}-${adapter.modelID}-${index}`"
@@ -390,6 +418,7 @@ onBeforeUnmount(() => {
                 <Button
                   variant="default"
                   :disabled="appState.configSaving || batchTesting || isAdapterTesting(adapter)"
+                  :loading="isAdapterTesting(adapter)"
                   @click="handleTestModelAdapter(adapter)"
                 >
                   {{ isAdapterTesting(adapter) ? "测试中..." : "测试" }}
@@ -401,7 +430,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </Card>
-        </div>
+        </TransitionGroup>
       </div>
     </div>
   </div>

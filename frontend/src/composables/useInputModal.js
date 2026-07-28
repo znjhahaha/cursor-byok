@@ -16,6 +16,11 @@ export const inputModalState = reactive({
  */
 export function showInputModal(options = {}) {
   return new Promise((resolve) => {
+    // 同 useModal：覆盖前先把上一个 Promise 结算掉，避免永久挂住调用方。
+    const pending = inputModalState._resolve;
+    inputModalState._resolve = null;
+    pending?.(null);
+
     inputModalState.visible = true;
     inputModalState.title = options.title ?? "提示";
     inputModalState.content = options.content ?? "";
