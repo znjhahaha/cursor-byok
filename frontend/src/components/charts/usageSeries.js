@@ -21,6 +21,7 @@ export const USAGE_PALETTE = [
 export const METRIC_LABELS = {
   totalTokens: "总请求",
   providerCalls: "调用次数",
+  cacheHitRate: "缓存命中率",
 };
 
 export function asUsageNumber(value) {
@@ -29,6 +30,9 @@ export function asUsageNumber(value) {
 }
 
 export function formatUsageValue(value, metric) {
+  if (metric === "cacheHitRate") {
+    return `${(asUsageNumber(value) * 100).toFixed(1)}%`;
+  }
   return metric === "providerCalls" ? formatInteger(value) : formatCompactInteger(value);
 }
 
@@ -39,6 +43,13 @@ function buildTokenSeries(days) {
     color: layer.color,
     values: days.map((day) => asUsageNumber(day?.[layer.key])),
   }));
+}
+
+function metricValue(item, metric) {
+  if (metric === "cacheHitRate" && item?.cacheHitRate == null) {
+    return null;
+  }
+  return asUsageNumber(item?.[metric]);
 }
 
 function buildGroupedSeries(days, listKey, idKey, nameKey, metric) {
@@ -58,7 +69,7 @@ function buildGroupedSeries(days, listKey, idKey, nameKey, metric) {
         valuesByID.set(id, new Map());
         nameByID.set(id, String(item?.[nameKey] || id).trim());
       }
-      valuesByID.get(id).set(day.date, asUsageNumber(item?.[metric]));
+      valuesByID.get(id).set(day.date, metricValue(item, metric));
     }
   }
 
@@ -76,7 +87,7 @@ function buildTotalSeries(days, metric) {
       id: "total",
       name: METRIC_LABELS[metric] ?? "合计",
       color: USAGE_PALETTE[0],
-      values: days.map((day) => asUsageNumber(day?.[metric])),
+      values: days.map((day) => metricValue(day, metric)),
     },
   ];
 }

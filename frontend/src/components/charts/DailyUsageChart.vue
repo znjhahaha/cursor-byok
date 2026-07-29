@@ -83,6 +83,9 @@ function tooltipTitle(value) {
 }
 
 function formatDetailedValue(value) {
+  if (props.metric === "cacheHitRate") {
+    return formatUsageValue(value, props.metric);
+  }
   const compact = formatUsageValue(value, props.metric);
   const exact = formatInteger(value);
   return compact === exact ? exact : `${compact}（${exact}）`;
@@ -213,7 +216,7 @@ const chartOptions = computed(() => {
   if (props.chartType === "pie") {
     return base;
   }
-  const stacked = props.chartType === "bar";
+  const stacked = props.chartType === "bar" && props.metric !== "cacheHitRate";
   return {
     ...base,
     interaction: { mode: "index", intersect: false },
@@ -235,6 +238,8 @@ const chartOptions = computed(() => {
       y: {
         stacked,
         beginAtZero: true,
+        suggestedMax: props.metric === "cacheHitRate" ? 1 : undefined,
+        max: props.metric === "cacheHitRate" ? 1 : undefined,
         display: !props.compact,
         grid: { color: "#2c2c2c" },
         border: { display: false },

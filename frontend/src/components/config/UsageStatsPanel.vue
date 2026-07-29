@@ -1,6 +1,8 @@
 <script setup>
 import DailyUsageChart from "@/components/charts/DailyUsageChart.vue";
+import HourlyUsageChart from "@/components/charts/HourlyUsageChart.vue";
 import Button from "@/components/ui/Button.vue";
+import MultiSelect from "@/components/ui/MultiSelect.vue";
 import Select from "@/components/ui/Select.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
 import { useWindowFocus } from "@/composables/useWindowFocus";
@@ -18,9 +20,9 @@ const rangeOptions = [
 const metricOptions = [
   { label: "总 Token", value: "totalTokens", icon: "icon-[mdi--counter]" },
   { label: "调用次数", value: "providerCalls", icon: "icon-[mdi--api]" },
+  { label: "缓存命中率", value: "cacheHitRate", icon: "icon-[mdi--cached]" },
 ];
 
-// 三种堆叠维度回答三个不同问题：Token 类型看成本结构，中转站看来源分布，模型看谁在吃预算。
 const dimensionOptions = [
   { label: "按 Token 类型", value: "token", icon: "icon-[mdi--layers-outline]" },
   { label: "按中转站", value: "provider", icon: "icon-[mdi--server-network]" },
@@ -33,114 +35,255 @@ const chartTypeOptions = [
   { label: "占比图", value: "pie", icon: "icon-[mdi--chart-pie]" },
 ];
 
+const COUNTER_KEYS = [
+  "providerCalls",
+  "turnsTotal",
+  "inputTokens",
+  "outputTokens",
+  "cacheReadTokens",
+  "cacheWriteTokens",
+  "totalTokens",
+];
+
 const range = ref("30");
 const metric = ref("totalTokens");
 const dimension = ref("token");
 const chartType = ref("bar");
-
-// 下钻锚点：从「按中转站」点进某一站后，视图收窄为该站内部的模型构成。
-// 它只是一层过滤，不改变数据来源，因此清除即可完整回到全局视图。
+const selectedProviderIDs = ref([]);
+const selectedModels = ref([]);
 const focusProviderID = ref("");
+const expandedDates = ref(new Set());
 
 const days = computed(() => appState.usageSeries.days ?? []);
 const providers = computed(() => appState.usageSeries.providers ?? []);
 const models = computed(() => appState.usageSeries.models ?? []);
+const hours = computed(() => appState.usageSeries.hours ?? []);
 
-const focusProviderName = computed(
-  () =>
-    providers.value.find((item) => item.providerID === focusProviderID.value)?.providerName ??
-    focusProviderID.value,
-);
+function asNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
-// 只在「加载中且还没有任何数据」时上骨架屏。
-// 已有数据时刷新保留旧图，否则每次刷新都会闪一次骨架，比不加更烦人。
-const showChartSkeleton = computed(
-  () => appState.usageSeriesLoading && days.value.length === 0,
-);
+function cacheHitRate(item) {
+  const cacheRead = asNumber(item?.cacheReadTokens);
+  const denominator = cacheRead + asNumber(item?.inputTokens);
+  return denominator > 0 ? cacheRead / denominator : null;
+}
 
-// 过滤在面板层完成，图表只负责渲染传入的序列，不需要理解下钻语义。
-const chartDays = computed(() => {
-  if (!focusProviderID.value || dimension.value !== "model") {
-    return days.value;
+function sumCounters(items) {
+  const total = Object.fromEntries(COUNTER_KEYS.map((key) => [key, 0]));
+  for (const item of items) {
+    for (const key of COUNTER_KEYS) {
+      total[key] += asNumber(item?.[key]);
+    }
   }
-  return days.value.map((day) => {
-    const provider = (day.providers ?? []).find(
-      (item) => item.providerID === focusProviderID.value,
+  total.cacheHitRate = cacheHitRate(total);
+  return total;
+}
+
+function decoratePoint(item) {
+  return { ...item, cacheHitRate: cacheHitRate(item) };
+}
+
+function aggregatePoints(items, idKey, nameKey) {
+  const buckets = new Map();
+  for (const raw of items) {
+    const id = String(raw?.[idKey] ?? "").trim();
+    if (!id) {
+      continue;
+    }
+    const current = buckets.get(id) ?? {
+      [idKey]: id,
+      [nameKey]: String(raw?.[nameKey] || id),
+      providerID: String(raw?.providerID || ""),
+      providerName: String(raw?.providerName || ""),
+      ...Object.fromEntries(COUNTER_KEYS.map((key) => [key, 0])),
+    };
+    for (const key of COUNTER_KEYS) {
+      current[key] += asNumber(raw?.[key]);
+    }
+    if (raw?.providerID) current.providerID = String(raw.providerID);
+    if (raw?.providerName) current.providerName = String(raw.providerName);
+    buckets.set(id, current);
+  }
+  return Array.from(buckets.values()).map(decoratePoint);
+}
+
+const providerOptions = computed(() =>
+  providers.value
+    .map((item) => ({
+      label: String(item.providerName || item.providerID || "未知中转站"),
+      value: String(item.providerID || ""),
+    }))
+    .filter((item) => item.value),
+);
+
+const modelOptions = computed(() =>
+  models.value
+    .map((item) => ({
+      label: String(item.model || "未知模型"),
+      value: String(item.model || ""),
+      hint: String(item.providerName || ""),
+    }))
+    .filter((item) => item.value),
+);
+
+// 所有消费方只读取 filteredDays：筛选条件改变后，图、排行、每日明细使用同一口径。
+const filteredDays = computed(() => {
+  const providerIDs = new Set(selectedProviderIDs.value);
+  const modelIDs = new Set(selectedModels.value);
+  const hasProviderFilter = providerIDs.size > 0;
+  const hasModelFilter = modelIDs.size > 0;
+
+  return days.value.map((rawDay) => {
+    const rawProviders = (rawDay.providers ?? []).map(decoratePoint);
+    const rawModels = (rawDay.models ?? []).map(decoratePoint);
+    const filteredModels = rawModels.filter(
+      (item) =>
+        (!hasProviderFilter || providerIDs.has(String(item.providerID || ""))) &&
+        (!hasModelFilter || modelIDs.has(String(item.model || ""))),
     );
+
+    let filteredProviders = rawProviders.filter(
+      (item) => !hasProviderFilter || providerIDs.has(String(item.providerID || "")),
+    );
+    let totals = decoratePoint(rawDay);
+
+    if (hasModelFilter) {
+      totals = sumCounters(filteredModels);
+      filteredProviders = aggregatePoints(filteredModels, "providerID", "providerName");
+    } else if (hasProviderFilter) {
+      totals = sumCounters(filteredProviders);
+    }
+
     return {
-      ...day,
-      totalTokens: Number(provider?.totalTokens ?? 0),
-      providerCalls: Number(provider?.providerCalls ?? 0),
-      models: (day.models ?? []).filter((item) => item.providerID === focusProviderID.value),
+      ...rawDay,
+      ...totals,
+      providers: filteredProviders,
+      models: filteredModels,
     };
   });
 });
+
+const focusProviderName = computed(
+  () => providerOptions.value.find((item) => item.value === focusProviderID.value)?.label ?? focusProviderID.value,
+);
+
+const chartDays = computed(() => {
+  if (!focusProviderID.value || dimension.value !== "model") {
+    return filteredDays.value;
+  }
+  return filteredDays.value.map((day) => {
+    const scopedModels = day.models.filter(
+      (item) => item.providerID === focusProviderID.value,
+    );
+    const totals = sumCounters(scopedModels);
+    return {
+      ...day,
+      ...totals,
+      providers: day.providers.filter((item) => item.providerID === focusProviderID.value),
+      models: scopedModels,
+    };
+  });
+});
+
+const showChartSkeleton = computed(
+  () => appState.usageSeriesLoading && days.value.length === 0,
+);
 
 const metricLabel = computed(
   () => metricOptions.find((item) => item.value === metric.value)?.label ?? "",
 );
 
-// 调用次数没有 Token 分层语义，此时把维度选择器降级为按来源/模型，避免选出一张单柱图。
-const availableDimensions = computed(() =>
-  metric.value === "totalTokens"
-    ? dimensionOptions
-    : dimensionOptions.filter((item) => item.value !== "token"),
-);
+const availableDimensions = computed(() => {
+  if (metric.value === "cacheHitRate") {
+    return [{ label: "整体命中率", value: "total", icon: "icon-[mdi--percent]" }];
+  }
+  if (metric.value === "providerCalls") {
+    return dimensionOptions.filter((item) => item.value !== "token");
+  }
+  return dimensionOptions;
+});
 
-watch(metric, (value) => {
-  if (value !== "totalTokens" && dimension.value === "token") {
+watch(metric, (value, previous) => {
+  if (value === "cacheHitRate") {
+    dimension.value = "total";
+    if (chartType.value === "pie") chartType.value = "line";
+    return;
+  }
+  if (previous === "cacheHitRate" || dimension.value === "total") {
+    dimension.value = value === "totalTokens" ? "token" : "provider";
+  }
+  if (value === "providerCalls" && dimension.value === "token") {
     dimension.value = "provider";
   }
 });
 
+function selectChartType(value) {
+  if (metric.value === "cacheHitRate" && value === "pie") {
+    return;
+  }
+  chartType.value = value;
+}
+
+function formatRate(value) {
+  return value == null ? "--" : `${(asNumber(value) * 100).toFixed(1)}%`;
+}
+
 function formatValue(value) {
-  return metric.value === "providerCalls"
-    ? formatInteger(value)
-    : formatCompactInteger(value);
+  if (metric.value === "cacheHitRate") return formatRate(value);
+  return metric.value === "providerCalls" ? formatInteger(value) : formatCompactInteger(value);
 }
 
-// formatCompactInteger 会丢精度，title 里补一份完整值供核对。
 function exactValue(value) {
-  return formatInteger(value);
+  return metric.value === "cacheHitRate" ? formatRate(value) : formatInteger(value);
 }
 
-// 排行榜跟随堆叠维度切换，保证图与表读的是同一份口径。
+const rankingDimension = computed(() => (dimension.value === "model" ? "model" : "provider"));
+
 const rankingConfig = computed(() =>
-  dimension.value === "model"
-    ? { title: "按模型", source: models.value, idKey: "model", nameKey: "model", empty: "暂无按模型的统计数据" }
-    : { title: "按中转站", source: providers.value, idKey: "providerID", nameKey: "providerName", empty: "暂无按中转站的统计数据" },
+  rankingDimension.value === "model"
+    ? { title: "按模型", idKey: "model", nameKey: "model", empty: "暂无按模型的统计数据" }
+    : { title: "按中转站", idKey: "providerID", nameKey: "providerName", empty: "暂无按中转站的统计数据" },
 );
 
 const rankedItems = computed(() => {
-  const { source, idKey, nameKey } = rankingConfig.value;
-  const scoped =
-    dimension.value === "model" && focusProviderID.value
-      ? source.filter((item) => item.providerID === focusProviderID.value)
-      : source;
-  const total = scoped.reduce((sum, item) => sum + Number(item[metric.value] ?? 0), 0);
-  return scoped
+  const { idKey, nameKey } = rankingConfig.value;
+  const raw = filteredDays.value.flatMap((day) =>
+    rankingDimension.value === "model" ? day.models : day.providers,
+  );
+  let source = aggregatePoints(raw, idKey, nameKey);
+  if (rankingDimension.value === "model" && focusProviderID.value) {
+    source = source.filter((item) => item.providerID === focusProviderID.value);
+  }
+  const total = source.reduce(
+    (sum, item) => sum + (metric.value === "cacheHitRate" ? 0 : asNumber(item[metric.value])),
+    0,
+  );
+  return source
     .map((item) => {
-      const value = Number(item[metric.value] ?? 0);
+      const value = item[metric.value];
       return {
         id: String(item[idKey] ?? ""),
         name: String(item[nameKey] || item[idKey] || "未知"),
-        // 模型行额外展示来源站点，回答「这个模型走的哪个站」。
-        hint: dimension.value === "model" ? String(item.providerName || "") : "",
+        hint: rankingDimension.value === "model" ? String(item.providerName || "") : "",
         value,
-        share: total > 0 ? value / total : 0,
+        share:
+          metric.value === "cacheHitRate"
+            ? asNumber(value)
+            : total > 0
+              ? asNumber(value) / total
+              : 0,
       };
     })
     .filter((item) => item.id)
-    .sort((left, right) => right.value - left.value);
+    .sort((left, right) => asNumber(right.value) - asNumber(left.value));
 });
 
-const canDrillDown = computed(() => dimension.value !== "model");
+const canDrillDown = computed(() => rankingDimension.value !== "model" && metric.value !== "cacheHitRate");
 
-// 点击某个中转站 = 「我想看这一站里面是什么」，因此同时切维度并设置锚点。
 function handleDrillDown(item) {
-  if (!canDrillDown.value) {
-    return;
-  }
+  if (!canDrillDown.value) return;
   focusProviderID.value = item.id;
   dimension.value = "model";
 }
@@ -151,10 +294,17 @@ function clearFocus() {
 }
 
 watch(dimension, (value) => {
-  if (value !== "model") {
-    focusProviderID.value = "";
-  }
+  if (value !== "model") focusProviderID.value = "";
 });
+
+const dailyRows = computed(() => [...filteredDays.value].reverse());
+
+function toggleDate(date) {
+  const next = new Set(expandedDates.value);
+  if (next.has(date)) next.delete(date);
+  else next.add(date);
+  expandedDates.value = next;
+}
 
 const STATS_STALE_MS = 60_000;
 const lastFetchedAt = ref(0);
@@ -164,158 +314,219 @@ async function refresh() {
   lastFetchedAt.value = Date.now();
 }
 
-// 切回本 tab 时只在数据确实旧了才重拉。
-// 改成 KeepAlive 之前是每次进入都无条件重发一轮 IPC，那正是要消掉的浪费；
-// 但完全不刷又会让用户看到过时数字，所以用一个新鲜度阈值折中。
 async function refreshIfStale() {
-  if (Date.now() - lastFetchedAt.value < STATS_STALE_MS) {
-    return;
-  }
+  if (Date.now() - lastFetchedAt.value < STATS_STALE_MS) return;
   await refresh();
 }
 
 watch(range, refresh);
-
 onMounted(refresh);
 onActivated(refreshIfStale);
-// 回焦时同样只在数据旧了才刷；useWindowFocus 已过滤掉拖动窗口造成的假回焦。
 useWindowFocus(() => {
   void refreshIfStale();
 });
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col gap-3">
-    <div class="flex shrink-0 items-center justify-between gap-3">
-      <div class="center-row gap-2">
-        <Select v-model="range" :options="rangeOptions" aria-label="统计区间" :border="false" />
-        <Select v-model="metric" :options="metricOptions" aria-label="统计指标" :border="false" />
-        <Select
-          v-model="dimension"
-          :options="availableDimensions"
-          aria-label="堆叠维度"
-          :border="false"
+  <div class="usage-stats-scroll h-full min-h-0 overflow-y-auto pr-1">
+    <div class="flex flex-col gap-3">
+      <div class="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <div class="center-row flex-wrap gap-2">
+          <Select v-model="range" :options="rangeOptions" aria-label="统计区间" :border="false" />
+          <Select v-model="metric" :options="metricOptions" aria-label="统计指标" :border="false" />
+          <Select
+            v-model="dimension"
+            :options="availableDimensions"
+            aria-label="展示维度"
+            :border="false"
+          />
+          <MultiSelect
+            v-model="selectedProviderIDs"
+            :options="providerOptions"
+            placeholder="全部中转站"
+            aria-label="筛选中转站"
+          />
+          <MultiSelect
+            v-model="selectedModels"
+            :options="modelOptions"
+            placeholder="全部模型"
+            aria-label="筛选模型"
+          />
+        </div>
+        <div class="center-row shrink-0 gap-2">
+          <div class="center-row rounded-[7px] border border-[#343434] bg-[#232323] p-0.5">
+            <button
+              v-for="item in chartTypeOptions"
+              :key="item.value"
+              type="button"
+              class="center-row h-7 w-8 justify-center rounded-[5px] text-[#7f7f7f] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-30"
+              :class="chartType === item.value ? 'bg-[#343434] text-[#86efac]' : 'hover:text-[#d4d4d4]'"
+              :title="item.label"
+              :disabled="metric === 'cacheHitRate' && item.value === 'pie'"
+              @click="selectChartType(item.value)"
+            >
+              <span :class="[item.icon, 'text-[15px]']"></span>
+            </button>
+          </div>
+          <Button
+            variant="default"
+            :disabled="appState.usageSeriesLoading"
+            :loading="appState.usageSeriesLoading"
+            @click="refresh"
+          >
+            {{ appState.usageSeriesLoading ? "刷新中..." : "刷新" }}
+          </Button>
+        </div>
+      </div>
+
+      <div
+        v-if="appState.usageSeriesError"
+        class="center-row shrink-0 justify-between gap-3 rounded-[8px] border border-[#4b1d1d] bg-[#2a1313] px-3 py-2 text-sm text-[#fca5a5]"
+      >
+        <span class="min-w-0 truncate" :title="appState.usageSeriesError">{{ appState.usageSeriesError }}</span>
+        <button type="button" class="shrink-0 text-xs" :disabled="appState.usageSeriesLoading" @click="refresh">
+          重试
+        </button>
+      </div>
+
+      <div
+        class="h-[270px] shrink-0 rounded-[8px] border border-[#343434] bg-[#252525] p-3"
+        :aria-busy="showChartSkeleton || undefined"
+      >
+        <Skeleton v-if="showChartSkeleton" variant="chart" />
+        <DailyUsageChart
+          v-else
+          :days="chartDays"
+          :metric="metric"
+          :dimension="dimension"
+          :chart-type="chartType"
         />
       </div>
-      <div class="center-row shrink-0 gap-2">
-        <div class="center-row rounded-[7px] border border-[#343434] bg-[#232323] p-0.5">
-          <button
-            v-for="item in chartTypeOptions"
-            :key="item.value"
-            type="button"
-            class="center-row h-7 w-8 justify-center rounded-[5px] text-[#7f7f7f] transition-colors duration-150"
-            :class="chartType === item.value ? 'bg-[#343434] text-[#86efac]' : 'hover:text-[#d4d4d4]'"
-            :title="item.label"
-            @click="chartType = item.value"
-          >
-            <span :class="[item.icon, 'text-[15px]']"></span>
-          </button>
-        </div>
-        <Button
-          variant="default"
-          :disabled="appState.usageSeriesLoading"
-          :loading="appState.usageSeriesLoading"
-          @click="refresh"
-        >
-          {{ appState.usageSeriesLoading ? "刷新中..." : "刷新" }}
-        </Button>
-      </div>
-    </div>
 
-    <div
-      v-if="appState.usageSeriesError"
-      class="center-row shrink-0 justify-between gap-3 rounded-[8px] border border-[#4b1d1d] bg-[#2a1313] px-3 py-2 text-sm text-[#fca5a5]"
-    >
-      <span class="center-row min-w-0 gap-1.5">
-        <span class="icon-[mdi--alert-circle-outline] shrink-0 text-[16px]"></span>
-        <span class="truncate" :title="appState.usageSeriesError">
-          {{ appState.usageSeriesError }}
-        </span>
-      </span>
-      <button
-        type="button"
-        class="shrink-0 rounded-[6px] border border-[#5b2626] px-2 py-0.5 text-xs transition-colors duration-150 hover:bg-[#3a1a1a] disabled:cursor-not-allowed disabled:opacity-60"
-        :disabled="appState.usageSeriesLoading"
-        @click="refresh"
-      >
-        重试
-      </button>
-    </div>
-
-    <div
-      class="min-h-[220px] flex-1 rounded-[8px] border border-[#343434] bg-[#252525] p-3"
-      :aria-busy="showChartSkeleton || undefined"
-    >
-      <!-- 首次加载才上骨架屏：已有数据时刷新保留旧图，避免每次刷新都闪一下。
-           这里也刻意不给图表容器套面板过渡 —— Chart.js 自带 220ms 入场动画，
-           两层叠起来观感会发飘。 -->
-      <Skeleton v-if="showChartSkeleton" variant="chart" />
-      <DailyUsageChart
-        v-else
-        :days="chartDays"
-        :metric="metric"
-        :dimension="dimension"
-        :chart-type="chartType"
-      />
-    </div>
-
-    <div class="shrink-0 rounded-[8px] border border-[#343434] bg-[#252525] p-3">
-      <div class="flex items-center justify-between gap-3 pb-2">
-        <span class="center-row min-w-0 gap-2 text-sm text-[#d4d4d4]">
-          <span class="truncate">{{ rankingConfig.title }} · {{ metricLabel }}</span>
-          <button
-            v-if="focusProviderID"
-            type="button"
-            class="center-row shrink-0 gap-1 rounded-[999px] border border-[#1ca35a] bg-[#123322] px-2 py-0.5 text-[11px] text-[#86efac] transition-colors duration-150 hover:bg-[#164028]"
-            title="返回全部中转站"
-            @click="clearFocus"
-          >
-            <span class="truncate max-w-[140px]">{{ focusProviderName }}</span>
-            <span class="icon-[ic--round-close] text-[12px]"></span>
-          </button>
-        </span>
-        <span class="text-xs text-[#737373]">{{ rankedItems.length }} 项</span>
-      </div>
-
-      <div v-if="rankedItems.length === 0" class="py-4 text-center text-sm text-[#a3a3a3]">
-        {{ rankingConfig.empty }}
-      </div>
-
-      <div v-else class="usage-ranking-scroll flex max-h-[160px] flex-col gap-2 overflow-y-auto pr-1">
-        <div
-          v-for="item in rankedItems"
-          :key="item.id"
-          class="flex flex-col gap-1 rounded-[6px] px-1 py-0.5 transition-colors duration-150"
-          :class="canDrillDown
-            ? 'cursor-pointer hover:bg-[#2f2f2f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10AD5D]/35'
-            : ''"
-          :title="canDrillDown ? `查看 ${item.name} 的模型构成` : ''"
-          :role="canDrillDown ? 'button' : undefined"
-          :tabindex="canDrillDown ? 0 : undefined"
-          @click="handleDrillDown(item)"
-          @keydown.enter.prevent="handleDrillDown(item)"
-          @keydown.space.prevent="handleDrillDown(item)"
-        >
-          <div class="flex items-center justify-between gap-3 text-sm">
-            <span class="center-row min-w-0 gap-2">
-              <span class="truncate text-[#d4d4d4]" :title="item.name">{{ item.name }}</span>
-              <span
-                v-if="item.hint"
-                class="shrink-0 rounded-[4px] bg-[#2f2f2f] px-1.5 py-0.5 text-[11px] text-[#8f8f8f]"
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div class="rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+          <div class="flex items-center justify-between gap-3 pb-2">
+            <span class="center-row min-w-0 gap-2 text-sm text-[#d4d4d4]">
+              <span class="truncate">{{ rankingConfig.title }} · {{ metricLabel }}</span>
+              <button
+                v-if="focusProviderID"
+                type="button"
+                class="center-row max-w-[160px] gap-1 rounded-full border border-[#1ca35a] bg-[#123322] px-2 py-0.5 text-[11px] text-[#86efac]"
+                title="返回全部中转站"
+                @click="clearFocus"
               >
-                {{ item.hint }}
-              </span>
+                <span class="truncate">{{ focusProviderName }}</span>
+                <span class="icon-[ic--round-close] text-[12px]"></span>
+              </button>
             </span>
-            <span class="shrink-0 font-num text-[#e5e5e5]" :title="exactValue(item.value)">
-              {{ formatValue(item.value) }}
-            </span>
+            <span class="text-xs text-[#737373]">{{ rankedItems.length }} 项</span>
           </div>
-          <div class="h-1.5 overflow-hidden rounded-[999px] bg-[#1f1f1f]">
+          <div v-if="rankedItems.length === 0" class="py-8 text-center text-sm text-[#a3a3a3]">
+            {{ rankingConfig.empty }}
+          </div>
+          <div v-else class="usage-inner-scroll flex max-h-[205px] flex-col gap-2 overflow-y-auto pr-1">
             <div
-              class="h-full rounded-[999px] bg-[#1ca35a] transition-[width] duration-enter ease-out"
-              :style="{ width: `${(item.share * 100).toFixed(1)}%` }"
-            ></div>
+              v-for="item in rankedItems"
+              :key="item.id"
+              class="flex flex-col gap-1 rounded-[6px] px-1 py-0.5 transition-colors"
+              :class="canDrillDown ? 'cursor-pointer hover:bg-[#2f2f2f]' : ''"
+              :title="canDrillDown ? `查看 ${item.name} 的模型构成` : ''"
+              :role="canDrillDown ? 'button' : undefined"
+              :tabindex="canDrillDown ? 0 : undefined"
+              @click="handleDrillDown(item)"
+              @keydown.enter.prevent="handleDrillDown(item)"
+            >
+              <div class="flex items-center justify-between gap-3 text-sm">
+                <span class="center-row min-w-0 gap-2">
+                  <span class="truncate text-[#d4d4d4]" :title="item.name">{{ item.name }}</span>
+                  <span v-if="item.hint" class="shrink-0 text-[11px] text-[#737373]">{{ item.hint }}</span>
+                </span>
+                <span class="shrink-0 font-num text-[#e5e5e5]" :title="exactValue(item.value)">
+                  {{ formatValue(item.value) }}
+                </span>
+              </div>
+              <div class="h-1.5 overflow-hidden rounded-full bg-[#1f1f1f]">
+                <div
+                  class="h-full rounded-full bg-[#1ca35a] transition-[width] duration-200"
+                  :style="{ width: `${Math.min(100, item.share * 100).toFixed(1)}%` }"
+                ></div>
+              </div>
+            </div>
           </div>
+        </div>
+
+        <div class="rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+          <div class="flex items-center justify-between pb-2">
+            <span class="text-sm text-[#d4d4d4]">按小时分布 · 调用次数</span>
+            <span class="text-[11px] text-[#737373]">UTC</span>
+          </div>
+          <HourlyUsageChart :hours="hours" />
+        </div>
+      </div>
+
+      <div class="rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+        <div class="flex items-center justify-between pb-2">
+          <span class="text-sm text-[#d4d4d4]">每日明细</span>
+          <span class="text-xs text-[#737373]">点击日期展开模型</span>
+        </div>
+        <div class="usage-inner-scroll max-h-[300px] overflow-auto">
+          <table class="w-full min-w-[760px] border-collapse text-xs">
+            <thead class="sticky top-0 z-10 bg-[#252525] text-[#8f8f8f]">
+              <tr class="border-b border-[#3a3a3a]">
+                <th class="px-2 py-2 text-left font-normal">日期</th>
+                <th class="px-2 py-2 text-right font-normal">调用</th>
+                <th class="px-2 py-2 text-right font-normal">输入</th>
+                <th class="px-2 py-2 text-right font-normal">输出</th>
+                <th class="px-2 py-2 text-right font-normal">缓存读</th>
+                <th class="px-2 py-2 text-right font-normal">缓存写</th>
+                <th class="px-2 py-2 text-right font-normal">总 Token</th>
+                <th class="px-2 py-2 text-right font-normal">命中率</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="day in dailyRows" :key="day.date">
+                <tr
+                  class="cursor-pointer border-b border-[#303030] text-[#d4d4d4] transition-colors hover:bg-[#2d2d2d]"
+                  @click="toggleDate(day.date)"
+                >
+                  <td class="px-2 py-2">
+                    <span class="center-row gap-1">
+                      <span
+                        class="icon-[mdi--chevron-right] text-[14px] transition-transform"
+                        :class="expandedDates.has(day.date) ? 'rotate-90' : ''"
+                      ></span>
+                      {{ day.date }}
+                    </span>
+                  </td>
+                  <td class="px-2 py-2 text-right font-num">{{ formatInteger(day.providerCalls) }}</td>
+                  <td class="px-2 py-2 text-right font-num">{{ formatCompactInteger(day.inputTokens) }}</td>
+                  <td class="px-2 py-2 text-right font-num">{{ formatCompactInteger(day.outputTokens) }}</td>
+                  <td class="px-2 py-2 text-right font-num">{{ formatCompactInteger(day.cacheReadTokens) }}</td>
+                  <td class="px-2 py-2 text-right font-num">{{ formatCompactInteger(day.cacheWriteTokens) }}</td>
+                  <td class="px-2 py-2 text-right font-num">{{ formatCompactInteger(day.totalTokens) }}</td>
+                  <td class="px-2 py-2 text-right font-num">{{ formatRate(day.cacheHitRate) }}</td>
+                </tr>
+                <tr v-if="expandedDates.has(day.date)" class="border-b border-[#343434] bg-[#202020]">
+                  <td colspan="8" class="px-7 py-2">
+                    <div v-if="day.models.length === 0" class="py-2 text-[#737373]">当日无模型明细</div>
+                    <div v-else class="grid grid-cols-1 gap-1.5 lg:grid-cols-2">
+                      <div
+                        v-for="item in day.models"
+                        :key="`${day.date}-${item.model}-${item.providerID}`"
+                        class="flex items-center justify-between gap-3 rounded-[5px] bg-[#282828] px-2 py-1.5"
+                      >
+                        <span class="min-w-0 truncate text-[#cfcfcf]" :title="item.model">{{ item.model }}</span>
+                        <span class="center-row shrink-0 gap-3 text-[#8f8f8f]">
+                          <span>{{ formatInteger(item.providerCalls) }} 次</span>
+                          <span class="font-num text-[#d4d4d4]">{{ formatCompactInteger(item.totalTokens) }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -323,16 +534,20 @@ useWindowFocus(() => {
 </template>
 
 <style scoped>
-.usage-ranking-scroll {
+.usage-stats-scroll,
+.usage-inner-scroll {
   scrollbar-width: thin;
   scrollbar-color: #4a4a4a transparent;
 }
 
-.usage-ranking-scroll::-webkit-scrollbar {
+.usage-stats-scroll::-webkit-scrollbar,
+.usage-inner-scroll::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
-.usage-ranking-scroll::-webkit-scrollbar-thumb {
+.usage-stats-scroll::-webkit-scrollbar-thumb,
+.usage-inner-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: #4a4a4a;
 }

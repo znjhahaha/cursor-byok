@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const (
 	usageFileName          = "usage.json"
-	usageFileSchemaVersion = 3
+	usageFileSchemaVersion = 4
 	usageRecentEventLimit  = 500
 
 	usageEventKindProvider = "provider_call"
@@ -65,6 +66,9 @@ type usageFileDaily struct {
 	usageFileCounters
 	ByProvider map[string]usageFileProviderStat `json:"by_provider,omitempty"`
 	ByModel    map[string]usageFileModelStat    `json:"by_model,omitempty"`
+	// ByHour 按 UTC 小时（"0".."23"）分桶，供「按小时分布」视图使用；
+	// 只在新事件写入时累积，历史日期没有该字段，读取端按缺失处理。
+	ByHour map[string]usageFileCounters `json:"by_hour,omitempty"`
 }
 
 type usageFileProviderStat struct {
@@ -308,7 +312,8 @@ func usageFileEventBucketKey(event usageFileEvent) usageBucketKey {
 	return normalizeUsageBucketKey(event.ProviderID, event.ProviderName, event.Model)
 }
 
-func usageFileEventDelta(event usageFileEvent) usageFileDelta {	switch normalizeUsageEventKind(event.Kind) {
+func usageFileEventDelta(event usageFileEvent) usageFileDelta {
+	switch normalizeUsageEventKind(event.Kind) {
 	case usageEventKindTurn:
 		delta := usageFileDelta{turnsTotal: 1}
 		if strings.TrimSpace(event.Status) == usageTurnStatusDone {
@@ -352,6 +357,7 @@ func applyUsageFileDelta(doc *usageFileDocument, at time.Time, bucket usageBucke
 	doc.Totals.ByModel = applyUsageModelDelta(doc.Totals.ByModel, bucket, delta)
 
 	date := at.UTC().Format("2006-01-02")
+	hour := strconv.Itoa(at.UTC().Hour())
 	for index := range doc.Daily {
 		if doc.Daily[index].Date != date {
 			continue
@@ -359,13 +365,26 @@ func applyUsageFileDelta(doc *usageFileDocument, at time.Time, bucket usageBucke
 		applyUsageCounters(&doc.Daily[index].usageFileCounters, delta)
 		doc.Daily[index].ByProvider = applyUsageProviderDelta(doc.Daily[index].ByProvider, bucket, delta)
 		doc.Daily[index].ByModel = applyUsageModelDelta(doc.Daily[index].ByModel, bucket, delta)
+		doc.Daily[index].ByHour = applyUsageHourDelta(doc.Daily[index].ByHour, hour, delta)
 		return
 	}
 	item := usageFileDaily{Date: date}
 	applyUsageCounters(&item.usageFileCounters, delta)
 	item.ByProvider = applyUsageProviderDelta(item.ByProvider, bucket, delta)
 	item.ByModel = applyUsageModelDelta(item.ByModel, bucket, delta)
+	item.ByHour = applyUsageHourDelta(item.ByHour, hour, delta)
 	doc.Daily = append(doc.Daily, item)
+}
+
+// applyUsageHourDelta 按小时桶累加计数，小时桶不区分中转站与模型。
+func applyUsageHourDelta(buckets map[string]usageFileCounters, hour string, delta usageFileDelta) map[string]usageFileCounters {
+	if buckets == nil {
+		buckets = make(map[string]usageFileCounters, 1)
+	}
+	counters := buckets[hour]
+	applyUsageCounters(&counters, delta)
+	buckets[hour] = counters
+	return buckets
 }
 
 // applyUsageCounters 是全部聚合口径唯一的累加实现，新增统计维度时只需复用它。

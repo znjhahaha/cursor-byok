@@ -947,7 +947,7 @@ export const appState = reactive({
   modelAdapters: cachedConfig.modelAdapters,
   modelAdapterTestResults: {},
   providerModelCatalog: {},
-  usageSeries: { days: [], providers: [], models: [] },
+  usageSeries: { days: [], providers: [], models: [], hours: [] },
   usageSeriesLoading: false,
   usageSeriesError: "",
   configBackendListenAddr: cachedConfig.backendListenAddr,
@@ -1442,6 +1442,11 @@ export async function saveProvider(provider) {
   const saved = normalizeProviders(appState.providers).find(
     (item) => item.baseURL === nextProvider.baseURL && item.name === nextProvider.name,
   ) ?? null;
+  // 落盘守卫：提交时非空的密钥在回读结果里不能为空，
+  // 否则就是上游把 apiKey 静默剥掉了，必须显式报错而不是假装保存成功。
+  if (nextProvider.apiKey && saved && !saved.apiKey) {
+    return { ok: false, error: "密钥未能写入配置，请重试；若反复出现请查看日志" };
+  }
   return { ...result, provider: saved };
 }
 
@@ -1679,6 +1684,7 @@ export async function syncUsageSeries(days = 30) {
       days: asArray(data.days),
       providers: asArray(data.providers),
       models: asArray(data.models),
+      hours: asArray(data.hours),
     };
     appState.usageSeriesError = "";
     return { ok: true, error: "" };

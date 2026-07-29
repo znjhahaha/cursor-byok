@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,6 +42,7 @@ type usageFileDaily struct {
 	usageFileCounters
 	ByProvider map[string]usageFileProviderStat `json:"by_provider"`
 	ByModel    map[string]usageFileModelStat    `json:"by_model"`
+	ByHour     map[string]usageFileCounters     `json:"by_hour"`
 }
 
 type usageFileDocument struct {
@@ -65,10 +67,13 @@ func LoadUsageSummary(path string) (Summary, error) {
 // days 指定回溯的自然日数量（含今天）；序列会补齐没有调用的日期，
 // 让图表拿到的是连续的时间轴，无需在前端补洞。
 func LoadUsageSeries(path string, days int) (Series, error) {
-	if days <= 0 {
-		days = 30
+	days = normalizeSeriesDays(days)
+	empty := Series{
+		Days:      buildEmptyDayPoints(days),
+		Providers: []ProviderPoint{},
+		Models:    []ModelPoint{},
+		Hours:     buildEmptyHourPoints(),
 	}
-	empty := Series{Days: buildEmptyDayPoints(days), Providers: []ProviderPoint{}, Models: []ModelPoint{}}
 
 	doc, ok, err := readUsageFileDocument(path)
 	if err != nil || !ok {
@@ -84,19 +89,49 @@ func LoadUsageSeries(path string, days int) (Series, error) {
 	}
 
 	points := buildEmptyDayPoints(days)
+	hours := buildEmptyHourPoints()
 	for index := range points {
 		item, exists := byDate[points[index].Date]
 		if !exists {
 			continue
 		}
 		points[index] = dayPointFrom(points[index].Date, item)
+		accumulateHourPoints(hours, item.ByHour)
 	}
 
 	return Series{
 		Days:      points,
 		Providers: providerPointsFrom(doc.Totals.ByProvider),
 		Models:    modelPointsFrom(doc.Totals.ByModel),
+		Hours:     hours,
 	}, nil
+}
+
+func normalizeSeriesDays(days int) int {
+	if days <= 0 {
+		return 30
+	}
+	return days
+}
+
+// buildEmptyHourPoints 铺出完整的 0-23 整点轴，前端无需补洞。
+func buildEmptyHourPoints() []HourPoint {
+	points := make([]HourPoint, 0, 24)
+	for hour := 0; hour < 24; hour++ {
+		points = append(points, HourPoint{Hour: hour})
+	}
+	return points
+}
+
+func accumulateHourPoints(points []HourPoint, buckets map[string]usageFileCounters) {
+	for key, counters := range buckets {
+		hour, err := strconv.Atoi(strings.TrimSpace(key))
+		if err != nil || hour < 0 || hour > 23 {
+			continue
+		}
+		points[hour].ProviderCalls += counters.ProviderCalls
+		points[hour].TotalTokens += counters.TotalTokens
+	}
 }
 
 func readUsageFileDocument(path string) (usageFileDocument, bool, error) {

@@ -62,11 +62,21 @@ type DayPoint struct {
 	Models           []ModelPoint    `json:"models"`
 }
 
+// HourPoint 是单个整点（UTC）的用量聚合，供「按小时分布」视图使用。
+type HourPoint struct {
+	Hour          int   `json:"hour"`
+	ProviderCalls int64 `json:"providerCalls"`
+	TotalTokens   int64 `json:"totalTokens"`
+}
+
 // Series 同时承载按天、按中转站、按模型三个统计维度。
 type Series struct {
 	Days      []DayPoint      `json:"days"`
 	Providers []ProviderPoint `json:"providers"`
 	Models    []ModelPoint    `json:"models"`
+	// Hours 覆盖所选天数区间的 0-23 整点聚合；历史日期没有小时分桶，
+	// 因此它只反映引入该统计之后产生的调用。
+	Hours []HourPoint `json:"hours"`
 }
 
 func cacheHitRateFromTotals(totals Totals) *float64 {

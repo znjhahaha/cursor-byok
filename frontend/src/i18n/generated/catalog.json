@@ -12,6 +12,18 @@
         }
       ]
     },
+    "0164f80178a2f12a": {
+      "source": "全部模型",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 352,
+          "column": 13
+        }
+      ]
+    },
     "01aaebc96af187a9": {
       "source": "导入失败",
       "kind": "text",
@@ -60,7 +72,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 15,
+          "line": 17,
           "column": 12
         }
       ]
@@ -72,7 +84,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 263,
+          "line": 268,
           "column": 44
         }
       ]
@@ -113,8 +125,20 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 72,
-          "column": 1
+          "line": 71,
+          "column": 48
+        }
+      ]
+    },
+    "0488d8fddd952d28": {
+      "source": "缓存写",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 481,
+          "column": 62
         }
       ]
     },
@@ -183,8 +207,8 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 58,
-          "column": 1
+          "line": 57,
+          "column": 48
         }
       ]
     },
@@ -221,6 +245,18 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 749,
           "column": 19
+        }
+      ]
+    },
+    "0a9156766e0a2c67": {
+      "source": "未知模型",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 124,
+          "column": 35
         }
       ]
     },
@@ -349,11 +385,33 @@
         }
       ]
     },
+    "12a283e5aad1e1dc": {
+      "source": "按小时分布 · 调用次数",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 460,
+          "column": 50
+        }
+      ]
+    },
     "13b61c5f697b6700": {
       "source": "缓存命中率",
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/charts/usageSeries.js",
+          "line": 24,
+          "column": 17
+        },
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 23,
+          "column": 12
+        },
         {
           "file": "src/components/HomeMetricsCard.vue",
           "line": 667,
@@ -409,6 +467,23 @@
         }
       ]
     },
+    "172fb7e67b9b09dd": {
+      "source": "次",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/charts/HourlyUsageChart.vue",
+          "line": 68,
+          "column": 87
+        },
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 520,
+          "column": 73
+        }
+      ]
+    },
     "185aebe19c77425d": {
       "source": "{0}必须是 JSON 对象",
       "kind": "template",
@@ -440,12 +515,12 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 27,
+          "line": 29,
           "column": 12
         },
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 110,
+          "line": 246,
           "column": 16
         },
         {
@@ -520,6 +595,18 @@
         }
       ]
     },
+    "1f489758b537d130": {
+      "source": "每日明细",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 469,
+          "column": 48
+        }
+      ]
+    },
     "1f93b10fedc0458e": {
       "source": "按 Token 类型",
       "kind": "text",
@@ -527,7 +614,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 25,
+          "line": 27,
           "column": 12
         }
       ]
@@ -553,6 +640,30 @@
           "file": "src/views/ModelConfig.vue",
           "line": 47,
           "column": 7
+        }
+      ]
+    },
+    "2087c777c06fefe5": {
+      "source": "输入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 478,
+          "column": 62
+        }
+      ]
+    },
+    "20c001d895d5b46e": {
+      "source": "该统计从本版本开始累积",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/charts/HourlyUsageChart.vue",
+          "line": 51,
+          "column": 44
         }
       ]
     },
@@ -735,8 +846,8 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 90,
-          "column": 1
+          "line": 89,
+          "column": 48
         }
       ]
     },
@@ -771,7 +882,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 12,
+          "line": 14,
           "column": 12
         }
       ]
@@ -922,12 +1033,12 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 26,
+          "line": 28,
           "column": 12
         },
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 111,
+          "line": 247,
           "column": 16
         },
         {
@@ -961,6 +1072,18 @@
         }
       ]
     },
+    "336cba9a92414d13": {
+      "source": "无匹配项",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ui/MultiSelect.vue",
+          "line": 257,
+          "column": 1
+        }
+      ]
+    },
     "33d2d273e2bd5f88": {
       "source": "打开使用教程失败",
       "kind": "text",
@@ -970,6 +1093,18 @@
           "file": "src/layouts/MainLayout.vue",
           "line": 155,
           "column": 27
+        }
+      ]
+    },
+    "33e26e43c81f1ec1": {
+      "source": "密钥未能写入配置，请重试；若反复出现请查看日志",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/state/appState.js",
+          "line": 1448,
+          "column": 32
         }
       ]
     },
@@ -1004,7 +1139,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 13,
+          "line": 15,
           "column": 12
         }
       ]
@@ -1158,6 +1293,11 @@
           "file": "src/components/config/ProviderModelPicker.vue",
           "line": 222,
           "column": 14
+        },
+        {
+          "file": "src/components/ui/MultiSelect.vue",
+          "line": 245,
+          "column": 1
         }
       ]
     },
@@ -1267,8 +1407,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 292,
-          "column": 19
+          "line": 433,
+          "column": 23
         }
       ]
     },
@@ -1363,8 +1503,20 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 270,
-          "column": 13
+          "line": 415,
+          "column": 17
+        }
+      ]
+    },
+    "44be17a24864c2cd": {
+      "source": "Cursor 本地助手由 leookun 制作，znj 二次开发。\n本软件是纯免费软件，如果你被收费，那大概率就是被骗了。\n欢迎点击访问作者主页 https://space.bilibili.com/311706663/upload/video\n查看更多更新动态、使用分享和后续内容。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/MainLayout.vue",
+          "line": 45,
+          "column": 20
         }
       ]
     },
@@ -1375,8 +1527,20 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 111,
-          "column": 102
+          "line": 247,
+          "column": 77
+        }
+      ]
+    },
+    "45be796b36820fbe": {
+      "source": "作者 leookun · 二开 znj",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/MainLayout.vue",
+          "line": 43,
+          "column": 17
         }
       ]
     },
@@ -1471,8 +1635,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 191,
-          "column": 57
+          "line": 335,
+          "column": 59
         },
         {
           "file": "src/components/HomeMetricsCard.vue",
@@ -1510,8 +1674,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 277,
-          "column": 71
+          "line": 422,
+          "column": 75
         }
       ]
     },
@@ -1554,7 +1718,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 265,
+          "line": 270,
           "column": 1
         }
       ]
@@ -1636,7 +1800,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 126,
+          "line": 268,
           "column": 54
         },
         {
@@ -1785,6 +1949,11 @@
           "file": "src/components/config/ModelListPanel.vue",
           "line": 326,
           "column": 11
+        },
+        {
+          "file": "src/components/ui/MultiSelect.vue",
+          "line": 9,
+          "column": 41
         }
       ]
     },
@@ -1831,8 +2000,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 110,
-          "column": 86
+          "line": 246,
+          "column": 64
         }
       ]
     },
@@ -1855,8 +2024,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 220,
-          "column": 14
+          "line": 377,
+          "column": 16
         }
       ]
     },
@@ -1983,6 +2152,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 477,
+          "column": 62
+        },
         {
           "file": "src/components/HomeMetricsCard.vue",
           "line": 618,
@@ -2213,6 +2387,18 @@
         }
       ]
     },
+    "70d0c1b33626ba4b": {
+      "source": "日期",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 476,
+          "column": 61
+        }
+      ]
+    },
     "711f802024ae2e3d": {
       "source": "不指定（使用默认）",
       "kind": "text",
@@ -2222,6 +2408,18 @@
           "file": "src/views/ProviderEditor.vue",
           "line": 28,
           "column": 12
+        }
+      ]
+    },
+    "728f301f2e633790": {
+      "source": "{0} · {1} 次调用 · {2} Token",
+      "kind": "template",
+      "placeholders": 3,
+      "refs": [
+        {
+          "file": "src/components/charts/HourlyUsageChart.vue",
+          "line": 42,
+          "column": 10
         }
       ]
     },
@@ -2486,7 +2684,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 183,
+          "line": 186,
           "column": 24
         }
       ]
@@ -2556,18 +2754,6 @@
         }
       ]
     },
-    "8431226feb49dc9e": {
-      "source": "堆叠维度",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 196,
-          "column": 11
-        }
-      ]
-    },
     "847a14313dd2ec3b": {
       "source": "请先选择中转站",
       "kind": "text",
@@ -2575,7 +2761,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1624,
+          "line": 1629,
           "column": 32
         }
       ]
@@ -2688,7 +2874,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 31,
+          "line": 33,
           "column": 12
         },
         {
@@ -2920,18 +3106,6 @@
         }
       ]
     },
-    "93faf55cd25c8319": {
-      "source": "本软件是纯免费软件，如果你被收费，那大概率就是被骗了。\n欢迎点击访问作者主页 https://space.bilibili.com/311706663/upload/video\n查看更多更新动态、使用分享和后续内容。",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/MainLayout.vue",
-          "line": 45,
-          "column": 20
-        }
-      ]
-    },
     "942ff2d88baca0c6": {
       "source": "检查更新中...",
       "kind": "text",
@@ -2951,8 +3125,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 192,
-          "column": 59
+          "line": 336,
+          "column": 61
         }
       ]
     },
@@ -2975,8 +3149,25 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 19,
+          "line": 21,
           "column": 12
+        },
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 482,
+          "column": 62
+        }
+      ]
+    },
+    "967fba3501a3c951": {
+      "source": "清空（不筛选）",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ui/MultiSelect.vue",
+          "line": 252,
+          "column": 1
         }
       ]
     },
@@ -3023,12 +3214,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1725,
+          "line": 1731,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1746,
+          "line": 1752,
           "column": 32
         }
       ]
@@ -3397,6 +3588,18 @@
         }
       ]
     },
+    "a97218fd82db41f7": {
+      "source": "点击日期展开模型",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 470,
+          "column": 48
+        }
+      ]
+    },
     "a98585871c5313ff": {
       "source": "显示名称",
       "kind": "text",
@@ -3453,20 +3656,8 @@
         },
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 20,
+          "line": 22,
           "column": 12
-        }
-      ]
-    },
-    "ab607d54d86dc789": {
-      "source": "作者 leookun",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/MainLayout.vue",
-          "line": 43,
-          "column": 17
         }
       ]
     },
@@ -3518,6 +3709,18 @@
         }
       ]
     },
+    "ae5090199fb03c14": {
+      "source": "缓存读",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 480,
+          "column": 62
+        }
+      ]
+    },
     "ae5a738238463a92": {
       "source": "隐藏访问密钥",
       "kind": "text",
@@ -3561,8 +3764,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 220,
-          "column": 14
+          "line": 377,
+          "column": 16
         }
       ]
     },
@@ -3626,6 +3829,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 48,
           "column": 12
+        }
+      ]
+    },
+    "b24f669a428a37e2": {
+      "source": "整体命中率",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 200,
+          "column": 22
         }
       ]
     },
@@ -3720,8 +3935,8 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 240,
-          "column": 9
+          "line": 388,
+          "column": 1
         },
         {
           "file": "src/components/HomeMetricsCard.vue",
@@ -3819,6 +4034,18 @@
         }
       ]
     },
+    "bcc177c2b86e1885": {
+      "source": "未知中转站",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 115,
+          "column": 61
+        }
+      ]
+    },
     "bd4464ea88d3f24a": {
       "source": "总轮次：{0}",
       "kind": "template",
@@ -3908,13 +4135,25 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 32,
+          "line": 34,
           "column": 12
         },
         {
           "file": "src/components/HomeMetricsCard.vue",
           "line": 264,
           "column": 27
+        }
+      ]
+    },
+    "c304ad38736dae2e": {
+      "source": "搜索...",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ui/MultiSelect.vue",
+          "line": 236,
+          "column": 13
         }
       ]
     },
@@ -3966,7 +4205,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 14,
+          "line": 16,
           "column": 12
         }
       ]
@@ -3978,7 +4217,7 @@
       "refs": [
         {
           "file": "src/components/config/UsageStatsPanel.vue",
-          "line": 33,
+          "line": 35,
           "column": 12
         }
       ]
@@ -4077,6 +4316,18 @@
         }
       ]
     },
+    "c9ff01a0796c591f": {
+      "source": "全部中转站",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 346,
+          "column": 13
+        }
+      ]
+    },
     "ca00a39fcea70dc6": {
       "source": "启动中...",
       "kind": "text",
@@ -4113,6 +4364,18 @@
         }
       ]
     },
+    "cb411981ac611b17": {
+      "source": "暂无小时分布数据",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/charts/HourlyUsageChart.vue",
+          "line": 50,
+          "column": 44
+        }
+      ]
+    },
     "cd7ca5fb221e1c53": {
       "source": "{0}不能为空",
       "kind": "template",
@@ -4122,6 +4385,18 @@
           "file": "src/state/appState.js",
           "line": 311,
           "column": 12
+        }
+      ]
+    },
+    "cdbcecc8f31ecbd6": {
+      "source": "展示维度",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 340,
+          "column": 13
         }
       ]
     },
@@ -4289,6 +4564,18 @@
         }
       ]
     },
+    "d62e64a05006ecbd": {
+      "source": "清空筛选",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ui/MultiSelect.vue",
+          "line": 207,
+          "column": 9
+        }
+      ]
+    },
     "d7889896c5b7732a": {
       "source": "Anthropic 额外参数 JSON",
       "kind": "text",
@@ -4313,7 +4600,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1453,
+          "line": 1458,
           "column": 32
         }
       ]
@@ -4347,6 +4634,18 @@
         }
       ]
     },
+    "d9efc03671b14c23": {
+      "source": "筛选模型",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 353,
+          "column": 13
+        }
+      ]
+    },
     "da590a8fe3ce4de0": {
       "source": "请选择",
       "kind": "text",
@@ -4356,6 +4655,18 @@
           "file": "src/components/ui/Select.vue",
           "line": 11,
           "column": 41
+        }
+      ]
+    },
+    "da9e37af91872165": {
+      "source": "命中率",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 483,
+          "column": 62
         }
       ]
     },
@@ -4482,8 +4793,8 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 102,
-          "column": 1
+          "line": 101,
+          "column": 48
         }
       ]
     },
@@ -4494,12 +4805,12 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 195,
+          "line": 198,
           "column": 54
         },
         {
           "file": "src/components/charts/usageSeries.js",
-          "line": 77,
+          "line": 88,
           "column": 38
         }
       ]
@@ -4602,6 +4913,18 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 187,
           "column": 5
+        }
+      ]
+    },
+    "e78cc7700359a2cb": {
+      "source": "筛选中转站",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 347,
+          "column": 13
         }
       ]
     },
@@ -5019,6 +5342,18 @@
         }
       ]
     },
+    "fb04addb4c2654f5": {
+      "source": "输出",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 479,
+          "column": 62
+        }
+      ]
+    },
     "fb7a4c81729ed0ca": {
       "source": "关闭中...",
       "kind": "text",
@@ -5040,6 +5375,18 @@
           "file": "src/views/ProviderEditor.vue",
           "line": 263,
           "column": 29
+        }
+      ]
+    },
+    "fc58741cae9745cc": {
+      "source": "当日无模型明细",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/UsageStatsPanel.vue",
+          "line": 511,
+          "column": 85
         }
       ]
     },
@@ -5074,7 +5421,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1629,
+          "line": 1634,
           "column": 32
         }
       ]

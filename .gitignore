@@ -8,6 +8,7 @@ logs.zip
 frontend/bindings
 dist
 node_modules
+frontend/package-lock.json
 cursor-server.tar
 server-node/cursor.tar
 server-go/cursor.tar

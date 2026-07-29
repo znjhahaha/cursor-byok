@@ -40,9 +40,9 @@ const updaterEnabled = isUpdaterEnabled();
 const localizedAuthorInfo = computed(() => {
   if (!footerAuthorInfo.value) return null;
   return {
-    buttonText: "作者 leookun",
+    buttonText: "作者 leookun · 二开 znj",
     dialogTitle: "作者寄语",
-    dialogContent: "本软件是纯免费软件，如果你被收费，那大概率就是被骗了。\n欢迎点击访问作者主页 https://space.bilibili.com/311706663/upload/video\n查看更多更新动态、使用分享和后续内容。",
+    dialogContent: "Cursor 本地助手由 leookun 制作，znj 二次开发。\n本软件是纯免费软件，如果你被收费，那大概率就是被骗了。\n欢迎点击访问作者主页 https://space.bilibili.com/311706663/upload/video\n查看更多更新动态、使用分享和后续内容。",
     dialogConfirmText: "访问主页",
     dialogCancelText: "关闭",
   };

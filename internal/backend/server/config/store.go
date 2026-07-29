@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,9 +111,58 @@ func (store *Store) Save(_ context.Context, cfg Config) (Config, error) {
 	defer store.mu.Unlock()
 
 	if err := store.saveLocked(normalized); err != nil {
+		log.Printf("config save failed path=%s error=%v", store.path, err)
 		return Config{}, err
 	}
+	if err := store.verifyPersistedLocked(normalized); err != nil {
+		log.Printf("config save verify failed path=%s error=%v", store.path, err)
+		return Config{}, err
+	}
+	log.Printf("config saved path=%s providers=%d adapters=%d", store.path, len(normalized.Providers), len(normalized.ModelAdapters))
 	return normalized, nil
+}
+
+// verifyPersistedLocked 回读刚落盘的文件并比对关键字段。
+// 把「写盘成功但内容不完整」（如 apiKey 被上游静默剥掉）变成显式错误，
+// 避免用户关掉 exe 后才发现配置丢失。
+func (store *Store) verifyPersistedLocked(expected Config) error {
+	data, err := os.ReadFile(store.path)
+	if err != nil {
+		return fmt.Errorf("回读用户配置失败: %w", err)
+	}
+	var persisted Config
+	if err := yaml.Unmarshal(data, &persisted); err != nil {
+		return fmt.Errorf("回读用户配置解析失败: %w", err)
+	}
+	if len(persisted.Providers) != len(expected.Providers) {
+		return fmt.Errorf("中转站数量不一致: 写入 %d 个, 回读 %d 个", len(expected.Providers), len(persisted.Providers))
+	}
+	if len(persisted.ModelAdapters) != len(expected.ModelAdapters) {
+		return fmt.Errorf("模型适配器数量不一致: 写入 %d 个, 回读 %d 个", len(expected.ModelAdapters), len(persisted.ModelAdapters))
+	}
+	persistedProviders := make(map[string]ProviderConfig, len(persisted.Providers))
+	for _, item := range persisted.Providers {
+		persistedProviders[item.ID] = item
+	}
+	for _, expectedProvider := range expected.Providers {
+		persistedProvider, ok := persistedProviders[expectedProvider.ID]
+		if !ok {
+			return fmt.Errorf("中转站 %s 未能持久化", expectedProvider.ID)
+		}
+		if strings.TrimSpace(persistedProvider.APIKey) != strings.TrimSpace(expectedProvider.APIKey) {
+			return fmt.Errorf("中转站 %s 的 apiKey 未能完整持久化", expectedProvider.ID)
+		}
+	}
+	for index, expectedAdapter := range expected.ModelAdapters {
+		persistedAdapter := persisted.ModelAdapters[index]
+		if strings.TrimSpace(persistedAdapter.ProviderID) != strings.TrimSpace(expectedAdapter.ProviderID) ||
+			strings.TrimSpace(persistedAdapter.DisplayName) != strings.TrimSpace(expectedAdapter.DisplayName) ||
+			strings.TrimSpace(persistedAdapter.ModelID) != strings.TrimSpace(expectedAdapter.ModelID) ||
+			strings.TrimSpace(persistedAdapter.APIKey) != strings.TrimSpace(expectedAdapter.APIKey) {
+			return fmt.Errorf("第 %d 个模型适配器未能完整持久化", index+1)
+		}
+	}
+	return nil
 }
 
 func (store *Store) saveLocked(normalized Config) error {
