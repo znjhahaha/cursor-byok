@@ -37,6 +37,7 @@ tasks:
     dir: '{{.ROOT_DIR}}'
     sources:
       - proto/*.proto
+      - third_party/protobuf/google/protobuf/*.proto
     generates:
       - gen/agentv1/*.go
       - gen/aiserverv1/*.go
@@ -48,9 +49,22 @@ tasks:
         msg: "未检测到 protoc-gen-go，请先安装。"
       - sh: protoc-gen-connect-go --version >/dev/null 2>&1 || which protoc-gen-connect-go
         msg: "未检测到 protoc-gen-connect-go，请先安装。"
+      - sh: test -f ./third_party/protobuf/google/protobuf/struct.proto
+        msg: "缺少 third_party/protobuf well-known types，请确认仓库完整。"
     cmds:
       - rm -rf ./gen/agentv1 ./gen/aiserverv1
-      - protoc -I ./proto --go_out=. --go_opt=module=cursor --connect-go_out=. --connect-go_opt=module=cursor ./proto/agent_v1.proto ./proto/aiserver_v1.proto
+      # -I third_party/protobuf 提供 google/protobuf/*.proto（well-known types）
+      # 避免系统 protoc 包缺少 include 时 CI/本机生成失败
+      - >
+        protoc
+        -I ./proto
+        -I ./third_party/protobuf
+        --go_out=.
+        --go_opt=module=cursor
+        --connect-go_out=.
+        --connect-go_opt=module=cursor
+        ./proto/agent_v1.proto
+        ./proto/aiserver_v1.proto
       - gofmt -w $(find ./gen -name '*.go' -type f)
 
   go:mod:tidy:
