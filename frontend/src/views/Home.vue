@@ -119,7 +119,28 @@ async function handleOpenConfig() {
   }
 }
 
+async function handleOpenProviderConfig() {
+  await openModelConfigAtTab("providers");
+}
+
 async function handleOpenModelConfig() {
+  await openModelConfigAtTab("models");
+}
+
+// 中转站、统计页与模型配置共用同一个子窗口。落地 tab 走两条通道：
+// storage 给「新窗口首次 mount」消费（子窗口 URL 由 Go 侧固定，扩展 bindings 不划算）；
+// Events 广播覆盖「窗口已打开」的场景——单例窗口只 Show+Focus、不会重新 mount，
+// 已存在的窗口收到事件后自行切换 activeTab。
+// 各入口都显式写 tab，避免沿用上一次打开时残留的页签。
+const MODEL_CONFIG_TAB_EVENT = "modelConfig:activateTab";
+
+async function openModelConfigAtTab(tab) {
+  try {
+    window.localStorage.setItem("modelConfig:initialTab", tab);
+  } catch (_error) {
+    // 隐私模式下 storage 不可用时退化为默认 tab，不阻塞窗口打开。
+  }
+  void Events.Emit(MODEL_CONFIG_TAB_EVENT, tab).catch(() => {});
   try {
     await openModelConfigWindow();
   } catch (error) {
@@ -127,15 +148,8 @@ async function handleOpenModelConfig() {
   }
 }
 
-// 统计页与模型配置共用同一个子窗口，落地 tab 通过 storage 传递：
-// 子窗口 URL 由 Go 侧固定，避免为了一个初始状态去扩展窗口 bindings。
 async function handleOpenUsageStats() {
-  try {
-    window.localStorage.setItem("modelConfig:initialTab", "stats");
-  } catch (_error) {
-    // 隐私模式下 storage 不可用时退化为默认 tab，不阻塞窗口打开。
-  }
-  await handleOpenModelConfig();
+  await openModelConfigAtTab("stats");
 }
 
 async function handleDirectModeChange(enabled) {
@@ -168,6 +182,7 @@ onBeforeUnmount(() => {
       :home-ads="homeAds"
       @refresh="handleRefreshMetrics"
       @open-ad="handleOpenHomeAd"
+      @open-provider-config="handleOpenProviderConfig"
       @open-model-config="handleOpenModelConfig"
       @open-usage-stats="handleOpenUsageStats"
     />

@@ -115,6 +115,10 @@ const chartData = computed(() => {
     };
   }
 
+  const isSingleDay = props.days.length === 1;
+  const singleDayPointRadius = (context, radius) =>
+    isSingleDay && asUsageNumber(context.raw) > 0 ? radius : 0;
+
   return {
     labels: props.days.map((day) => day?.date ?? ""),
     datasets: series.value.map((item) =>
@@ -125,9 +129,12 @@ const chartData = computed(() => {
             borderColor: item.color,
             backgroundColor: item.color,
             borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 4,
+            pointRadius: (context) => singleDayPointRadius(context, 4),
+            pointHoverRadius: (context) =>
+              isSingleDay ? singleDayPointRadius(context, 5) : 4,
             pointHitRadius: 12,
+            pointBorderColor: "#242424",
+            pointBorderWidth: isSingleDay ? 2 : 0,
             tension: 0.3,
           }
         : {
@@ -165,6 +172,10 @@ const columnHighlightPlugin = {
 const commonTooltip = computed(() => ({
   enabled: false,
   external: externalTooltip.handler,
+  // caretX/caretY 在 Chart.js 里属于被动画补间的数值属性，external handler 每帧都会
+  // 收到插值中的中间坐标；元素首次创建时它们是 undefined，于是从 (0,0) 起算 ——
+  // 这才是浮层「从左上角飘过来」的源头，CSS 层改不掉。关掉后拿到的直接是目标坐标。
+  animation: false,
   displayColors: false,
   callbacks:
     props.chartType === "pie"
@@ -255,15 +266,19 @@ const legendItems = computed(() =>
       </span>
     </div>
     <template v-else>
-      <div class="min-h-0 flex-1">
-        <Chart
-          :key="`${chartKind}-${metric}-${dimension}`"
-          class="h-full w-full"
-          :type="chartKind"
-          :data="chartData"
-          :options="chartOptions"
-          :plugins="[columnHighlightPlugin]"
-        />
+      <!-- key 只绑 chartKind：Chart.js 的 type 不可变更，换形态必须重建实例。
+           而 metric / dimension 变化时保持同一实例，才能吃到它自带的数据插值动画。 -->
+      <div class="relative min-h-0 flex-1">
+        <Transition name="mo-chart">
+          <Chart
+            :key="chartKind"
+            class="h-full w-full"
+            :type="chartKind"
+            :data="chartData"
+            :options="chartOptions"
+            :plugins="[columnHighlightPlugin]"
+          />
+        </Transition>
       </div>
       <div v-if="!compact" class="center-row flex-wrap gap-x-3 gap-y-1 text-xs text-[#a3a3a3]">
         <span v-for="item in legendItems" :key="item.id" class="center-row gap-1.5">

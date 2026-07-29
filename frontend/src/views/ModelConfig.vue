@@ -4,7 +4,8 @@ import ProviderListPanel from "@/components/config/ProviderListPanel.vue";
 import UsageStatsPanel from "@/components/config/UsageStatsPanel.vue";
 import { showModal } from "@/composables/useModal";
 import { reloadUserConfig } from "@/state/appState";
-import { computed, onMounted, ref } from "vue";
+import { Events } from "@wailsio/runtime";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 const mainTabs = [
   { label: "中转站", value: "providers", icon: "icon-[mdi--server-network]" },
@@ -54,9 +55,24 @@ async function handleConfirmDelete({ provider, modelCount, run }) {
   }
 }
 
+// 窗口已打开时，首页入口通过广播直接指定落地 tab（新窗口首次打开仍走上面的 consumeInitialTab）。
+const MODEL_CONFIG_TAB_EVENT = "modelConfig:activateTab";
+let unsubscribeActivateTab = null;
+
 onMounted(async () => {
   consumeInitialTab();
+  unsubscribeActivateTab = Events.On(MODEL_CONFIG_TAB_EVENT, (event) => {
+    const tab = typeof event?.data === "string" ? event.data : "";
+    if (mainTabs.some((item) => item.value === tab)) {
+      activeTab.value = tab;
+    }
+  });
   await reloadUserConfig({ modelAdaptersOnly: true }).catch(() => { });
+});
+
+onBeforeUnmount(() => {
+  unsubscribeActivateTab?.();
+  unsubscribeActivateTab = null;
 });
 </script>
 

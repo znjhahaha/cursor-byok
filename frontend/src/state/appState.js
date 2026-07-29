@@ -1582,9 +1582,10 @@ async function runProviderModelsFetch(normalized, key, force) {
   try {
     const call = force ? refreshProviderModelsAPI(normalized) : listProviderModels(normalized);
     const result = normalizeProviderModelsResult(await call);
-    // 失败结果不落进 catalog：一次网络抖动或临时鉴权失败会让用户在修好配置之后
-    // 仍然看到旧错误。失败只作为本次调用的返回值。
-    if (result.ok) {
+    // 成功结果进入持久缓存镜像；接口可达但没有标准模型列表的结果也要进入当前
+    // 会话的展示镜像，否则手动添加区域拿不到 reachable/attempts，用户只会看到
+    // 一个刷新后毫无变化的旧卡片。真正的网络/鉴权失败仍不覆盖旧 catalog。
+    if (result.ok || result.reachable) {
       writeProviderModelCatalog(key, result);
     }
 

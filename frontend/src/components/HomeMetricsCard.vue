@@ -1,13 +1,22 @@
 <script setup>
 import CacheHitRateChart from "@/components/charts/CacheHitRateChart.vue";
 import DailyUsageChart from "@/components/charts/DailyUsageChart.vue";
+import { buildUsageSeries } from "@/components/charts/usageSeries";
+import TrendRangePicker from "@/components/TrendRangePicker.vue";
 import Switch from "@/components/ui/Switch.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
+import { useWindowGrow } from "@/composables/useWindowGrow";
 import { appState, saveIncludeCacheWriteInHitRate, syncUsageSeries } from "@/state/appState";
 import { formatCompactInteger, formatInteger } from "@/utils/numberFormat";
 import { computed, ref, watch } from "vue";
 
-const emit = defineEmits(["refresh", "open-ad", "open-model-config", "open-usage-stats"]);
+const emit = defineEmits([
+  "refresh",
+  "open-ad",
+  "open-provider-config",
+  "open-model-config",
+  "open-usage-stats",
+]);
 
 const TOKEN_PRICE_PER_MILLION = {
   input: 5,
@@ -234,25 +243,113 @@ const hasHomeAd = computed(() => normalizedHomeAds.value.length > 0);
 
 // ===== 视图切换 =====
 //
-// 总览与趋势共用同一块 130px 展示区：前者回答「累计花了多少」，后者回答「什么时候用得多」。
-// 二者互斥而非同屏，切换不产生高度增量，窗口高度得以保持在 520。
+// 总览与趋势互斥切换：前者回答「累计花了多少」，后者回答「什么时候用得多」。
+// 趋势区（196px）比总览区（130px）高 66px，差值由 useWindowGrow 同步加高主窗口，
+// 下方的服务卡片与「本地配置」不会被挤压；切回总览时窗口恢复原高。
 const HOME_VIEW_TABS = [
   { value: "summary", label: "总览" },
   { value: "trend", label: "趋势" },
 ];
 
-const HOME_TREND_DAYS = 14;
+const TREND_EXTRA_HEIGHT = 66;
+
+// 后端 LoadUsageSeries 只接受「回溯 N 个自然日（含今天）」，所以自定义也是天数，不是日历起止。
+const CUSTOM_DAYS_MIN = 1;
+const CUSTOM_DAYS_MAX = 365;
+
+// 14 天窗口里饼图没有意义（它回答「构成」，而趋势 tab 回答「随时间怎么变」），
+// 所以这里只给柱/折线两种。状态只存在于组件内，不落盘。
+const TREND_CHART_KINDS = [
+  { value: "bar", label: "柱状图", icon: "icon-[mdi--chart-bar]" },
+  { value: "line", label: "折线图", icon: "icon-[mdi--chart-line]" },
+];
+
+// 堆叠维度回答三个不同问题：Token 分层看成本结构，中转站看来源分布，模型看谁在吃预算。
+// 数据侧无需改动：syncUsageSeries 返回的每一天已带 providers / models 明细。
+const TREND_DIMENSIONS = [
+  { value: "token", label: "Token 分层", icon: "icon-[mdi--layers-outline]" },
+  { value: "provider", label: "按中转站", icon: "icon-[mdi--server-network]" },
+  { value: "model", label: "按模型", icon: "icon-[mdi--robot-outline]" },
+];
 
 const activeView = ref("summary");
+const trendChartKind = ref("bar");
+const trendDimension = ref("token");
+const trendRange = ref("14");
+const trendCustomDays = ref(21);
 const trendLoaded = ref(false);
+
+function effectiveTrendDays() {
+  if (trendRange.value === "custom") {
+    const days = Math.round(Number(trendCustomDays.value));
+    if (!Number.isFinite(days)) {
+      return 14;
+    }
+    return Math.min(CUSTOM_DAYS_MAX, Math.max(CUSTOM_DAYS_MIN, days));
+  }
+  const preset = Number(trendRange.value);
+  return Number.isFinite(preset) && preset > 0 ? preset : 14;
+}
+
+function loadTrendSeries() {
+  return syncUsageSeries(effectiveTrendDays());
+}
+
+// 预设与自定义共用同一条落库路径：只改「当前生效的天数口径」，再统一拉一次序列。
+async function handleTrendRangeSelect(value) {
+  if (value === trendRange.value) {
+    return;
+  }
+  trendRange.value = value;
+  trendLoaded.value = true;
+  await loadTrendSeries();
+}
+
+async function handleCustomDaysApply(days) {
+  const parsed = Math.round(Number(days));
+  if (!Number.isFinite(parsed)) {
+    return;
+  }
+  if (trendRange.value === "custom" && parsed === trendCustomDays.value) {
+    return;
+  }
+  trendCustomDays.value = parsed;
+  trendRange.value = "custom";
+  trendLoaded.value = true;
+  await loadTrendSeries();
+}
 
 const usageDays = computed(() => appState.usageSeries.days ?? []);
 const usageLoading = computed(() => appState.usageSeriesLoading);
 const usageError = computed(() => appState.usageSeriesError);
 
+function sumTokens(days) {
+  return days.reduce((sum, day) => sum + normalizeNumber(day?.totalTokens), 0);
+}
+
+// 环比：把窗口对半切，用后半段比前半段。回答「最近是在多用还是少用」——
+// 这是原来四个纯累计读数完全无法表达的信息。
+// 前半段为 0 时不给百分比：任何数除以 0 的「+∞%」都是噪声。
+function buildMomentum(days) {
+  if (days.length < 4) {
+    return { direction: "flat", percent: null };
+  }
+  const split = Math.floor(days.length / 2);
+  const earlier = sumTokens(days.slice(0, split));
+  const later = sumTokens(days.slice(split));
+  if (earlier <= 0) {
+    return { direction: later > 0 ? "up" : "flat", percent: null };
+  }
+  const ratio = (later - earlier) / earlier;
+  if (Math.abs(ratio) < 0.02) {
+    return { direction: "flat", percent: 0 };
+  }
+  return { direction: ratio > 0 ? "up" : "down", percent: Math.abs(ratio) * 100 };
+}
+
 const trendMetrics = computed(() => {
   const days = usageDays.value;
-  const totalTokens = days.reduce((sum, day) => sum + normalizeNumber(day?.totalTokens), 0);
+  const totalTokens = sumTokens(days);
   const totalCalls = days.reduce((sum, day) => sum + normalizeNumber(day?.providerCalls), 0);
   const peak = days.reduce(
     (best, day) =>
@@ -261,22 +358,75 @@ const trendMetrics = computed(() => {
         : best,
     { date: "", value: 0 },
   );
+  const cacheRead = days.reduce((sum, day) => sum + normalizeNumber(day?.cacheReadTokens), 0);
+  const input = days.reduce((sum, day) => sum + normalizeNumber(day?.inputTokens), 0);
   return {
     totalTokens,
     totalCalls,
     dailyAverage: days.length > 0 ? Math.round(totalTokens / days.length) : 0,
     peakLabel: peak.date ? `${peak.date.slice(5).replace("-", "/")} · ${formatCompactInteger(peak.value)}` : "-",
+    momentum: buildMomentum(days),
+    // 日均被零调用日拉低时，活跃天数正是那个解释。
+    activeDays: days.filter((day) => normalizeNumber(day?.totalTokens) > 0).length,
+    windowDays: days.length,
+    // 与总览 tab 的默认口径保持一致：缓存读取 /（缓存读取 + 非缓存输入）。
+    cacheHitRate: calculateRate(cacheRead, cacheRead + input),
+  };
+});
+
+const momentumStyle = computed(() => {
+  const { direction, percent } = trendMetrics.value.momentum;
+  if (direction === "up") {
+    return {
+      icon: "icon-[mdi--trending-up]",
+      color: "text-[#86efac]",
+      text: percent === null ? "新增用量" : `较前期 +${percent.toFixed(0)}%`,
+    };
+  }
+  if (direction === "down") {
+    return {
+      icon: "icon-[mdi--trending-down]",
+      color: "text-[#fca5a5]",
+      text: `较前期 -${percent.toFixed(0)}%`,
+    };
+  }
+  return { icon: "icon-[mdi--trending-neutral]", color: "text-[#8a8a8a]", text: "较前期持平" };
+});
+
+// DailyUsageChart 在 compact 下不渲染图例（那会吃掉本就紧张的 196px）。
+// 但按中转站/按模型堆叠时，色块不配名字就完全无法辨认，
+// 所以这里复算一份同源序列，塞进底部那一行本来放「活跃天数 / 缓存命中」的位置。
+const TREND_LEGEND_LIMIT = 4;
+
+const trendLegend = computed(() => {
+  if (trendDimension.value === "token") {
+    return { items: [], overflow: 0 };
+  }
+  const series = buildUsageSeries(usageDays.value, {
+    dimension: trendDimension.value,
+    metric: "totalTokens",
+  });
+  return {
+    items: series.slice(0, TREND_LEGEND_LIMIT),
+    overflow: Math.max(0, series.length - TREND_LEGEND_LIMIT),
   };
 });
 
 // 趋势数据按需拉取：默认停在总览时不付出这次 IPC。
+const { grow: growMainWindow, restore: restoreMainWindow } = useWindowGrow();
+
 watch(
   activeView,
   (view) => {
-    if (view === "trend" && !trendLoaded.value) {
-      trendLoaded.value = true;
-      void syncUsageSeries(HOME_TREND_DAYS);
+    if (view === "trend") {
+      void growMainWindow(TREND_EXTRA_HEIGHT);
+      if (!trendLoaded.value) {
+        trendLoaded.value = true;
+        void loadTrendSeries();
+      }
+      return;
     }
+    void restoreMainWindow();
   },
   { immediate: true },
 );
@@ -284,7 +434,7 @@ watch(
 function handleRefresh() {
   emit("refresh");
   if (activeView.value === "trend") {
-    void syncUsageSeries(HOME_TREND_DAYS);
+    void loadTrendSeries();
   }
 }
 </script>
@@ -302,12 +452,52 @@ function handleRefresh() {
             :class="activeView === tab.value
               ? 'border-[#4a4a4a] bg-[#2f2f2f] text-white'
               : 'border-transparent text-[#8a8a8a] hover:text-[#d4d4d4]'"
+            :title="tab.value === 'trend' ? `近 ${effectiveTrendDays()} 天用量趋势` : ''"
             @click="activeView = tab.value"
           >
             {{ tab.label }}
           </button>
-          <span v-if="activeView === 'trend'" class="pl-1 text-[11px] text-[#6f6f6f]">
-            近 {{ HOME_TREND_DAYS }} 天
+          <!-- 形态 | 维度 | 区间：三组语义不同，用竖线分隔，避免读成一排互斥按钮。 -->
+          <span v-if="activeView === 'trend'" class="center-row ml-1.5 gap-0.5">
+            <button
+              v-for="kind in TREND_CHART_KINDS"
+              :key="kind.value"
+              type="button"
+              class="center-row justify-center h-[22px] w-[22px] rounded-[5px] border transition-interactive duration-150"
+              :class="trendChartKind === kind.value
+                ? 'border-[#4a4a4a] bg-[#2f2f2f] text-white'
+                : 'border-transparent text-[#6f6f6f] hover:text-[#d4d4d4]'"
+              :aria-pressed="trendChartKind === kind.value"
+              :title="kind.label"
+              @click="trendChartKind = kind.value"
+            >
+              <span :class="[kind.icon, 'text-[13px]']"></span>
+            </button>
+            <span class="mx-1 h-[14px] w-px shrink-0 bg-[#3a3a3a]"></span>
+            <button
+              v-for="item in TREND_DIMENSIONS"
+              :key="item.value"
+              type="button"
+              class="center-row justify-center h-[22px] w-[22px] rounded-[5px] border transition-interactive duration-150"
+              :class="trendDimension === item.value
+                ? 'border-[#4a4a4a] bg-[#2f2f2f] text-white'
+                : 'border-transparent text-[#6f6f6f] hover:text-[#d4d4d4]'"
+              :aria-pressed="trendDimension === item.value"
+              :title="item.label"
+              @click="trendDimension = item.value"
+            >
+              <span :class="[item.icon, 'text-[13px]']"></span>
+            </button>
+            <span class="mx-1 h-[14px] w-px shrink-0 bg-[#3a3a3a]"></span>
+            <TrendRangePicker
+              :range="trendRange"
+              :custom-days="trendCustomDays"
+              :min="CUSTOM_DAYS_MIN"
+              :max="CUSTOM_DAYS_MAX"
+              aria-label="统计区间"
+              @select="handleTrendRangeSelect"
+              @apply="handleCustomDaysApply"
+            />
           </span>
         </div>
         <div v-if="hasHomeAd" class="grid min-w-0  grid-cols-3 gap-2 shrink-0">
@@ -346,23 +536,30 @@ function handleRefresh() {
         >
           <button
             type="button"
-            class="rounded-[6px] border border-[#3b3b3b] bg-[#242424] px-2.5 py-1 text-[#c8c8c8] transition-colors duration-150 hover:border-[#4c4c4c] hover:text-white"
-            @click="emit('open-model-config')"
+            class="center-row h-[24px] gap-1 rounded-[6px] border border-[#3b3b3b] bg-[#242424] px-2 text-[11px] text-[#9d9d9d] transition-colors duration-150 hover:border-[#4c4c4c] hover:text-white"
+            title="中转配置"
+            aria-label="中转配置"
+            @click="emit('open-provider-config')"
           >
-            模型配置
+            <span class="icon-[mdi--tune-vertical] text-[14px]"></span>
+            <span>中转配置</span>
           </button>
           <button
             type="button"
-            class="rounded-[6px] border border-transparent px-2 py-1 transition-colors duration-150 hover:text-[#e5e5e5]"
+            class="center-row h-[24px] gap-1 rounded-[6px] border border-[#3b3b3b] bg-[#242424] px-2 text-[11px] text-[#9d9d9d] transition-colors duration-150 hover:border-[#4c4c4c] hover:text-white"
+            title="调用统计"
+            aria-label="调用统计"
             @click="emit('open-usage-stats')"
           >
-            调用统计
+            <span class="icon-[mdi--chart-box-outline] text-[14px]"></span>
+            <span>调用统计</span>
           </button>
           <button
             type="button"
             class="center-row justify-center h-[24px] w-[24px] rounded-[6px] border border-[#3b3b3b] bg-[#242424] text-[#9d9d9d] transition-colors duration-150 hover:border-[#4c4c4c] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="loading || usageLoading"
             :title="loading || usageLoading ? '刷新中' : '刷新统计'"
+            aria-label="刷新统计"
             @click="handleRefresh"
           >
             <span
@@ -375,7 +572,7 @@ function handleRefresh() {
 
       <div
         class="mt-[-4px] overflow-hidden rounded-[8px] border border-[#343434] bg-[#242424] transition-[height] duration-200 ease-out"
-        :class="activeView === 'trend' ? 'h-[168px]' : 'h-[130px]'"
+        :class="activeView === 'trend' ? 'h-[196px]' : 'h-[130px]'"
       >
         <Transition name="home-view" mode="out-in">
         <div v-if="activeView === 'trend'" key="trend" class="flex h-full flex-col px-3 pb-2 pt-2">
@@ -397,27 +594,69 @@ function handleRefresh() {
             </button>
           </div>
           <template v-else>
-            <div class="grid shrink-0 grid-cols-4 gap-2 border-b border-[#343434] pb-2 text-[11px]">
-              <div class="truncate text-[#737373]">
-                总 Token <span class="ml-1 text-[#d4d4d4]" :title="formatInteger(trendMetrics.totalTokens)">{{ formatCompactInteger(trendMetrics.totalTokens) }}</span>
+            <!-- 摘要区做主次分层：总 Token 是主读数，其余是解释它的次级信息。
+                 原来四个数字同字号平铺，视觉上等权，读者不知道该先看哪个。 -->
+            <div class="center-row shrink-0 items-end justify-between gap-3 border-b border-[#343434] pb-1.5">
+              <div class="min-w-0 center-row items-end justify-start gap-2">
+                <span
+                  class="truncate text-[20px] leading-none text-white"
+                  style="font-family: var(--font-num)"
+                  :title="formatInteger(trendMetrics.totalTokens)"
+                >
+                  {{ formatCompactInteger(trendMetrics.totalTokens) }}
+                </span>
+                <span class="shrink-0 pb-[1px] text-[11px] text-[#737373]">Token</span>
+                <span
+                  class="center-row shrink-0 gap-0.5 pb-[1px] text-[11px]"
+                  :class="momentumStyle.color"
+                >
+                  <span :class="[momentumStyle.icon, 'text-[13px]']"></span>
+                  <span>{{ momentumStyle.text }}</span>
+                </span>
               </div>
-              <div class="truncate text-[#737373]">
-                总调用 <span class="ml-1 text-[#d4d4d4]">{{ formatInteger(trendMetrics.totalCalls) }}</span>
-              </div>
-              <div class="truncate text-[#737373]">
-                日均 <span class="ml-1 text-[#d4d4d4]" :title="formatInteger(trendMetrics.dailyAverage)">{{ formatCompactInteger(trendMetrics.dailyAverage) }}</span>
-              </div>
-              <div class="truncate text-right text-[#737373]">
-                峰值 <span class="ml-1 text-[#d4d4d4]">{{ trendMetrics.peakLabel }}</span>
+              <div class="center-row shrink-0 gap-3 pb-[1px] text-[11px] text-[#737373]">
+                <span>调用 <span class="text-[#d4d4d4]">{{ formatInteger(trendMetrics.totalCalls) }}</span></span>
+                <span>日均 <span class="text-[#d4d4d4]" :title="formatInteger(trendMetrics.dailyAverage)">{{ formatCompactInteger(trendMetrics.dailyAverage) }}</span></span>
+                <span>峰值 <span class="text-[#d4d4d4]">{{ trendMetrics.peakLabel }}</span></span>
               </div>
             </div>
             <div class="min-h-0 flex-1 pt-1">
               <DailyUsageChart
                 :days="usageDays"
                 metric="totalTokens"
-                dimension="token"
+                :dimension="trendDimension"
+                :chart-type="trendChartKind"
                 compact
               />
+            </div>
+            <!-- 同一行两种角色：Token 分层语义固定、用户认得，让位给活跃度与命中率；
+                 分组维度下色块不配名字读不出来，图例的信息价值更高。 -->
+            <div class="center-row shrink-0 justify-between gap-3 pt-1 text-[11px] text-[#6f6f6f]">
+              <template v-if="trendLegend.items.length > 0">
+                <span class="center-row min-w-0 flex-nowrap gap-2.5 overflow-hidden">
+                  <span
+                    v-for="item in trendLegend.items"
+                    :key="item.id"
+                    class="center-row min-w-0 shrink-0 gap-1"
+                    :title="item.name"
+                  >
+                    <span class="h-2 w-2 shrink-0 rounded-[2px]" :style="{ backgroundColor: item.color }"></span>
+                    <span class="max-w-[92px] truncate text-[#a3a3a3]">{{ item.name }}</span>
+                  </span>
+                  <span v-if="trendLegend.overflow > 0" class="shrink-0">+{{ trendLegend.overflow }}</span>
+                </span>
+                <span class="shrink-0">
+                  活跃 <span class="text-[#a3a3a3]">{{ trendMetrics.activeDays }}</span> / {{ trendMetrics.windowDays }}
+                </span>
+              </template>
+              <template v-else>
+                <span>
+                  活跃 <span class="text-[#a3a3a3]">{{ trendMetrics.activeDays }}</span> / {{ trendMetrics.windowDays }} 天
+                </span>
+                <span>
+                  缓存命中 <span class="text-[#a3a3a3]">{{ formatRateLabel(trendMetrics.cacheHitRate) }}</span>
+                </span>
+              </template>
             </div>
           </template>
         </div>

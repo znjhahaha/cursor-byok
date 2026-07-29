@@ -98,7 +98,14 @@ function toggleMenu() {
 }
 
 function selectOption(option) {
-  if (!option || option.value === props.modelValue) {
+  if (!option) {
+    closeMenu({ restoreFocus: true });
+    return;
+  }
+
+  // 同值再点也发 change：自定义天数等场景需要「再选一次重新编辑」。
+  if (option.value === props.modelValue) {
+    emit("change", option.value);
     closeMenu({ restoreFocus: true });
     return;
   }
@@ -199,7 +206,7 @@ function updatePosition() {
   computePosition(buttonRef.value, menuRef.value, {
     placement: "bottom-start",
     middleware: [
-      offset(6),
+      offset(8),
       flip({ padding: 12 }),
       shift({ padding: 12 }),
       size({
@@ -303,11 +310,12 @@ onBeforeUnmount(() => {
       <div
         v-if="isOpen"
         ref="menuRef"
-        class="fixed z-[999] overflow-hidden rounded-[8px] border border-[#3f3f3f] bg-[#232323] p-1 shadow-[0_16px_30px_-12px_rgba(0,0,0,0.7)]"
+        class="fixed z-[999] overflow-hidden rounded-[8px] border border-[#3f3f3f] bg-[#232323] p-1.5 shadow-[0_16px_30px_-12px_rgba(0,0,0,0.7)]"
         :class="menuClass"
         :style="menuStyle"
       >
-        <ul role="listbox" class="overflow-y-auto py-1">
+        <!-- 内边距只由容器的 p-1.5 提供：ul 上再叠 py-1 会让选中项上下 10px、左右 6px。 -->
+        <ul role="listbox" class="overflow-y-auto">
           <li v-for="(option, index) in normalizedOptions" :key="option.value">
             <button
               :ref="(el) => setOptionRef(el, index)"

@@ -19,7 +19,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 374,
+          "line": 458,
           "column": 33
         },
         {
@@ -72,20 +72,8 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 252,
+          "line": 263,
           "column": 44
-        }
-      ]
-    },
-    "03aeb7c768b4cb8e": {
-      "source": "近",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/HomeMetricsCard.vue",
-          "line": 309,
-          "column": 88
         }
       ]
     },
@@ -106,6 +94,18 @@
         }
       ]
     },
+    "0433c6c3a3f096a2": {
+      "source": "Token 分层",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 270,
+          "column": 28
+        }
+      ]
+    },
     "047ec6b71d0cec08": {
       "source": "控制白名单主链路请求走本地服务，还是回到原始 Cursor 上游地址",
       "kind": "text",
@@ -113,8 +113,8 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 71,
-          "column": 48
+          "line": 72,
+          "column": 1
         }
       ]
     },
@@ -142,7 +142,7 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 402,
+          "line": 497,
           "column": 107
         }
       ]
@@ -183,8 +183,8 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 57,
-          "column": 48
+          "line": 58,
+          "column": 1
         }
       ]
     },
@@ -195,7 +195,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 223,
+          "line": 230,
           "column": 14
         }
       ]
@@ -219,7 +219,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 510,
+          "line": 749,
           "column": 19
         }
       ]
@@ -272,8 +272,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 270,
+          "line": 277,
           "column": 14
+        }
+      ]
+    },
+    "0dc00ae16bd662d9": {
+      "source": "刷新完成",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 481,
+          "column": 27
         }
       ]
     },
@@ -296,7 +308,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 181,
+          "line": 190,
           "column": 5
         }
       ]
@@ -320,8 +332,8 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 469,
-          "column": 65
+          "line": 709,
+          "column": 1
         }
       ]
     },
@@ -332,7 +344,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 486,
+          "line": 725,
           "column": 19
         }
       ]
@@ -344,7 +356,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 428,
+          "line": 667,
           "column": 19
         }
       ]
@@ -368,7 +380,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 367,
+          "line": 451,
           "column": 38
         }
       ]
@@ -380,7 +392,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 270,
+          "line": 277,
           "column": 14
         }
       ]
@@ -392,7 +404,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 204,
+          "line": 211,
           "column": 13
         }
       ]
@@ -435,6 +447,11 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 110,
           "column": 16
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 272,
+          "column": 28
         }
       ]
     },
@@ -445,7 +462,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 47,
+          "line": 48,
           "column": 46
         }
       ]
@@ -534,7 +551,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 46,
+          "line": 47,
           "column": 7
         }
       ]
@@ -568,7 +585,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 269,
+          "line": 352,
           "column": 89
         },
         {
@@ -585,7 +602,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 85,
+          "line": 87,
           "column": 12
         }
       ]
@@ -602,7 +619,7 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 105,
+          "line": 107,
           "column": 17
         },
         {
@@ -617,7 +634,7 @@
         },
         {
           "file": "src/views/Home.vue",
-          "line": 126,
+          "line": 147,
           "column": 27
         }
       ]
@@ -629,8 +646,20 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 179,
+          "line": 188,
           "column": 5
+        }
+      ]
+    },
+    "25e1f73410009c0e": {
+      "source": "近 {0} 天用量趋势",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 455,
+          "column": 21
         }
       ]
     },
@@ -665,7 +694,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 367,
+          "line": 451,
           "column": 38
         }
       ]
@@ -677,13 +706,13 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 277,
-          "column": 9
+          "line": 285,
+          "column": 1
         },
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 291,
-          "column": 9
+          "line": 299,
+          "column": 1
         }
       ]
     },
@@ -706,8 +735,8 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 89,
-          "column": 48
+          "line": 90,
+          "column": 1
         }
       ]
     },
@@ -830,7 +859,7 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 403,
+          "line": 498,
           "column": 106
         }
       ]
@@ -900,6 +929,11 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 111,
           "column": 16
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 271,
+          "column": 31
         }
       ]
     },
@@ -946,7 +980,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 195,
+          "line": 204,
           "column": 5
         }
       ]
@@ -958,7 +992,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 161,
+          "line": 170,
           "column": 5
         }
       ]
@@ -996,6 +1030,18 @@
           "file": "src/layouts/MainLayout.vue",
           "line": 44,
           "column": 18
+        }
+      ]
+    },
+    "35f826ce7f203daa": {
+      "source": "自定义 {0} 天",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 28,
+          "column": 30
         }
       ]
     },
@@ -1110,7 +1156,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 215,
+          "line": 222,
           "column": 14
         }
       ]
@@ -1122,7 +1168,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 365,
+          "line": 561,
           "column": 21
         }
       ]
@@ -1163,7 +1209,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 82,
+          "line": 84,
           "column": 12
         }
       ]
@@ -1293,8 +1339,20 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 193,
+          "line": 202,
           "column": 5
+        }
+      ]
+    },
+    "44219ca2a1e78d5c": {
+      "source": "自定义天数，{0} 到 {1} 天",
+      "kind": "template",
+      "placeholders": 2,
+      "refs": [
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 243,
+          "column": 26
         }
       ]
     },
@@ -1341,7 +1399,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 436,
+          "line": 675,
           "column": 21
         }
       ]
@@ -1353,7 +1411,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 87,
+          "line": 89,
           "column": 36
         }
       ]
@@ -1377,7 +1435,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 154,
+          "line": 163,
           "column": 5
         }
       ]
@@ -1389,7 +1447,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 45,
+          "line": 46,
           "column": 7
         }
       ]
@@ -1415,6 +1473,21 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 191,
           "column": 57
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 497,
+          "column": 15
+        },
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 15,
+          "column": 39
+        },
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 202,
+          "column": 64
         }
       ]
     },
@@ -1425,7 +1498,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 62,
+          "line": 71,
           "column": 12
         }
       ]
@@ -1449,8 +1522,28 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 310,
-          "column": 37
+          "line": 654,
+          "column": 120
+        },
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 218,
+          "column": 23
+        },
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 232,
+          "column": 31
+        },
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 249,
+          "column": 29
+        },
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 250,
+          "column": 29
         }
       ]
     },
@@ -1461,8 +1554,30 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 253,
-          "column": 75
+          "line": 265,
+          "column": 1
+        }
+      ]
+    },
+    "4a16de88e8b43975": {
+      "source": "中转配置",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 540,
+          "column": 13
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 541,
+          "column": 13
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 545,
+          "column": 19
         }
       ]
     },
@@ -1485,7 +1600,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 300,
+          "line": 307,
           "column": 10
         }
       ]
@@ -1497,7 +1612,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 153,
+          "line": 162,
           "column": 5
         }
       ]
@@ -1509,7 +1624,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 188,
+          "line": 197,
           "column": 5
         }
       ]
@@ -1620,8 +1735,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 266,
-          "column": 44
+          "line": 350,
+          "column": 1
         }
       ]
     },
@@ -1644,7 +1759,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 177,
+          "line": 186,
           "column": 5
         }
       ]
@@ -1704,8 +1819,8 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 410,
-          "column": 64
+          "line": 620,
+          "column": 23
         }
       ]
     },
@@ -1764,7 +1879,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 253,
+          "line": 260,
           "column": 15
         }
       ]
@@ -1776,12 +1891,12 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 219,
+          "line": 228,
           "column": 55
         },
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 222,
+          "line": 231,
           "column": 54
         },
         {
@@ -1798,7 +1913,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 332,
+          "line": 415,
           "column": 87
         }
       ]
@@ -1827,6 +1942,18 @@
         }
       ]
     },
+    "6466632970c7215c": {
+      "source": "拖动滑块，松开后应用",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 226,
+          "column": 62
+        }
+      ]
+    },
     "64857b4338678314": {
       "source": "自定义请求头 {0} 的值必须是字符串",
       "kind": "template",
@@ -1851,6 +1978,18 @@
         }
       ]
     },
+    "653b123c956d3bcb": {
+      "source": "调用",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 618,
+          "column": 23
+        }
+      ]
+    },
     "65cc5fd2e6ce6e75": {
       "source": "后端已启动，代理未启动",
       "kind": "text",
@@ -1860,18 +1999,6 @@
           "file": "src/state/appState.js",
           "line": 1115,
           "column": 14
-        }
-      ]
-    },
-    "65e0139ddabc2d59": {
-      "source": "总调用",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/HomeMetricsCard.vue",
-          "line": 404,
-          "column": 53
         }
       ]
     },
@@ -1923,8 +2050,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 260,
+          "line": 267,
           "column": 11
+        }
+      ]
+    },
+    "698ae0907a5bdb75": {
+      "source": "缓存命中",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 657,
+          "column": 1
         }
       ]
     },
@@ -1935,7 +2074,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 198,
+          "line": 213,
           "column": 11
         }
       ]
@@ -1991,12 +2130,12 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 98,
+          "line": 100,
           "column": 51
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 98,
+          "line": 100,
           "column": 69
         },
         {
@@ -2045,7 +2184,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 190,
+          "line": 199,
           "column": 5
         }
       ]
@@ -2069,7 +2208,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 155,
+          "line": 164,
           "column": 5
         }
       ]
@@ -2093,7 +2232,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 435,
+          "line": 674,
           "column": 21
         }
       ]
@@ -2117,7 +2256,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 176,
+          "line": 185,
           "column": 5
         }
       ]
@@ -2170,7 +2309,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 117,
+          "line": 126,
           "column": 49
         }
       ]
@@ -2216,12 +2355,22 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 358,
+          "line": 550,
           "column": 13
         },
         {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 551,
+          "column": 13
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 555,
+          "column": 19
+        },
+        {
           "file": "src/views/ModelConfig.vue",
-          "line": 12,
+          "line": 13,
           "column": 12
         }
       ]
@@ -2233,7 +2382,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 210,
+          "line": 217,
           "column": 17
         }
       ]
@@ -2284,7 +2433,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 150,
+          "line": 159,
           "column": 7
         }
       ]
@@ -2325,7 +2474,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 394,
+          "line": 481,
           "column": 27
         }
       ]
@@ -2337,7 +2486,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 172,
+          "line": 183,
           "column": 24
         }
       ]
@@ -2349,8 +2498,8 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 521,
-          "column": 65
+          "line": 761,
+          "column": 1
         }
       ]
     },
@@ -2361,7 +2510,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 54,
+          "line": 56,
           "column": 12
         }
       ]
@@ -2402,7 +2551,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 387,
+          "line": 471,
           "column": 22
         }
       ]
@@ -2426,8 +2575,20 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1623,
+          "line": 1624,
           "column": 32
+        }
+      ]
+    },
+    "84b0581564522376": {
+      "source": "{0} 天",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 28,
+          "column": 60
         }
       ]
     },
@@ -2479,8 +2640,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 341,
-          "column": 13
+          "line": 349,
+          "column": 1
         }
       ]
     },
@@ -2515,7 +2676,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 76,
+          "line": 78,
           "column": 68
         }
       ]
@@ -2529,6 +2690,11 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 31,
           "column": 12
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 263,
+          "column": 26
         }
       ]
     },
@@ -2539,7 +2705,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 201,
+          "line": 216,
           "column": 11
         }
       ]
@@ -2562,11 +2728,6 @@
       "placeholders": 0,
       "refs": [
         {
-          "file": "src/components/HomeMetricsCard.vue",
-          "line": 351,
-          "column": 13
-        },
-        {
           "file": "src/components/ModelAdapterModal.vue",
           "line": 49,
           "column": 35
@@ -2583,12 +2744,12 @@
         },
         {
           "file": "src/views/Home.vue",
-          "line": 218,
+          "line": 233,
           "column": 68
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 11,
+          "line": 12,
           "column": 12
         }
       ]
@@ -2600,7 +2761,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 166,
+          "line": 175,
           "column": 5
         }
       ]
@@ -2624,8 +2785,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 276,
-          "column": 9
+          "line": 360,
+          "column": 1
         }
       ]
     },
@@ -2718,8 +2879,8 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 473,
-          "column": 23
+          "line": 713,
+          "column": 1
         }
       ]
     },
@@ -2802,8 +2963,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 296,
-          "column": 25
+          "line": 380,
+          "column": 1
         }
       ]
     },
@@ -2816,11 +2977,6 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 19,
           "column": 12
-        },
-        {
-          "file": "src/components/HomeMetricsCard.vue",
-          "line": 401,
-          "column": 53
         }
       ]
     },
@@ -2831,7 +2987,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 192,
+          "line": 201,
           "column": 5
         }
       ]
@@ -2867,12 +3023,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1724,
+          "line": 1725,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1745,
+          "line": 1746,
           "column": 32
         }
       ]
@@ -2908,7 +3064,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 437,
+          "line": 676,
           "column": 21
         }
       ]
@@ -2920,7 +3076,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 164,
+          "line": 173,
           "column": 5
         }
       ]
@@ -2932,7 +3088,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 241,
+          "line": 251,
           "column": 28
         }
       ]
@@ -2944,7 +3100,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 147,
+          "line": 161,
           "column": 29
         }
       ]
@@ -2968,7 +3124,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 318,
+          "line": 401,
           "column": 86
         }
       ]
@@ -3096,7 +3252,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 240,
+          "line": 250,
           "column": 30
         }
       ]
@@ -3144,7 +3300,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 200,
+          "line": 215,
           "column": 11
         }
       ]
@@ -3219,7 +3375,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 387,
+          "line": 471,
           "column": 22
         }
       ]
@@ -3231,7 +3387,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 231,
+          "line": 310,
           "column": 44
         },
         {
@@ -3338,6 +3494,18 @@
         }
       ]
     },
+    "ad62ba0fb4af7131": {
+      "source": "新增用量",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 383,
+          "column": 32
+        }
+      ]
+    },
     "ad79540418be700a": {
       "source": "打开设置目录，或单独管理模型配置",
       "kind": "text",
@@ -3345,7 +3513,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 214,
+          "line": 229,
           "column": 47
         }
       ]
@@ -3369,7 +3537,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 300,
+          "line": 307,
           "column": 10
         }
       ]
@@ -3398,6 +3566,18 @@
         }
       ]
     },
+    "aeef92eaae8c5b91": {
+      "source": "{0} 的模型列表刷新完成",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 478,
+          "column": 32
+        }
+      ]
+    },
     "afd4b783536b8297": {
       "source": "收起",
       "kind": "text",
@@ -3405,7 +3585,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 387,
+          "line": 471,
           "column": 22
         }
       ]
@@ -3417,7 +3597,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 191,
+          "line": 200,
           "column": 5
         }
       ]
@@ -3449,6 +3629,18 @@
         }
       ]
     },
+    "b2ddc0ee819ebfdd": {
+      "source": "模型列表正在刷新",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 128,
+          "column": 44
+        }
+      ]
+    },
     "b42049dcf8a05ef7": {
       "source": "已切换到本地服务模式",
       "kind": "text",
@@ -3456,7 +3648,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 147,
+          "line": 161,
           "column": 50
         }
       ]
@@ -3480,7 +3672,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 172,
+          "line": 181,
           "column": 5
         }
       ]
@@ -3533,8 +3725,8 @@
         },
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 395,
-          "column": 15
+          "line": 593,
+          "column": 1
         }
       ]
     },
@@ -3569,7 +3761,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 76,
+          "line": 78,
           "column": 35
         }
       ]
@@ -3617,8 +3809,13 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 365,
+          "line": 561,
           "column": 21
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 562,
+          "column": 13
         }
       ]
     },
@@ -3629,7 +3826,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 163,
+          "line": 172,
           "column": 5
         }
       ]
@@ -3665,7 +3862,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 458,
+          "line": 697,
           "column": 19
         }
       ]
@@ -3699,7 +3896,7 @@
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 53,
+          "line": 54,
           "column": 30
         }
       ]
@@ -3713,6 +3910,11 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 32,
           "column": 12
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 264,
+          "column": 27
         }
       ]
     },
@@ -3740,7 +3942,7 @@
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 10,
+          "line": 11,
           "column": 12
         }
       ]
@@ -3788,7 +3990,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 217,
+          "line": 232,
           "column": 63
         }
       ]
@@ -3800,7 +4002,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 112,
+          "line": 114,
           "column": 66
         }
       ]
@@ -3812,7 +4014,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 223,
+          "line": 230,
           "column": 14
         }
       ]
@@ -3858,7 +4060,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 79,
+          "line": 81,
           "column": 12
         }
       ]
@@ -3870,7 +4072,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 151,
+          "line": 160,
           "column": 7
         }
       ]
@@ -3894,8 +4096,20 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 165,
+          "line": 174,
           "column": 5
+        }
+      ]
+    },
+    "ca2593124f12e7ed": {
+      "source": "自定义天数",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/TrendRangePicker.vue",
+          "line": 225,
+          "column": 67
         }
       ]
     },
@@ -3918,7 +4132,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 199,
+          "line": 214,
           "column": 11
         }
       ]
@@ -3942,7 +4156,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 144,
+          "line": 158,
           "column": 27
         }
       ]
@@ -4048,7 +4262,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 136,
+          "line": 291,
           "column": 17
         }
       ]
@@ -4123,12 +4337,12 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 117,
+          "line": 126,
           "column": 38
         },
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 434,
+          "line": 673,
           "column": 21
         }
       ]
@@ -4174,7 +4388,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 231,
+          "line": 310,
           "column": 23
         },
         {
@@ -4191,8 +4405,8 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 407,
-          "column": 53
+          "line": 619,
+          "column": 23
         }
       ]
     },
@@ -4268,8 +4482,8 @@
       "refs": [
         {
           "file": "src/views/Config.vue",
-          "line": 101,
-          "column": 48
+          "line": 102,
+          "column": 1
         }
       ]
     },
@@ -4280,7 +4494,7 @@
       "refs": [
         {
           "file": "src/components/charts/DailyUsageChart.vue",
-          "line": 184,
+          "line": 195,
           "column": 54
         },
         {
@@ -4321,8 +4535,32 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 174,
+          "line": 183,
           "column": 5
+        }
+      ]
+    },
+    "e2dbe78899cce414": {
+      "source": "刷新 {0} 的模型列表",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 478,
+          "column": 32
+        }
+      ]
+    },
+    "e2f514ecc2614670": {
+      "source": "较前期持平",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 393,
+          "column": 81
         }
       ]
     },
@@ -4338,7 +4576,7 @@
         },
         {
           "file": "src/views/Home.vue",
-          "line": 213,
+          "line": 228,
           "column": 56
         }
       ]
@@ -4362,8 +4600,25 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 178,
+          "line": 187,
           "column": 5
+        }
+      ]
+    },
+    "e85e590b63fe54b5": {
+      "source": "活跃",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 649,
+          "column": 1
+        },
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 654,
+          "column": 1
         }
       ]
     },
@@ -4374,12 +4629,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 278,
+          "line": 285,
           "column": 35
         },
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 292,
+          "line": 299,
           "column": 35
         }
       ]
@@ -4408,7 +4663,7 @@
       "refs": [
         {
           "file": "src/components/HomeMetricsCard.vue",
-          "line": 187,
+          "line": 196,
           "column": 5
         }
       ]
@@ -4576,7 +4831,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 215,
+          "line": 222,
           "column": 14
         }
       ]
@@ -4650,6 +4905,18 @@
         }
       ]
     },
+    "f599715c31afd75c": {
+      "source": "较前期 -{0}%",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 390,
+          "column": 13
+        }
+      ]
+    },
     "f6179d7f84399e00": {
       "source": "已获取 {0} 个模型",
       "kind": "template",
@@ -4698,7 +4965,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 320,
+          "line": 403,
           "column": 26
         }
       ]
@@ -4788,6 +5055,18 @@
         }
       ]
     },
+    "fd002e424e0fbbcf": {
+      "source": "刷新模型失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 184,
+          "column": 17
+        }
+      ]
+    },
     "fd87dae7d24e21e8": {
       "source": "中转站不存在",
       "kind": "text",
@@ -4795,8 +5074,20 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1628,
+          "line": 1629,
           "column": 32
+        }
+      ]
+    },
+    "fe8e5cea71327de8": {
+      "source": "较前期 +{0}%",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/HomeMetricsCard.vue",
+          "line": 383,
+          "column": 41
         }
       ]
     },

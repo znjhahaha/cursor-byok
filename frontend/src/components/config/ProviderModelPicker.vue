@@ -191,7 +191,14 @@ function handleManualImport() {
 
 <template>
   <div class="flex min-h-0 flex-col gap-2.5">
-    <div v-if="models.length > 0" class="center-row flex-wrap justify-between gap-2">
+    <!-- compact 用在中转站卡片内联展开处，容器只有约 300px：
+         四件控件挤一行会折成三行，所以纵向分成「筛选」「批量操作」两层。
+         宽容器（编辑器窗口）仍保持单行。 -->
+    <div
+      v-if="models.length > 0"
+      class="flex gap-2"
+      :class="compact ? 'flex-col' : 'center-row flex-wrap justify-between'"
+    >
       <div class="center-row min-w-0 flex-1 gap-2">
         <div class="relative min-w-0 flex-1">
           <span
@@ -210,7 +217,7 @@ function handleManualImport() {
           <span>隐藏已添加</span>
         </label>
       </div>
-      <div class="center-row shrink-0 gap-2">
+      <div class="center-row shrink-0 gap-2" :class="compact ? 'justify-end' : ''">
         <Button v-if="selectableIDs.length > 0" variant="text" @click="toggleSelectAll">
           {{ allSelected ? "取消全选" : "全选" }}
         </Button>
@@ -309,7 +316,7 @@ function handleManualImport() {
       <div
         class="grid gap-1.5"
         :class="compact
-          ? '[grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]'
+          ? '[grid-template-columns:repeat(auto-fill,minmax(130px,1fr))]'
           : '[grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]'"
       >
         <label

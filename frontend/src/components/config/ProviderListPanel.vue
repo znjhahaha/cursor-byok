@@ -20,13 +20,15 @@ const emit = defineEmits(["error", "confirm-delete"]);
 const probing = ref(new Set());
 
 // 单值控制：同时只展开一个卡片，避免多张列表同时铺开把页面撑爆。
+// 卡片原地展开（不再跨列），所以这一个 ref 就是完整的展开状态 ——
+// 展开与收起互斥、只展开一张，都由「赋值」本身表达。
 const expandedID = ref("");
-const wideID = ref("");
 const probingPath = ref({});
+const refreshSucceeded = ref(new Set());
 const importHint = ref({ id: "", text: "" });
-let expandTimer = null;
 let hintTimer = null;
 const probeTimers = new Map();
+const refreshFeedbackTimers = new Map();
 
 const providers = computed(() =>
   appState.providers.map((provider) => ({
@@ -35,8 +37,8 @@ const providers = computed(() =>
     catalog: appState.providerModelCatalog[provider.id] ?? null,
     probing: probing.value.has(provider.id),
     probingPath: probingPath.value[provider.id] || "",
+    refreshSucceeded: refreshSucceeded.value.has(provider.id),
     expanded: expandedID.value === provider.id,
-    wide: wideID.value === provider.id,
   })),
 );
 
@@ -123,7 +125,7 @@ function startProbeIndicator(providerID) {
 
 async function handleProbe(provider, { force = false } = {}) {
   if (probing.value.has(provider.id)) {
-    return;
+    return { ok: false, busy: true, error: "模型列表正在刷新" };
   }
   const willHitCache = !force && hasCachedProviderModels(provider);
   probing.value = new Set(probing.value).add(provider.id);
@@ -131,9 +133,10 @@ async function handleProbe(provider, { force = false } = {}) {
     startProbeIndicator(provider.id);
   }
   try {
-    await fetchProviderModels(provider, { force });
+    return await fetchProviderModels(provider, { force });
   } catch (error) {
-    reportError("获取模型失败", toUserError(error));
+    const message = toUserError(error);
+    return { ok: false, error: message };
   } finally {
     window.clearInterval(probeTimers.get(provider.id));
     probeTimers.delete(provider.id);
@@ -146,8 +149,42 @@ async function handleProbe(provider, { force = false } = {}) {
   }
 }
 
-function handleRefresh(provider) {
-  return handleProbe(provider, { force: true });
+function isUsableProbeOutcome(outcome) {
+  return Boolean(outcome?.ok || (outcome?.result?.reachable && outcome?.provider));
+}
+
+function showRefreshSuccess(providerID) {
+  window.clearTimeout(refreshFeedbackTimers.get(providerID));
+  refreshSucceeded.value = new Set(refreshSucceeded.value).add(providerID);
+  refreshFeedbackTimers.set(
+    providerID,
+    window.setTimeout(() => {
+      const next = new Set(refreshSucceeded.value);
+      next.delete(providerID);
+      refreshSucceeded.value = next;
+      refreshFeedbackTimers.delete(providerID);
+    }, 1400),
+  );
+}
+
+// 网络/鉴权失败不覆盖旧 catalog，但必须给出明确反馈；可达但无标准模型列表
+// 属于有效探测结果，会切换到手动添加模型区域。
+async function handleRefresh(provider) {
+  window.clearTimeout(refreshFeedbackTimers.get(provider.id));
+  refreshFeedbackTimers.delete(provider.id);
+  const pendingFeedback = new Set(refreshSucceeded.value);
+  pendingFeedback.delete(provider.id);
+  refreshSucceeded.value = pendingFeedback;
+
+  const outcome = await handleProbe(provider, { force: true });
+  if (outcome?.busy) {
+    return;
+  }
+  if (!isUsableProbeOutcome(outcome)) {
+    reportError("刷新模型失败", outcome?.error);
+    return;
+  }
+  showRefreshSuccess(provider.id);
 }
 
 function fetchedAtLabel(provider) {
@@ -158,10 +195,6 @@ function fetchedAtLabel(provider) {
   return dayjs(fetchedAt).format("MM-DD HH:mm");
 }
 
-// grid-column 不可动画，所以变宽是瞬时的、只能靠延时把它藏在高度动画里。
-// 时长必须与 motion.css 的 --mo-panel 一致 —— 写死数字的话，
-// 系统开启「减少动态效果」后 CSS 1ms 就结束了、JS 还在等 220ms，
-// 中间会露出一段可见空白。所以这里直接读同一个变量。
 function motionDurationMS(name, fallback) {
   if (typeof window === "undefined") {
     return fallback;
@@ -176,30 +209,73 @@ function motionDurationMS(name, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+// 展开是纯粹的单值切换：卡片留在原列内长高，没有「先变宽再展开」的中间态，
+// 于是也不需要状态机去协调两段动画的先后。
 function closeExpanded() {
   expandedID.value = "";
-  window.clearTimeout(expandTimer);
-  expandTimer = window.setTimeout(() => {
-    wideID.value = "";
-  }, motionDurationMS("--mo-panel", 220));
 }
 
 function openExpanded(providerID) {
-  window.clearTimeout(expandTimer);
-  if (expandedID.value && expandedID.value !== providerID) {
-    expandedID.value = "";
-    expandTimer = window.setTimeout(() => {
-      wideID.value = providerID;
-      requestAnimationFrame(() => {
-        expandedID.value = providerID;
-      });
-    }, motionDurationMS("--mo-mask", 180));
-    return;
-  }
-  wideID.value = providerID;
-  requestAnimationFrame(() => {
-    expandedID.value = providerID;
-  });
+  expandedID.value = providerID;
+}
+
+// 高度动画显式测量，不用 grid-template-rows 的 0fr→1fr：
+// 后者要求浏览器能记住过渡起始值，而这块内容是异步填充的，起始值不可靠时
+// 整段过渡会被跳过。这里用 scrollHeight 固化起止值，靠强制 reflow 而不是猜帧数。
+const COLLAPSE_EASING = "var(--mo-ease)";
+
+function collapseTransition(el) {
+  return `height ${motionDurationMS("--mo-panel", 220)}ms ${COLLAPSE_EASING}, opacity ${motionDurationMS("--mo-fast", 140)}ms ${COLLAPSE_EASING}`;
+}
+
+function collapseEnter(el, done) {
+  el.style.overflow = "hidden";
+  el.style.transition = "none";
+  el.style.height = "0px";
+  el.style.opacity = "0";
+  void el.offsetHeight;
+  el.style.transition = collapseTransition(el);
+  el.style.height = `${el.scrollHeight}px`;
+  el.style.opacity = "1";
+  const finish = () => {
+    el.removeEventListener("transitionend", onEnd);
+    // 必须交还给 auto：模型列表是异步填充的，锁死像素值会把后到的内容截断。
+    el.style.height = "";
+    el.style.overflow = "";
+    el.style.transition = "";
+    done();
+  };
+  const onEnd = (event) => {
+    if (event.target === el && event.propertyName === "height") {
+      finish();
+    }
+  };
+  el.addEventListener("transitionend", onEnd);
+}
+
+function collapseLeave(el, done) {
+  el.style.overflow = "hidden";
+  el.style.transition = "none";
+  el.style.height = `${el.scrollHeight}px`;
+  el.style.opacity = "1";
+  void el.offsetHeight;
+  el.style.transition = collapseTransition(el);
+  el.style.height = "0px";
+  el.style.opacity = "0";
+  const finish = () => {
+    el.removeEventListener("transitionend", onEnd);
+    el.style.height = "";
+    el.style.opacity = "";
+    el.style.overflow = "";
+    el.style.transition = "";
+    done();
+  };
+  const onEnd = (event) => {
+    if (event.target === el && event.propertyName === "height") {
+      finish();
+    }
+  };
+  el.addEventListener("transitionend", onEnd);
 }
 
 // 「获取模型」把探活与展开合并成一个动作：拉取本身就是最真实的可用性验证。
@@ -210,7 +286,10 @@ async function handleFetchAndExpand(provider) {
   }
   importHint.value = { id: "", text: "" };
   openExpanded(provider.id);
-  await handleProbe(provider);
+  const outcome = await handleProbe(provider);
+  if (!outcome?.busy && !isUsableProbeOutcome(outcome)) {
+    reportError("获取模型失败", outcome?.error);
+  }
 }
 
 function toggleExpand(provider) {
@@ -236,12 +315,16 @@ function handleImported(provider, { added }) {
 }
 
 function clearAllTimers() {
-  window.clearTimeout(expandTimer);
   window.clearTimeout(hintTimer);
   for (const timer of probeTimers.values()) {
     window.clearInterval(timer);
   }
   probeTimers.clear();
+  for (const timer of refreshFeedbackTimers.values()) {
+    window.clearTimeout(timer);
+  }
+  refreshFeedbackTimers.clear();
+  refreshSucceeded.value = new Set();
 }
 
 onBeforeUnmount(clearAllTimers);
@@ -278,13 +361,13 @@ function handleDelete(provider) {
       </div>
 
       <div v-else class="h-full min-h-0 overflow-y-auto pr-1">
-        <div class="grid gap-3 pb-1 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
-          <Card
-            v-for="provider in providers"
-            :key="provider.id"
-            :class="provider.wide ? '[grid-column:1/-1]' : ''"
-          >
-            <div class="flex h-full min-h-[168px] flex-col justify-between gap-3">
+        <!-- items-start 是必须的：grid 默认拉伸同行所有单元格，
+             展开的卡片会把邻居一起顶到同样高度，留下大片空白。 -->
+        <div
+          class="grid items-start gap-3 pb-1 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]"
+        >
+          <Card v-for="provider in providers" :key="provider.id">
+            <div class="flex min-h-[168px] flex-col justify-between gap-3">
               <div class="flex flex-col gap-2.5">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0 flex-1">
@@ -338,8 +421,8 @@ function handleDelete(provider) {
                       >{{ fetchedAtLabel(provider) }}</span>
                       <span
                         v-if="provider.catalog"
-                        class="text-[14px] text-[#8f8f8f]"
-                        :class="provider.expanded ? 'icon-[mdi--chevron-up]' : 'icon-[mdi--chevron-down]'"
+                        class="icon-[mdi--chevron-down] text-[14px] text-[#8f8f8f] transition-transform duration-panel"
+                        :class="provider.expanded ? 'rotate-180' : ''"
                       ></span>
                     </span>
                   </div>
@@ -355,11 +438,12 @@ function handleDelete(provider) {
                   </div>
                 </Transition>
 
-                <div
-                  class="mo-collapse"
-                  :class="provider.expanded ? 'mo-collapse--open' : ''"
-                >
-                  <div class="min-h-0 overflow-hidden">
+                <!-- 用 v-show 而不是 v-if：picker 内部持有搜索词与勾选集合，
+                     卸载重建会把它们清空。高度动画由 JS 钩子用 scrollHeight 显式测量，
+                     不用 grid-template-rows 的 0fr→1fr —— 模型列表是异步填充的，
+                     fr 过渡在内容尺寸未定时拿不到可靠起始值。 -->
+                <Transition :css="false" @enter="collapseEnter" @leave="collapseLeave">
+                  <div v-show="provider.expanded" class="mo-collapse">
                     <div class="rounded-[8px] border border-[#343434] bg-[#232323] p-3">
                       <ProviderModelPicker
                         :provider="provider"
@@ -375,7 +459,7 @@ function handleDelete(provider) {
                       />
                     </div>
                   </div>
-                </div>
+                </Transition>
               </div>
 
               <div class="center-row flex-wrap justify-end gap-2 border-t border-[#343434] pt-3">
@@ -386,18 +470,29 @@ function handleDelete(provider) {
                 >
                   {{ provider.probing ? "获取中..." : provider.expanded ? "收起" : "获取模型" }}
                 </Button>
-                <!-- 模型列表长期缓存，这里是唯一的强制刷新入口；纯图标，零新增文案。 -->
+                <!-- 强制刷新入口：请求中由 Button 统一显示 Spinner，成功后短暂显示完成态。 -->
                 <Button
                   v-if="provider.catalog"
                   variant="default"
-                  :disabled="provider.probing"
-                  :title="`上次更新 ${fetchedAtLabel(provider) || '-'}`"
+                  :loading="provider.probing"
+                  :aria-label="provider.refreshSucceeded
+                    ? `${provider.name} 的模型列表刷新完成`
+                    : `刷新 ${provider.name} 的模型列表`"
+                  :title="provider.refreshSucceeded
+                    ? '刷新完成'
+                    : `上次更新 ${fetchedAtLabel(provider) || '-'}`"
                   @click="handleRefresh(provider)"
                 >
-                  <span
-                    class="icon-[mdi--refresh] text-[14px]"
-                    :class="{ 'animate-spin': provider.probing }"
-                  ></span>
+                  <Transition name="mo-fade" mode="out-in">
+                    <span
+                      v-if="!provider.probing"
+                      :key="provider.refreshSucceeded ? 'success' : 'refresh'"
+                      class="text-[14px]"
+                      :class="provider.refreshSucceeded
+                        ? 'icon-[mdi--check] text-[#86efac]'
+                        : 'icon-[mdi--refresh]'"
+                    ></span>
+                  </Transition>
                 </Button>
                 <Button variant="default" :disabled="appState.configSaving" @click="openEditor(provider)">编辑</Button>
                 <Button variant="text" :disabled="appState.configSaving" @click="handleDelete(provider)">删除</Button>

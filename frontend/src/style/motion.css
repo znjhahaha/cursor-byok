@@ -181,6 +181,24 @@
   transform: translateY(var(--mo-shift-up));
 }
 
+/* ===== 图表实例重建（切换柱/折线/饼） =====
+   Chart.js 的 type 不可变更，换形态只能销毁重建，几何形态之间也无法 morph，
+   所以交叉淡入是这里唯一说得通的落点。
+   离场必须脱流：两张 canvas 同时在流里会把容器顶高一倍。 */
+.mo-chart-leave-active {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity var(--mo-leave) var(--mo-ease-in);
+}
+.mo-chart-enter-active {
+  transition: opacity var(--mo-enter) var(--mo-ease) var(--mo-stagger);
+}
+.mo-chart-enter-from,
+.mo-chart-leave-to {
+  opacity: 0;
+}
+
 /* ===== 列表增删 ===== */
 .mo-list-enter-active,
 .mo-list-leave-active {
@@ -200,29 +218,17 @@
 }
 
 /* ===== 自动高度折叠 =====
-   从 ProviderListPanel 的局部实现提升为共享原语。
-   grid-template-rows: 0fr → 1fr 是唯一不需要测量就能动画到 auto 高度的做法。 */
+   这里刻意不再用 grid-template-rows: 0fr → 1fr。那个技法要求浏览器能记住过渡的
+   起始值，但调用方（ProviderListPanel）在展开前会先把卡片切成整行，
+   grid-column 是瞬时生效并触发重排的，紧随其后的 fr 过渡拿不到可靠起始值，
+   浏览器会整段跳过 —— 观感就是「完全没有动画」。
+   高度改由 Vue Transition 的 JS 钩子用 scrollHeight 显式测量，
+   这里只留下静态基线，不写任何 transition，避免和 JS 内联样式打架。 */
 .mo-collapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  margin-top: -10px;
-  opacity: 0;
-  visibility: hidden;
-  transition: grid-template-rows var(--mo-panel) var(--mo-ease),
-    margin-top var(--mo-panel) var(--mo-ease), opacity var(--mo-leave) var(--mo-ease),
-    visibility 0s linear var(--mo-panel);
-}
-.mo-collapse--open {
-  grid-template-rows: 1fr;
-  margin-top: 0;
-  opacity: 1;
-  visibility: visible;
-  transition: grid-template-rows var(--mo-panel) var(--mo-ease),
-    margin-top var(--mo-panel) var(--mo-ease), opacity var(--mo-mask) var(--mo-ease), visibility 0s;
+  overflow: hidden;
 }
 .mo-collapse > * {
   min-height: 0;
-  overflow: hidden;
 }
 
 /* ===== 窗口失焦：降低强调，不做位移 ===== */
