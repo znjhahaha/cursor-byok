@@ -33,6 +33,11 @@ const SUPPORTED_CLIENT_PROFILES = new Set(["generic", "claude-code", "codex"]);
 export const CLIENT_PROFILE_GENERIC = "generic";
 export const CLIENT_PROFILE_CLAUDE_CODE = "claude-code";
 export const CLIENT_PROFILE_CODEX = "codex";
+export const CLIENT_PROFILE_OPTIONS = [
+  { label: "通用协议", value: CLIENT_PROFILE_GENERIC, icon: "icon-[mdi--web]" },
+  { label: "Claude Code", value: CLIENT_PROFILE_CLAUDE_CODE, icon: "icon-[logos--claude-icon]" },
+  { label: "Codex", value: CLIENT_PROFILE_CODEX, icon: "icon-[bxl--openai]" },
+];
 export const ANTHROPIC_THINKING_EFFORT_DEFAULT = "xhigh";
 export const OPENAI_ENDPOINT_RESPONSES = "/v1/responses";
 export const OPENAI_ENDPOINT_CHAT_COMPLETIONS = "/v1/chat/completions";

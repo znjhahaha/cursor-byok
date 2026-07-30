@@ -10,7 +10,24 @@ func TestNormalizeModelAdapterRejectsInvalidClientProfile(t *testing.T) {
 	}
 }
 
-func TestProviderClientProfileInheritanceDoesNotChangeStableChannelID(t *testing.T) {
+func TestNormalizeModelAdapterPreservesSupportedClientProfiles(t *testing.T) {
+	for _, profile := range []string{"generic", "claude-code", "codex"} {
+		t.Run(profile, func(t *testing.T) {
+			adapter := validAnthropicAdapterForProfileTest()
+			adapter.DisplayName += "-" + profile
+			adapter.ClientProfile = profile
+			normalized, err := NormalizeModelAdapterConfigs([]ModelAdapterConfig{adapter})
+			if err != nil {
+				t.Fatalf("normalize %s adapter: %v", profile, err)
+			}
+			if normalized[0].ClientProfile != profile {
+				t.Fatalf("client profile = %q, want %q", normalized[0].ClientProfile, profile)
+			}
+		})
+	}
+}
+
+func TestModelClientProfileOverridesProviderAndDoesNotChangeStableChannelID(t *testing.T) {
 	adapter := validAnthropicAdapterForProfileTest()
 	adapter.ProviderID = "provider-1"
 	genericProvider := ProviderConfig{
@@ -24,23 +41,39 @@ func TestProviderClientProfileInheritanceDoesNotChangeStableChannelID(t *testing
 	claudeProvider := genericProvider
 	claudeProvider.ClientProfile = "claude-code"
 
-	generic, err := NormalizeModelAdapterConfigs([]ModelAdapterConfig{
-		ApplyProviderInheritance(adapter, []ProviderConfig{genericProvider}),
-	})
-	if err != nil {
-		t.Fatalf("normalize generic adapter: %v", err)
-	}
-	claude, err := NormalizeModelAdapterConfigs([]ModelAdapterConfig{
+	explicitGeneric, err := NormalizeModelAdapterConfigs([]ModelAdapterConfig{
 		ApplyProviderInheritance(adapter, []ProviderConfig{claudeProvider}),
 	})
 	if err != nil {
-		t.Fatalf("normalize Claude adapter: %v", err)
+		t.Fatalf("normalize explicit generic adapter: %v", err)
 	}
-	if claude[0].ClientProfile != "claude-code" {
-		t.Fatalf("inherited profile = %q", claude[0].ClientProfile)
+	if explicitGeneric[0].ClientProfile != "generic" {
+		t.Fatalf("explicit model profile was overridden: %q", explicitGeneric[0].ClientProfile)
 	}
-	if generic[0].ID != claude[0].ID {
-		t.Fatalf("client profile changed stable channel ID: %q != %q", generic[0].ID, claude[0].ID)
+
+	missingProfile := adapter
+	missingProfile.ClientProfile = ""
+	inheritedClaude, err := NormalizeModelAdapterConfigs([]ModelAdapterConfig{
+		ApplyProviderInheritance(missingProfile, []ProviderConfig{claudeProvider}),
+	})
+	if err != nil {
+		t.Fatalf("normalize inherited Claude adapter: %v", err)
+	}
+	if inheritedClaude[0].ClientProfile != "claude-code" {
+		t.Fatalf("inherited profile = %q", inheritedClaude[0].ClientProfile)
+	}
+	if explicitGeneric[0].ID != inheritedClaude[0].ID {
+		t.Fatalf("client profile changed stable channel ID: %q != %q", explicitGeneric[0].ID, inheritedClaude[0].ID)
+	}
+
+	inheritedGeneric, err := NormalizeModelAdapterConfigs([]ModelAdapterConfig{
+		ApplyProviderInheritance(missingProfile, []ProviderConfig{genericProvider}),
+	})
+	if err != nil {
+		t.Fatalf("normalize inherited generic adapter: %v", err)
+	}
+	if inheritedGeneric[0].ClientProfile != "generic" {
+		t.Fatalf("generic provider profile was not inherited: %q", inheritedGeneric[0].ClientProfile)
 	}
 }
 

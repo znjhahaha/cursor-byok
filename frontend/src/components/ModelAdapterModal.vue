@@ -4,9 +4,7 @@ import Select from "@/components/ui/Select.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
 import {
   ANTHROPIC_THINKING_EFFORT_DEFAULT,
-  CLIENT_PROFILE_CLAUDE_CODE,
-  CLIENT_PROFILE_CODEX,
-  CLIENT_PROFILE_GENERIC,
+  CLIENT_PROFILE_OPTIONS,
   createEmptyModelAdapter,
   normalizeModelAdapter,
   OPENAI_ENDPOINT_CHAT_COMPLETIONS,
@@ -19,12 +17,6 @@ import { computed, reactive, watch } from "vue";
 const modelTypeOptions = [
   { label: "openai", value: "openai", icon: "icon-[bxl--openai]" },
   { label: "anthropic", value: "anthropic", icon: "icon-[logos--claude-icon]" },
-];
-
-const clientProfileOptions = [
-  { label: "通用协议", value: CLIENT_PROFILE_GENERIC, icon: "icon-[mdi--web]" },
-  { label: "Claude Code", value: CLIENT_PROFILE_CLAUDE_CODE, icon: "icon-[logos--claude-icon]" },
-  { label: "Codex", value: CLIENT_PROFILE_CODEX, icon: "icon-[bxl--openai]" },
 ];
 
 const reasoningEffortOptions = [
@@ -216,7 +208,7 @@ function handleSave() {
                 </span>
                 <Select
                   v-model="draft.clientProfile"
-                  :options="clientProfileOptions"
+                  :options="CLIENT_PROFILE_OPTIONS"
                 />
               </label>
 

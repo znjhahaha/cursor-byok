@@ -10,6 +10,10 @@ import {
   ANTHROPIC_THINKING_EFFORT_DEFAULT,
   appState,
   buildModelAdapterTestRequestHash,
+  CLIENT_PROFILE_CLAUDE_CODE,
+  CLIENT_PROFILE_CODEX,
+  CLIENT_PROFILE_GENERIC,
+  CLIENT_PROFILE_OPTIONS,
   createEmptyModelAdapter,
   CUSTOM_HEADERS_DEFAULT_JSON,
   EXTRA_PARAMS_DEFAULT_JSON,
@@ -81,6 +85,19 @@ const contextWindowTokensInput = createOptionalPositiveIntegerModel("contextWind
 const interfacePlaceholder = computed(() =>
   draft.type === "anthropic" ? "例如：https://api.anthropic.com" : "例如：https://api.openai.com/v1",
 );
+const clientProfileStatus = computed(() => {
+  if (draft.clientProfile === CLIENT_PROFILE_CLAUDE_CODE) {
+    return draft.type === "anthropic"
+      ? "Claude Code 指纹将在 Anthropic 请求中生效。"
+      : "Claude Code 仅支持 Anthropic 请求；当前 OpenAI 请求将按通用协议发送。";
+  }
+  if (draft.clientProfile === CLIENT_PROFILE_CODEX) {
+    return draft.type === "openai" && draft.openAIEndpoint === OPENAI_ENDPOINT_RESPONSES
+      ? "Codex 指纹将在 OpenAI Responses 请求中生效。"
+      : "Codex 仅支持 OpenAI Responses；当前请求将按通用协议发送。";
+  }
+  return "仅发送当前协议所需的必要请求头。";
+});
 const currentRequestHash = computed(() => buildModelAdapterTestRequestHash(draft));
 const directModelTestResult = computed(() => getModelAdapterTestResult(draft));
 const rememberedModelTestResult = computed(() =>
@@ -129,6 +146,8 @@ const fieldTips = {
   modelID: "请求实际发送给服务端的模型名称，例如 gpt-4.1 或 claude-sonnet。",
   baseURL: "模型服务的 API 根地址，通常为兼容 OpenAI 或 Anthropic 的接口入口。",
   apiKey: "调用该模型服务需要使用的访问密钥。",
+  clientProfile: "选择该模型出站请求使用的客户端兼容指纹。模型自身的选择优先于所属中转站，自定义请求头仍可覆盖指纹中的同名值。",
+  anthropic1MContext: "启用后本地上下文至少按 1,000,000 Token 计算；仅在 Claude Code 模式下为出站模型 ID 派生 [1m] 并发送 1M beta，不会修改持久化模型标识。",
   contextWindowTokens: "模型单次可接受的最大上下文 Token 数。留空时使用默认值。",
   reasoningEffort: "推理强度仅对部分支持 reasoning_effort 的模型生效，并不是所有模型都支持。越高通常越稳，但也可能更慢。",
   maxCompletionTokens: "单次回复允许生成的最大 Token 数。留空时使用默认值。",
@@ -274,6 +293,15 @@ watch(
   },
 );
 
+watch(
+  () => draft.anthropic1MContextEnabled,
+  (enabled) => {
+    if (enabled && draft.contextWindowTokens < 1_000_000) {
+      draft.contextWindowTokens = 1_000_000;
+    }
+  },
+);
+
 onMounted(async () => {
   await loadContext();
 });
@@ -372,6 +400,27 @@ onMounted(async () => {
 
           <label class="flex flex-col gap-1">
             <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.clientProfile" />
+              <span>客户端模式</span>
+            </span>
+            <Select
+              v-model="draft.clientProfile"
+              :options="CLIENT_PROFILE_OPTIONS"
+            />
+            <span
+              class="text-xs leading-5"
+              :class="draft.clientProfile === CLIENT_PROFILE_GENERIC
+                || (draft.clientProfile === CLIENT_PROFILE_CLAUDE_CODE && draft.type === 'anthropic')
+                || (draft.clientProfile === CLIENT_PROFILE_CODEX && draft.type === 'openai' && draft.openAIEndpoint === OPENAI_ENDPOINT_RESPONSES)
+                ? 'text-[#8f8f8f]'
+                : 'text-[#d6ad63]'"
+            >
+              {{ clientProfileStatus }}
+            </span>
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
               <Tooltip :content="fieldTips.contextWindowTokens" />
               <span>上下文窗口</span>
             </span>
@@ -420,6 +469,26 @@ onMounted(async () => {
             />
           </label>
 
+        </div>
+
+        <div
+          v-if="draft.type === 'anthropic'"
+          class="rounded-[8px] border border-[#6b5520] bg-[#2b2515] p-3"
+        >
+          <label class="flex items-center justify-between gap-3">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#f5d98b]">
+              <Tooltip :content="fieldTips.anthropic1MContext" />
+              <span>启用 Claude Code 1M 上下文</span>
+            </span>
+            <input
+              v-model="draft.anthropic1MContextEnabled"
+              type="checkbox"
+              class="size-4 shrink-0 accent-[#10AD5D]"
+            />
+          </label>
+          <p class="mt-2 text-xs leading-5 text-[#cbbd91]">
+            仅 Claude Code 模式会在出站模型 ID 上派生 [1m] 并发送 1M beta；长上下文可能显著增加费用和等待时间。
+          </p>
         </div>
 
         <div v-if="draft.type === 'openai'" class="grid grid-cols-1 gap-3 md:grid-cols-2">

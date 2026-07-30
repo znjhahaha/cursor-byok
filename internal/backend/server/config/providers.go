@@ -214,7 +214,9 @@ func ApplyProviderInheritance(adapter ModelAdapterConfig, providers []ProviderCo
 		return adapter
 	}
 	resolved := adapter
-	if strings.TrimSpace(provider.ClientProfile) != "" {
+	// clientProfile 是模型可显式覆盖的请求行为。中转站只为旧配置中真正缺失
+	// 该字段的模型提供默认值；generic 同样是有效的显式选择，不能被站点覆盖。
+	if strings.TrimSpace(resolved.ClientProfile) == "" && strings.TrimSpace(provider.ClientProfile) != "" {
 		resolved.ClientProfile = provider.ClientProfile
 	}
 	resolved.BaseURL = applyProviderInferencePath(provider.BaseURL, provider.InferencePath)

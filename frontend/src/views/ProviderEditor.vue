@@ -8,9 +8,7 @@ import Tooltip from "@/components/ui/Tooltip.vue";
 import { getProviderEditorContext } from "@/services/clientApi";
 import {
   appState,
-  CLIENT_PROFILE_CLAUDE_CODE,
-  CLIENT_PROFILE_CODEX,
-  CLIENT_PROFILE_GENERIC,
+  CLIENT_PROFILE_OPTIONS,
   createEmptyProvider,
   fetchProviderModels,
   normalizeProvider,
@@ -24,12 +22,6 @@ import { computed, onMounted, reactive, ref } from "vue";
 const providerTypeTabs = [
   { label: "OpenAI", value: "openai", icon: "icon-[bxl--openai]" },
   { label: "Anthropic", value: "anthropic", icon: "icon-[logos--claude-icon]" },
-];
-
-const clientProfileOptions = [
-  { label: "通用协议", value: CLIENT_PROFILE_GENERIC, icon: "icon-[mdi--web]" },
-  { label: "Claude Code", value: CLIENT_PROFILE_CLAUDE_CODE, icon: "icon-[logos--claude-icon]" },
-  { label: "Codex", value: CLIENT_PROFILE_CODEX, icon: "icon-[bxl--openai]" },
 ];
 
 // 高级覆盖值；通常应优先选择“客户端模式”，由运行时生成完整且一致的请求头。
@@ -56,12 +48,28 @@ const loading = ref(true);
 const errorMessage = ref("");
 const fetching = ref(false);
 const statusMessage = ref("");
+const advancedOpen = ref(false);
 
 const isEditing = computed(() => Boolean(draft.id));
 const title = computed(() => (isEditing.value ? "编辑中转站" : "新增中转站"));
 const catalogKey = computed(() => draft.id || draft.baseURL);
 const catalog = computed(() => appState.providerModelCatalog[catalogKey.value] ?? null);
 const models = computed(() => catalog.value?.models ?? []);
+const modelCountText = computed(() => `共 ${models.value.length} 个模型`);
+const hasCustomRequestPaths = computed(() => Boolean(draft.modelsPath || draft.inferencePath));
+const advancedSummary = computed(() => {
+  const configured = [];
+  if (draft.userAgent) {
+    configured.push("User-Agent");
+  }
+  if (draft.headersJSON) {
+    configured.push("自定义请求头");
+  }
+  if (draft.note) {
+    configured.push("备注");
+  }
+  return configured.length > 0 ? `已配置：${configured.join("、")}` : "未配置额外覆盖";
+});
 
 const baseURLPlaceholder = computed(() =>
   draft.type === "anthropic" ? "例如：https://api.anthropic.com" : "例如：https://anyrouter.top",
@@ -77,6 +85,13 @@ function handleImported({ added }) {
 function handlePickerError(message) {
   statusMessage.value = "";
   errorMessage.value = message;
+}
+
+function resetRequestPaths() {
+  draft.modelsPath = "";
+  draft.inferencePath = "";
+  errorMessage.value = "";
+  statusMessage.value = "已恢复自动探测，保存后生效";
 }
 
 async function loadContext() {
@@ -162,9 +177,9 @@ onMounted(async () => {
 
 <template>
   <div class="flex h-full flex-col text-[#e5e5e5]">
-    <div class="flex shrink-0 items-center justify-between px-4 pb-2">
+    <div class="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 pb-2">
       <h2 class="text-base font-medium text-white">{{ title }}</h2>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <Button variant="default" @click="handleCancel">取消</Button>
         <Button
           variant="default"
@@ -180,164 +195,169 @@ onMounted(async () => {
       </div>
     </div>
 
+    <div
+      v-if="statusMessage || errorMessage"
+      class="shrink-0 px-4 pb-3"
+      role="status"
+      aria-live="polite"
+    >
+      <div
+        v-if="errorMessage"
+        class="rounded-[8px] border border-[#4b1d1d] bg-[#2a1313] px-3 py-2 text-sm text-[#fca5a5]"
+      >
+        {{ errorMessage }}
+      </div>
+      <div
+        v-else
+        class="rounded-[8px] border border-[#1d4b2f] bg-[#132a1c] px-3 py-2 text-sm text-[#86efac]"
+      >
+        {{ statusMessage }}
+      </div>
+    </div>
+
     <div v-if="loading" class="min-h-0 flex-1 overflow-hidden px-4 pb-4" aria-busy="true">
       <Skeleton variant="text" :lines="6" />
     </div>
 
     <div v-else class="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-      <div class="flex flex-col gap-4">
-        <div class="center-row gap-2">
-          <button
-            v-for="tab in providerTypeTabs"
-            :key="tab.value"
-            type="button"
-            class="center-row gap-2 rounded-[8px] border px-3 py-2 text-sm transition-colors duration-150"
-            :class="draft.type === tab.value
-              ? 'border-[#1ca35a] bg-[#123322] text-white'
-              : 'border-[#343434] bg-[#252525] text-[#a3a3a3] hover:border-[#4a4a4a] hover:text-[#e5e5e5]'"
-            @click="draft.type = tab.value"
-          >
-            <span :class="[tab.icon, 'text-[16px]']"></span>
-            <span>{{ tab.label }}</span>
-          </button>
-          <span
-            v-if="draft.builtin"
-            class="center-row gap-1 rounded-[999px] border border-[#3f3f3f] px-[7px] py-[4px] text-[11px] text-[#cfcfcf]"
-          >
-            内置预设
-          </span>
-        </div>
-
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label class="flex flex-col gap-1">
-            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-              <Tooltip :content="fieldTips.name" />
-              <span>中转站名称</span>
-            </span>
-            <input
-              v-model="draft.name"
-              type="text"
-              placeholder="例如：AnyRouter"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-            />
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-              <Tooltip :content="fieldTips.baseURL" />
-              <span>接口地址</span>
-            </span>
-            <input
-              v-model="draft.baseURL"
-              type="text"
-              :placeholder="baseURLPlaceholder"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-            />
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-              <Tooltip :content="fieldTips.apiKey" />
-              <span>访问密钥</span>
-            </span>
-            <Input
-              v-model="draft.apiKey"
-              type="password"
-              allow-visibility-toggle
-              placeholder="例如：sk-xxxxxx"
-              autocomplete="off"
-            />
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-              <Tooltip :content="fieldTips.clientProfile" />
-              <span>客户端模式</span>
-            </span>
-            <Select
-              v-model="draft.clientProfile"
-              :options="clientProfileOptions"
-            />
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-              <Tooltip :content="fieldTips.modelsPath" />
-              <span>模型列表路径</span>
-            </span>
-            <input
-              v-model="draft.modelsPath"
-              type="text"
-              placeholder="留空自动探测，例如：/v1/models"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-            />
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-              <Tooltip :content="fieldTips.inferencePath" />
-              <span>模型请求路径</span>
-            </span>
-            <input
-              v-model="draft.inferencePath"
-              type="text"
-              :placeholder="draft.type === 'anthropic' ? '留空自动探测，例如：/v1/messages' : '留空自动探测，例如：/v1/chat/completions'"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-            />
-          </label>
-        </div>
-
-        <div class="flex flex-col gap-1">
-          <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-            <Tooltip :content="fieldTips.userAgent" />
-            <span>User-Agent</span>
-          </span>
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,260px)_1fr]">
-            <Select
-              :model-value="userAgentPresets.some((item) => item.value === draft.userAgent) ? draft.userAgent : ''"
-              :options="userAgentPresets"
-              aria-label="User-Agent 预设"
-              @update:model-value="(value) => { draft.userAgent = value; }"
-            />
-            <input
-              v-model="draft.userAgent"
-              type="text"
-              placeholder="也可直接填写自定义 UA"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-            />
+      <div class="flex flex-col gap-3">
+        <section class="rounded-[10px] border border-[#343434] bg-[#252525] p-3.5">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-medium text-white">基础连接</h3>
+              <p class="mt-1 text-xs text-[#8f8f8f]">设置站点地址、密钥和默认客户端模式。</p>
+            </div>
+            <div class="center-row gap-2">
+              <span
+                v-if="draft.builtin"
+                class="center-row gap-1 rounded-[999px] border border-[#3f3f3f] px-[7px] py-[4px] text-[11px] text-[#cfcfcf]"
+              >
+                内置预设
+              </span>
+              <div class="center-row gap-1.5">
+                <button
+                  v-for="tab in providerTypeTabs"
+                  :key="tab.value"
+                  type="button"
+                  class="center-row gap-2 rounded-[8px] border px-3 py-1.5 text-sm transition-colors duration-150"
+                  :class="draft.type === tab.value
+                    ? 'border-[#1ca35a] bg-[#123322] text-white'
+                    : 'border-[#343434] bg-[#202020] text-[#a3a3a3] hover:border-[#4a4a4a] hover:text-[#e5e5e5]'"
+                  @click="draft.type = tab.value"
+                >
+                  <span :class="[tab.icon, 'text-[16px]']"></span>
+                  <span>{{ tab.label }}</span>
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <label class="flex flex-col gap-1">
-          <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-            <Tooltip :content="fieldTips.headersJSON" />
-            <span>自定义请求头 JSON</span>
-          </span>
-          <textarea
-            v-model="draft.headersJSON"
-            rows="4"
-            spellcheck="false"
-            :placeholder="headersPlaceholder"
-            class="min-h-[96px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-          />
-        </label>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label class="flex flex-col gap-1">
+              <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                <Tooltip :content="fieldTips.name" />
+                <span>中转站名称</span>
+              </span>
+              <input
+                v-model="draft.name"
+                type="text"
+                placeholder="例如：AnyRouter"
+                class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+              />
+            </label>
 
-        <label class="flex flex-col gap-1">
-          <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
-            <Tooltip :content="fieldTips.note" />
-            <span>备注</span>
-          </span>
-          <textarea
-            v-model="draft.note"
-            rows="2"
-            placeholder="例如：主力站点，额度按天重置"
-            class="min-h-[64px] resize-none rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-          />
-        </label>
+            <label class="flex flex-col gap-1">
+              <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                <Tooltip :content="fieldTips.baseURL" />
+                <span>接口地址</span>
+              </span>
+              <input
+                v-model="draft.baseURL"
+                type="text"
+                :placeholder="baseURLPlaceholder"
+                class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+              />
+            </label>
 
-        <div class="rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+            <label class="flex flex-col gap-1">
+              <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                <Tooltip :content="fieldTips.apiKey" />
+                <span>访问密钥</span>
+              </span>
+              <Input
+                v-model="draft.apiKey"
+                type="password"
+                allow-visibility-toggle
+                placeholder="例如：sk-xxxxxx"
+                autocomplete="off"
+              />
+            </label>
+
+            <label class="flex flex-col gap-1">
+              <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                <Tooltip :content="fieldTips.clientProfile" />
+                <span>客户端模式</span>
+              </span>
+              <Select
+                v-model="draft.clientProfile"
+                :options="CLIENT_PROFILE_OPTIONS"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section class="rounded-[10px] border border-[#343434] bg-[#252525] p-3.5">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-medium text-white">请求路径</h3>
+              <p class="mt-1 text-xs text-[#8f8f8f]">留空时自动探测；只有非标准中转站通常需要手工填写。</p>
+            </div>
+            <Button
+              variant="text"
+              :disabled="!hasCustomRequestPaths"
+              @click="resetRequestPaths"
+            >
+              恢复自动探测
+            </Button>
+          </div>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label class="flex flex-col gap-1">
+              <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                <Tooltip :content="fieldTips.modelsPath" />
+                <span>模型列表路径</span>
+              </span>
+              <input
+                v-model="draft.modelsPath"
+                type="text"
+                placeholder="留空自动探测，例如：/v1/models"
+                class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+              />
+            </label>
+
+            <label class="flex flex-col gap-1">
+              <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                <Tooltip :content="fieldTips.inferencePath" />
+                <span>模型请求路径</span>
+              </span>
+              <input
+                v-model="draft.inferencePath"
+                type="text"
+                :placeholder="draft.type === 'anthropic' ? '留空自动探测，例如：/v1/messages' : '留空自动探测，例如：/v1/chat/completions'"
+                class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section class="rounded-[10px] border border-[#343434] bg-[#252525] p-3.5">
           <div class="flex items-center justify-between gap-3 pb-2.5">
-            <span class="text-sm text-[#d4d4d4]">可用模型</span>
+            <div>
+              <h3 class="text-sm font-medium text-white">可用模型</h3>
+              <p class="mt-1 text-xs text-[#8f8f8f]">搜索、筛选并批量导入该站点提供的模型。</p>
+            </div>
+            <span v-if="models.length > 0" class="text-xs text-[#8f8f8f]">
+              {{ modelCountText }}
+            </span>
           </div>
 
           <ProviderModelPicker
@@ -357,21 +377,77 @@ onMounted(async () => {
           >
             点击「保存并拉取模型」获取该站点的模型列表
           </div>
-        </div>
+        </section>
 
-        <div
-          v-if="statusMessage"
-          class="rounded-[8px] border border-[#1d4b2f] bg-[#132a1c] px-3 py-2 text-sm text-[#86efac]"
-        >
-          {{ statusMessage }}
-        </div>
+        <section class="overflow-hidden rounded-[10px] border border-[#343434] bg-[#252525]">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left transition-colors hover:bg-[#2a2a2a]"
+            :aria-expanded="advancedOpen"
+            @click="advancedOpen = !advancedOpen"
+          >
+            <span>
+              <span class="block text-sm font-medium text-white">高级请求设置</span>
+              <span class="mt-1 block text-xs text-[#8f8f8f]">{{ advancedSummary }}</span>
+            </span>
+            <span
+              class="icon-[mdi--chevron-down] text-[20px] text-[#a3a3a3] transition-transform duration-200"
+              :class="advancedOpen ? 'rotate-180' : ''"
+            ></span>
+          </button>
 
-        <div
-          v-if="errorMessage"
-          class="rounded-[8px] border border-[#4b1d1d] bg-[#2a1313] px-3 py-2 text-sm text-[#fca5a5]"
-        >
-          {{ errorMessage }}
-        </div>
+          <div v-show="advancedOpen" class="border-t border-[#343434] px-3.5 py-3">
+            <div class="flex flex-col gap-3">
+              <div class="flex flex-col gap-1">
+                <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                  <Tooltip :content="fieldTips.userAgent" />
+                  <span>User-Agent</span>
+                </span>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,260px)_1fr]">
+                  <Select
+                    :model-value="userAgentPresets.some((item) => item.value === draft.userAgent) ? draft.userAgent : ''"
+                    :options="userAgentPresets"
+                    aria-label="User-Agent 预设"
+                    @update:model-value="(value) => { draft.userAgent = value; }"
+                  />
+                  <input
+                    v-model="draft.userAgent"
+                    type="text"
+                    placeholder="也可直接填写自定义 UA"
+                    class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                  />
+                </div>
+              </div>
+
+              <label class="flex flex-col gap-1">
+                <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                  <Tooltip :content="fieldTips.headersJSON" />
+                  <span>自定义请求头 JSON</span>
+                </span>
+                <textarea
+                  v-model="draft.headersJSON"
+                  rows="4"
+                  spellcheck="false"
+                  :placeholder="headersPlaceholder"
+                  class="min-h-[96px] w-full resize-y rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                />
+              </label>
+
+              <label class="flex flex-col gap-1">
+                <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                  <Tooltip :content="fieldTips.note" />
+                  <span>备注</span>
+                </span>
+                <textarea
+                  v-model="draft.note"
+                  rows="2"
+                  placeholder="例如：主力站点，额度按天重置"
+                  class="min-h-[64px] resize-y rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 py-2 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                />
+              </label>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
