@@ -1,6 +1,8 @@
 package modeladapter
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"runtime"
 	"strings"
@@ -11,11 +13,20 @@ const (
 	ClientProfileClaudeCode = "claude-code"
 	ClientProfileCodex      = "codex"
 
-	ClaudeCodeUserAgent            = "claude-cli/2.1.158 (external, sdk-cli)"
-	ClaudeCodeAnthropicBeta        = "claude-code-20250219,interleaved-thinking-2025-05-14,effort-2025-11-24,redact-thinking-2026-02-12"
+	ClaudeCodeVersion              = "2.1.220"
+	ClaudeCodeUserAgent            = "claude-cli/" + ClaudeCodeVersion + " (external, sdk-cli)"
+	ClaudeCodeAnthropicBeta        = "claude-code-20250219"
+	ClaudeCodeInterleavedBeta      = "interleaved-thinking-2025-05-14"
+	ClaudeCodeThinkingTokenBeta    = "thinking-token-count-2026-05-13"
+	ClaudeCodeContextManageBeta    = "context-management-2025-06-27"
+	ClaudeCodePromptCacheScopeBeta = "prompt-caching-scope-2026-01-05"
+	ClaudeCodeMidSystemBeta        = "mid-conversation-system-2026-04-07"
+	ClaudeCodeEffortBeta           = "effort-2025-11-24"
+	ClaudeCodeFallbackCreditBeta   = "fallback-credit-2026-06-01"
 	AnthropicExtendedContextBeta   = "context-1m-2025-08-07"
-	ClaudeCodeStainlessPackage     = "0.55.1"
-	ClaudeCodeRuntimeVersion       = "v20.19.4"
+	ClaudeCodeStainlessPackage     = "0.94.0"
+	ClaudeCodeRuntimeVersion       = "v26.3.0"
+	ClaudeCodeStainlessTimeout     = "600"
 	CodexClientVersion             = "0.101.0"
 	CodexClientOriginator          = "codex_cli_rs"
 	anthropicExtendedContextSuffix = "[1m]"
@@ -62,17 +73,7 @@ func applyAnthropicExtendedContextHeader(httpReq *http.Request, profile string, 
 	if httpReq == nil || !enabled || anthropicClientProfile(profile) != ClientProfileClaudeCode {
 		return
 	}
-	current := strings.TrimSpace(httpReq.Header.Get("anthropic-beta"))
-	for _, beta := range strings.Split(current, ",") {
-		if strings.EqualFold(strings.TrimSpace(beta), AnthropicExtendedContextBeta) {
-			return
-		}
-	}
-	if current == "" {
-		httpReq.Header.Set("anthropic-beta", AnthropicExtendedContextBeta)
-		return
-	}
-	httpReq.Header.Set("anthropic-beta", current+","+AnthropicExtendedContextBeta)
+	appendAnthropicBeta(httpReq, AnthropicExtendedContextBeta)
 }
 
 func openAIClientProfile(value string, endpoint string) string {
@@ -85,6 +86,7 @@ func openAIClientProfile(value string, endpoint string) string {
 
 func applyClaudeCodeHeaders(httpReq *http.Request) {
 	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Accept-Encoding", "identity")
 	httpReq.Header.Set("User-Agent", ClaudeCodeUserAgent)
 	httpReq.Header.Set("anthropic-beta", ClaudeCodeAnthropicBeta)
 	httpReq.Header.Set("anthropic-dangerous-direct-browser-access", "true")
@@ -97,6 +99,69 @@ func applyClaudeCodeHeaders(httpReq *http.Request) {
 	httpReq.Header.Set("x-stainless-retry-count", "0")
 	httpReq.Header.Set("x-stainless-runtime", "node")
 	httpReq.Header.Set("x-stainless-runtime-version", ClaudeCodeRuntimeVersion)
+	httpReq.Header.Set("x-stainless-timeout", ClaudeCodeStainlessTimeout)
+}
+
+func applyClaudeCodeRequestHeaders(httpReq *http.Request, sessionSource string, thinkingEnabled bool, extendedContext bool) {
+	applyClaudeCodeHeaders(httpReq)
+	httpReq.Header.Set("X-Claude-Code-Session-Id", claudeCodeSessionID(sessionSource))
+	for _, beta := range claudeCodeBetas(thinkingEnabled, extendedContext) {
+		appendAnthropicBeta(httpReq, beta)
+	}
+}
+
+func claudeCodeBetas(thinkingEnabled bool, extendedContext bool) []string {
+	betas := []string{ClaudeCodeAnthropicBeta}
+	if extendedContext {
+		betas = append(betas, AnthropicExtendedContextBeta)
+	}
+	betas = append(betas,
+		ClaudeCodeInterleavedBeta,
+		ClaudeCodeThinkingTokenBeta,
+		ClaudeCodeContextManageBeta,
+		ClaudeCodePromptCacheScopeBeta,
+		ClaudeCodeMidSystemBeta,
+		ClaudeCodeEffortBeta,
+	)
+	if thinkingEnabled {
+		betas = append(betas, ClaudeCodeFallbackCreditBeta)
+	}
+	return betas
+}
+
+func appendAnthropicBeta(httpReq *http.Request, value string) {
+	if httpReq == nil || strings.TrimSpace(value) == "" {
+		return
+	}
+	current := strings.TrimSpace(httpReq.Header.Get("anthropic-beta"))
+	for _, beta := range strings.Split(current, ",") {
+		if strings.EqualFold(strings.TrimSpace(beta), value) {
+			return
+		}
+	}
+	if current == "" {
+		httpReq.Header.Set("anthropic-beta", value)
+		return
+	}
+	httpReq.Header.Set("anthropic-beta", current+","+value)
+}
+
+func claudeCodeSessionID(source string) string {
+	return deterministicClaudeCodeUUID("session", source)
+}
+
+func claudeCodeDeviceID(source string) string {
+	sum := sha256.Sum256([]byte("cursor-byok/claude-code-device/" + strings.TrimSpace(source)))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func deterministicClaudeCodeUUID(kind string, source string) string {
+	sum := sha256.Sum256([]byte("cursor-byok/claude-code-" + strings.TrimSpace(kind) + "/" + strings.TrimSpace(source)))
+	bytes := sum[:16]
+	bytes[6] = (bytes[6] & 0x0f) | 0x40
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 }
 
 func applyCodexHeaders(httpReq *http.Request) {
@@ -142,13 +207,10 @@ func codexPlatform(value string) string {
 
 func anthropicWireModelID(modelID string, profile string, extendedContext bool) string {
 	model := strings.TrimSpace(modelID)
-	if !extendedContext || NormalizeClientProfile(profile) != ClientProfileClaudeCode {
-		return model
+	for strings.HasSuffix(strings.ToLower(model), anthropicExtendedContextSuffix) {
+		model = strings.TrimSpace(model[:len(model)-len(anthropicExtendedContextSuffix)])
 	}
-	if strings.HasSuffix(strings.ToLower(model), anthropicExtendedContextSuffix) {
-		return model
-	}
-	return model + anthropicExtendedContextSuffix
+	return model
 }
 
 func hasAnthropicExtendedContextSuffix(modelID string) bool {

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -43,9 +44,8 @@ type anthropicTool struct {
 }
 
 const (
-	anthropicThinkOpenTag            = "<think>"
-	anthropicThinkCloseTag           = "</think>"
-	anthropicBillingHeaderSystemText = "x-anthropic-billing-header: cc_version=2.1.179.61a; cc_entrypoint=cli; cch=37703;"
+	anthropicThinkOpenTag  = "<think>"
+	anthropicThinkCloseTag = "</think>"
 )
 
 type anthropicContentPartKind string
@@ -156,6 +156,21 @@ func anthropicEndpointURL(baseURL string) string {
 	return base + "/v1/messages"
 }
 
+func anthropicProfileEndpointURL(baseURL string, profile string) string {
+	endpoint := anthropicEndpointURL(baseURL)
+	if anthropicClientProfile(profile) != ClientProfileClaudeCode {
+		return endpoint
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint
+	}
+	query := parsed.Query()
+	query.Set("beta", "true")
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
 // shouldRelocateAnthropicImages 判断是否需要把图片块搬运到末条 user 消息。
 //
 // 官方 Anthropic 端点（api.anthropic.com）可正确处理任意位置的图片，保持原样；
@@ -181,6 +196,21 @@ func ApplyAnthropicCompatibleAuthHeaders(httpReq *http.Request, apiKey string) {
 	httpReq.Header.Set("Authorization", "Bearer "+token)
 }
 
+func applyAnthropicProfileAuthHeaders(httpReq *http.Request, apiKey string, profile string) {
+	if httpReq == nil {
+		return
+	}
+	token := anthropicCompatibleAuthToken(apiKey)
+	if token == "" {
+		return
+	}
+	if anthropicClientProfile(profile) == ClientProfileClaudeCode {
+		httpReq.Header.Set("Authorization", "Bearer "+token)
+		return
+	}
+	ApplyAnthropicCompatibleAuthHeaders(httpReq, token)
+}
+
 func anthropicCompatibleAuthToken(apiKey string) string {
 	token := strings.TrimSpace(apiKey)
 	if len(token) >= len("Bearer ") && strings.EqualFold(token[:len("Bearer ")], "Bearer ") {
@@ -189,11 +219,16 @@ func anthropicCompatibleAuthToken(apiKey string) string {
 	return token
 }
 
-func anthropicProviderSystemBlocks(systemParts []string) []map[string]any {
-	blocks := []map[string]any{{
-		"type": "text",
-		"text": anthropicBillingHeaderSystemText,
-	}}
+const claudeCodeSystemIdentity = "You are Claude Code, Anthropic's official CLI for Claude."
+
+func anthropicProviderSystemBlocks(systemParts []string, profile string) []map[string]any {
+	blocks := make([]map[string]any, 0, 2)
+	if anthropicClientProfile(profile) == ClientProfileClaudeCode {
+		blocks = append(blocks, map[string]any{
+			"type": "text",
+			"text": claudeCodeSystemIdentity,
+		})
+	}
 	if len(systemParts) > 0 {
 		blocks = append(blocks, map[string]any{
 			"type": "text",
@@ -221,17 +256,18 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		return fmt.Errorf("anthropic model id is empty")
 	}
 	modelID = anthropicWireModelID(modelID, req.ClientProfile, req.Anthropic1MContextEnabled)
+	claudeSessionSource := firstNonEmptyString(req.ConversationID, req.RunID, req.RequestID, req.ModelCallID, modelID)
 
 	startedAt := time.Now().UTC()
 	finishedAt := time.Time{}
-	requestURL := anthropicEndpointURL(baseURL)
+	requestURL := anthropicProfileEndpointURL(baseURL, req.ClientProfile)
 	body := cloneRequestBodyOverride(req.RequestBodyOverride)
-	if len(body) > 0 && req.Anthropic1MContextEnabled {
+	if len(body) > 0 {
 		overrideModel := strings.TrimSpace(fmt.Sprint(body["model"]))
 		if overrideModel == "" || overrideModel == "<nil>" {
 			overrideModel = modelID
 		}
-		body["model"] = anthropicWireModelID(overrideModel, req.ClientProfile, true)
+		body["model"] = anthropicWireModelID(overrideModel, req.ClientProfile, req.Anthropic1MContextEnabled)
 	}
 	if len(body) == 0 {
 		thinkingConfig := buildAnthropicThinkingConfig(req)
@@ -260,7 +296,7 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 					"max_tokens":     req.MaxTokens,
 					"tool_raw_count": len(req.Tools),
 				}
-				draftBody["system"] = anthropicProviderSystemBlocks(systemParts)
+				draftBody["system"] = anthropicProviderSystemBlocks(systemParts, req.ClientProfile)
 				recordLLMRequestArtifact(req, "anthropic", modelID, "POST", requestURL, draftBody)
 				recordLLMSummaryArtifact(req, buildLLMSummaryPayload(req, "anthropic", modelID, startedAt, time.Time{}, finishedAt, "", 0, 0, 0, 0, err))
 				return err
@@ -281,7 +317,7 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		if len(tools) > 0 {
 			body["tools"] = tools
 		}
-		body["system"] = anthropicProviderSystemBlocks(systemParts)
+		body["system"] = anthropicProviderSystemBlocks(systemParts, req.ClientProfile)
 		frontier := buildAnthropicCacheFrontier(body, stableMessageCount)
 		req.RequestKnobs = annotateAnthropicRequestKnobs(req.RequestKnobs, body, frontier)
 		body = cloneRequestBodyOverride(body)
@@ -292,12 +328,15 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 	// 路径与正常构造路径行为一致：disabled 时强制 thinking:{type:disabled} 并清理冲突字段，
 	// 非 disabled 时按 AnthropicThinkingEffort 写 adaptive 配置。与 openai.go 的
 	// applyOpenAIThinkingDisable 对称——后者也是无条件在两条路径之后调用。
+	prependClaudeCodeSystemIdentity(body, req.ClientProfile)
 	applyAnthropicThinkingConfig(body, req)
+	applyClaudeCodeMetadata(body, req.ClientProfile, claudeSessionSource)
 	if err := ApplyAnthropicExtraParams(body, req.AnthropicExtraParamsEnabled, req.AnthropicExtraParamsJSON); err != nil {
 		finishedAt = time.Now().UTC()
 		recordLLMSummaryArtifact(req, buildLLMSummaryPayload(req, "anthropic", modelID, startedAt, time.Time{}, finishedAt, "", 0, 0, 0, 0, err))
 		return err
 	}
+	removeUnsignedAnthropicThinkingBlocks(body, req.ClientProfile)
 	recordLLMRequestArtifact(req, "anthropic", modelID, "POST", requestURL, body)
 
 	payload, err := json.Marshal(body)
@@ -315,11 +354,14 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		if err != nil {
 			return nil, err
 		}
-		ApplyAnthropicCompatibleAuthHeaders(httpReq, apiKey)
+		applyAnthropicProfileAuthHeaders(httpReq, apiKey, req.ClientProfile)
 		httpReq.Header.Set("anthropic-version", "2023-06-01")
 		httpReq.Header.Set("content-type", "application/json")
-		ApplyClientProfileHeaders(httpReq, anthropicClientProfile(req.ClientProfile))
-		applyAnthropicExtendedContextHeader(httpReq, req.ClientProfile, req.Anthropic1MContextEnabled)
+		if anthropicClientProfile(req.ClientProfile) == ClientProfileClaudeCode {
+			applyClaudeCodeRequestHeaders(httpReq, claudeSessionSource, anthropicRequestUsesThinking(body), req.Anthropic1MContextEnabled)
+		} else {
+			ApplyClientProfileHeaders(httpReq, ClientProfileGeneric)
+		}
 		if err := ApplyCustomHeaders(httpReq, req.CustomHeadersEnabled, req.CustomHeadersJSON); err != nil {
 			return nil, err
 		}
@@ -715,6 +757,102 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 	finishedAt = time.Now().UTC()
 	recordLLMSummaryArtifact(req, buildLLMSummaryPayload(req, "anthropic", currentModel, startedAt, firstEventAt, finishedAt, finishReason, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, nil))
 	return nil
+}
+
+func anthropicRequestUsesThinking(body map[string]any) bool {
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok {
+		return false
+	}
+	thinkingType := strings.ToLower(strings.TrimSpace(fmt.Sprint(thinking["type"])))
+	return thinkingType != "" && thinkingType != "disabled" && thinkingType != "<nil>"
+}
+
+func prependClaudeCodeSystemIdentity(body map[string]any, profile string) {
+	if len(body) == 0 || anthropicClientProfile(profile) != ClientProfileClaudeCode {
+		return
+	}
+	identity := map[string]any{"type": "text", "text": claudeCodeSystemIdentity}
+	switch system := body["system"].(type) {
+	case []map[string]any:
+		if len(system) > 0 && strings.TrimSpace(fmt.Sprint(system[0]["text"])) == claudeCodeSystemIdentity {
+			return
+		}
+		body["system"] = append([]map[string]any{identity}, system...)
+	case []any:
+		if len(system) > 0 {
+			if first, ok := system[0].(map[string]any); ok &&
+				strings.TrimSpace(fmt.Sprint(first["text"])) == claudeCodeSystemIdentity {
+				return
+			}
+		}
+		body["system"] = append([]any{identity}, system...)
+	case string:
+		blocks := []any{identity}
+		if strings.TrimSpace(system) != "" {
+			blocks = append(blocks, map[string]any{"type": "text", "text": system})
+		}
+		body["system"] = blocks
+	case nil:
+		body["system"] = []any{identity}
+	default:
+		body["system"] = []any{identity, system}
+	}
+}
+
+func applyClaudeCodeMetadata(body map[string]any, profile string, sessionSource string) {
+	if len(body) == 0 || anthropicClientProfile(profile) != ClientProfileClaudeCode {
+		return
+	}
+	metadata, _ := body["metadata"].(map[string]any)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	if strings.TrimSpace(fmt.Sprint(metadata["user_id"])) == "" || fmt.Sprint(metadata["user_id"]) == "<nil>" {
+		payload := struct {
+			DeviceID    string `json:"device_id"`
+			AccountUUID string `json:"account_uuid"`
+			SessionID   string `json:"session_id"`
+		}{
+			DeviceID:  claudeCodeDeviceID(sessionSource),
+			SessionID: claudeCodeSessionID(sessionSource),
+		}
+		if encoded, err := json.Marshal(payload); err == nil {
+			metadata["user_id"] = string(encoded)
+		}
+	}
+	body["metadata"] = metadata
+}
+
+func removeUnsignedAnthropicThinkingBlocks(body map[string]any, profile string) {
+	if len(body) == 0 || anthropicClientProfile(profile) != ClientProfileClaudeCode {
+		return
+	}
+	messages, ok := body["messages"].([]any)
+	if !ok {
+		return
+	}
+	for _, rawMessage := range messages {
+		message, ok := rawMessage.(map[string]any)
+		if !ok || !strings.EqualFold(strings.TrimSpace(fmt.Sprint(message["role"])), "assistant") {
+			continue
+		}
+		content, ok := message["content"].([]any)
+		if !ok {
+			continue
+		}
+		filtered := make([]any, 0, len(content))
+		for _, rawBlock := range content {
+			block, ok := rawBlock.(map[string]any)
+			if ok &&
+				strings.EqualFold(strings.TrimSpace(fmt.Sprint(block["type"])), "thinking") &&
+				strings.TrimSpace(fmt.Sprint(block["signature"])) == "" {
+				continue
+			}
+			filtered = append(filtered, rawBlock)
+		}
+		message["content"] = filtered
+	}
 }
 
 func anthropicTrailingTagPrefixLength(text string, tag string) int {
@@ -1393,7 +1531,7 @@ func shouldIncludeAnthropicThinkingBlock(message Message, thinkingEnabled bool) 
 	if strings.TrimSpace(message.ReasoningContent) == "" {
 		return false
 	}
-	return true
+	return anthropicThinkingSignature(message) != ""
 }
 
 func decodeAnthropicToolInput(arguments string) (any, error) {
@@ -1467,7 +1605,7 @@ func applyAnthropicThinkingConfig(body map[string]any, req StreamRequest) {
 		}
 		body["thinking"] = map[string]any{
 			"type":    "adaptive",
-			"display": "summarized",
+			"display": anthropicThinkingDisplay(req.ClientProfile),
 		}
 		body["output_config"] = buildAnthropicOutputConfig(req)
 		return
@@ -1477,6 +1615,13 @@ func applyAnthropicThinkingConfig(body map[string]any, req StreamRequest) {
 	setRequestKnob(req, "thinking_disabled_provider_param", "thinking.type")
 }
 
+func anthropicThinkingDisplay(profile string) string {
+	if anthropicClientProfile(profile) == ClientProfileClaudeCode {
+		return "omitted"
+	}
+	return "summarized"
+}
+
 func buildAnthropicOutputConfig(req StreamRequest) map[string]any {
 	return map[string]any{
 		"effort": anthropicThinkingEffort(req),
@@ -1484,12 +1629,17 @@ func buildAnthropicOutputConfig(req StreamRequest) map[string]any {
 }
 
 func anthropicThinkingEffort(req StreamRequest) string {
+	effort := ""
 	switch strings.ToLower(strings.TrimSpace(req.AnthropicThinkingEffort)) {
 	case "low", "medium", "high", "xhigh", "max":
-		return strings.ToLower(strings.TrimSpace(req.AnthropicThinkingEffort))
+		effort = strings.ToLower(strings.TrimSpace(req.AnthropicThinkingEffort))
 	default:
-		return "xhigh"
+		effort = "xhigh"
 	}
+	if anthropicClientProfile(req.ClientProfile) == ClientProfileClaudeCode && (effort == "xhigh" || effort == "max") {
+		return "high"
+	}
+	return effort
 }
 
 func emitAnthropicToolProgress(

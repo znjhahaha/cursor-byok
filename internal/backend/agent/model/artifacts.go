@@ -2,6 +2,7 @@ package modeladapter
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
 )
@@ -25,6 +26,7 @@ func recordLLMRequestArtifact(req StreamRequest, provider string, model string, 
 		"url":                            url,
 		"method":                         method,
 		"body":                           body,
+		"wire_diagnostic":                buildWireDiagnostic(req, provider, model, body),
 		"request_knobs":                  req.RequestKnobs,
 		"compile_summary":                req.CompileSummary,
 		"stable_message_count":           req.StableMessageCount,
@@ -34,6 +36,32 @@ func recordLLMRequestArtifact(req StreamRequest, provider string, model string, 
 	if err == nil && req.ArtifactPaths != nil {
 		req.ArtifactPaths.RequestPath = path
 	}
+}
+
+func buildWireDiagnostic(req StreamRequest, provider string, model string, body any) map[string]any {
+	profile := NormalizeClientProfile(req.ClientProfile)
+	diagnostic := map[string]any{
+		"client_profile": profile,
+		"wire_model":     strings.TrimSpace(model),
+	}
+	if payload, ok := body.(map[string]any); ok {
+		keys := make([]string, 0, len(payload))
+		for key := range payload {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		diagnostic["body_keys"] = keys
+	}
+	if strings.EqualFold(strings.TrimSpace(provider), "anthropic") && anthropicClientProfile(profile) == ClientProfileClaudeCode {
+		thinkingEnabled := false
+		if payload, ok := body.(map[string]any); ok {
+			thinkingEnabled = anthropicRequestUsesThinking(payload)
+		}
+		diagnostic["profile_version"] = ClaudeCodeVersion
+		diagnostic["anthropic_beta"] = claudeCodeBetas(thinkingEnabled, req.Anthropic1MContextEnabled)
+		diagnostic["auth_scheme"] = "bearer"
+	}
+	return diagnostic
 }
 
 // buildLLMSummaryPayload 生成 LLM 调用摘要工件内容。

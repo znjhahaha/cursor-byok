@@ -1,12 +1,32 @@
-// retry.go 保留 provider HTTP 请求入口的历史命名；provider 错误交给客户端重连链路处理。
 package modeladapter
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
-// DoProviderRequestWithRetry 保留旧入口名；本地模式不在服务端重试 provider 请求。
+const (
+	providerRetryMaxAttempts   = 7
+	providerRetrySummaryHeader = "X-Cursor-Provider-Retry-Summary"
+)
+
+var providerRetryBackoff = []time.Duration{
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+	16 * time.Second,
+	30 * time.Second,
+	30 * time.Second,
+}
+
+// DoProviderRequestWithRetry keeps the historical entry point and retries
+// transient upstream capacity failures with bounded backoff.
 func DoProviderRequestWithRetry(
 	ctx context.Context,
 	client *http.Client,
@@ -29,21 +49,122 @@ func doProviderRequestWithRetry(
 	if client == nil {
 		client = http.DefaultClient
 	}
-	httpReq, err := buildRequest(ctx)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		if resp != nil && resp.Body != nil {
+	statuses := make([]string, 0, providerRetryMaxAttempts)
+	for attempt := 0; attempt < providerRetryMaxAttempts; attempt++ {
+		httpReq, err := buildRequest(ctx)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			statuses = append(statuses, "transport")
+			if attempt == providerRetryMaxAttempts-1 || !isRetryableProviderTransportError(err) {
+				if len(statuses) > 1 {
+					return nil, fmt.Errorf("provider request failed after attempts=%d statuses=%s: %w", len(statuses), strings.Join(statuses, ","), err)
+				}
+				return nil, err
+			}
+			if err := waitProviderRetry(ctx, providerRetryBackoffDelay(attempt)); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		statuses = append(statuses, strconv.Itoa(resp.StatusCode))
+		if !isRetryableProviderStatus(resp.StatusCode) || attempt == providerRetryMaxAttempts-1 {
+			if len(statuses) > 1 {
+				resp.Header.Set(providerRetrySummaryHeader, fmt.Sprintf("attempts=%d statuses=%s", len(statuses), strings.Join(statuses, ",")))
+			}
+			return resp, nil
+		}
+
+		delay := providerRetryDelay(resp, attempt)
+		if resp.Body != nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
 			_ = resp.Body.Close()
 		}
-		return nil, err
+		if err := waitProviderRetry(ctx, delay); err != nil {
+			return nil, err
+		}
 	}
-	return resp, nil
+	return nil, fmt.Errorf("provider retry loop exhausted")
 }
 
-// ProviderRetryAttemptSummary 返回空值；provider 请求不再有服务端内部重试摘要。
+func isRetryableProviderTransportError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, token := range []string{
+		"tls: handshake failure",
+		"tls handshake timeout",
+		"unexpected eof",
+		"connection reset",
+		"connection refused",
+		"server closed idle connection",
+		"use of closed network connection",
+		"i/o timeout",
+	} {
+		if strings.Contains(text, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func isRetryableProviderStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func providerRetryDelay(resp *http.Response, attempt int) time.Duration {
+	if resp != nil {
+		retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After"))
+		if seconds, err := strconv.Atoi(retryAfter); err == nil && seconds >= 0 {
+			return time.Duration(seconds) * time.Second
+		}
+		if retryAt, err := http.ParseTime(retryAfter); err == nil {
+			if delay := time.Until(retryAt); delay > 0 {
+				return delay
+			}
+			return 0
+		}
+	}
+	if attempt >= 0 && attempt < len(providerRetryBackoff) {
+		return providerRetryBackoff[attempt]
+	}
+	return providerRetryBackoff[len(providerRetryBackoff)-1]
+}
+
+func providerRetryBackoffDelay(attempt int) time.Duration {
+	if attempt >= 0 && attempt < len(providerRetryBackoff) {
+		return providerRetryBackoff[attempt]
+	}
+	return providerRetryBackoff[len(providerRetryBackoff)-1]
+}
+
+func waitProviderRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// ProviderRetryAttemptSummary returns a safe status sequence without request
+// headers, bodies, or credentials.
 func ProviderRetryAttemptSummary(resp *http.Response) string {
-	return ""
+	if resp == nil {
+		return ""
+	}
+	return strings.TrimSpace(resp.Header.Get(providerRetrySummaryHeader))
 }

@@ -1,3 +1,13 @@
+-------0.0.45------
+- 更新 AnyRouter Claude Code 兼容指纹：UA 升级至 Claude Code 2.1.220、Stainless SDK 0.94.0，并补充稳定会话标识
+- Claude Code 模式默认仅使用 Bearer 鉴权，自定义 Header 仍拥有最高优先级
+- 修正 1M 上下文 wire 语义：出站模型移除 `[1m]` 后缀，按需发送 `context-1m-2025-08-07` beta
+- 按同机 Claude Code 2.1.220 流式抓包对齐 beta 顺序、runtime 与 sdk-cli UA，移除 redact-thinking beta 和旧 billing system 注入
+- 修正 AnyRouter 新版验证格式：`metadata.user_id` 使用 JSON 字符串并与 v4 会话 ID 对齐，清理无有效签名的历史 thinking block
+- 对 429、502、503、504 及可恢复的 TLS/连接错误执行有限退避重试，并在最终错误中附带脱敏状态序列
+- 补充请求指纹、鉴权、1M、RequestBodyOverride、脱敏诊断及模型级模式回归测试；真实流式验收中 AnyRouter 返回预期 429、AgentRouter 完整成功
+- 模型编辑页支持 generic、Claude Code、Codex 三种客户端模式及 Anthropic 1M 开关，中转站编辑体验同步优化
+
 -------0.0.44------
 - 新增中转站客户端模式：支持 generic、Claude Code 与 Codex 请求指纹，模型请求、模型列表探测和重连路径保持一致
 - 修复 AgentRouter 的 unauthorized_client_error：补齐 Claude Code beta、x-app、direct-browser 与 Stainless 请求头
