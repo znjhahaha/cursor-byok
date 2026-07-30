@@ -122,12 +122,6 @@ watch(() => draft.openAIExtraParamsEnabled, (enabled) => {
   }
 });
 
-watch(() => draft.anthropic1MContextEnabled, (enabled) => {
-  if (enabled && draft.contextWindowTokens < 1000000) {
-    draft.contextWindowTokens = 1000000;
-  }
-});
-
 function handleCancel() {
   emit("cancel");
 }

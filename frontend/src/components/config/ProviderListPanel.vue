@@ -7,6 +7,7 @@ import {
   countProviderModels,
   deleteProvider,
   fetchProviderModels,
+  formatImportSummary,
   hasCachedProviderModels,
   openProviderEditorWindow,
   toUserError,
@@ -303,11 +304,11 @@ function toggleExpand(provider) {
   }
 }
 
-function handleImported(provider, { added }) {
+function handleImported(provider, summary) {
   window.clearTimeout(hintTimer);
   importHint.value = {
     id: provider.id,
-    text: added > 0 ? `已导入 ${added} 个模型` : "所选模型均已存在，未新增",
+    text: formatImportSummary(summary),
   };
   hintTimer = window.setTimeout(() => {
     importHint.value = { id: "", text: "" };

@@ -77,6 +77,30 @@ func TestModelClientProfileOverridesProviderAndDoesNotChangeStableChannelID(t *t
 	}
 }
 
+func TestNormalizeProviderBaseURLAndInheritanceUseRootOnly(t *testing.T) {
+	provider, err := NormalizeProviderConfig(ProviderConfig{
+		ID:            "provider-1",
+		Name:          "Relay",
+		Type:          "anthropic",
+		BaseURL:       "https://relay.example.com/v1/messages/",
+		APIKey:        "provider-key",
+		InferencePath: "/v1/messages",
+	})
+	if err != nil {
+		t.Fatalf("normalize provider: %v", err)
+	}
+	if provider.BaseURL != "https://relay.example.com" {
+		t.Fatalf("normalized provider baseURL = %q", provider.BaseURL)
+	}
+
+	adapter := validAnthropicAdapterForProfileTest()
+	adapter.ProviderID = provider.ID
+	resolved := ApplyProviderInheritance(adapter, []ProviderConfig{provider})
+	if resolved.BaseURL != "https://relay.example.com" {
+		t.Fatalf("inherited baseURL = %q", resolved.BaseURL)
+	}
+}
+
 func TestBuiltinClientProfileMigrationPreservesCustomUserAgent(t *testing.T) {
 	oldAgentRouter := ProviderConfig{
 		ID:            "builtin-agentrouter",
@@ -130,6 +154,8 @@ func TestRepairProviderReferencesRebindsOrDetachesCompleteAdapters(t *testing.T)
 	}
 	rebind := validAnthropicAdapterForProfileTest()
 	rebind.ProviderID = "provider-stale"
+	// 旧版本会把探测出的推理端点物化进 adapter.BaseURL；迁移时应按根地址重绑。
+	rebind.BaseURL = "https://relay.example.com/v1/messages"
 	detach := validAnthropicAdapterForProfileTest()
 	detach.ProviderID = "provider-stale"
 	detach.BaseURL = "https://standalone.example.com"
@@ -151,8 +177,8 @@ func TestAnthropicOneMillionContextNormalization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize explicit 1M adapter: %v", err)
 	}
-	if !normalized[0].Anthropic1MContextEnabled || normalized[0].ContextWindowTokens != 1_000_000 {
-		t.Fatalf("explicit 1M normalization = %#v", normalized[0])
+	if !normalized[0].Anthropic1MContextEnabled || normalized[0].ContextWindowTokens != 200_000 {
+		t.Fatalf("explicit 1M normalization changed persistent intent: %#v", normalized[0])
 	}
 	if normalized[0].ModelID != adapter.ModelID {
 		t.Fatalf("normalization mutated persistent model ID: %q", normalized[0].ModelID)
@@ -174,8 +200,8 @@ func TestAnthropicOneMillionContextNormalization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize legacy 1M adapter: %v", err)
 	}
-	if !normalized[0].Anthropic1MContextEnabled || normalized[0].ContextWindowTokens != 1_000_000 {
-		t.Fatalf("legacy 1M normalization = %#v", normalized[0])
+	if !normalized[0].Anthropic1MContextEnabled || normalized[0].ContextWindowTokens != 200_000 {
+		t.Fatalf("legacy 1M normalization changed persistent intent: %#v", normalized[0])
 	}
 
 	openAI := ModelAdapterConfig{

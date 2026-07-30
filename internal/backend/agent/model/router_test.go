@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestProtocolEndpointURLsAreDerivedFromProviderRoot(t *testing.T) {
+	const root = "https://anyrouter.top"
+	if got := OpenAIEndpointURL(root, "/v1/responses"); got != root+"/v1/responses" {
+		t.Fatalf("OpenAI endpoint = %q", got)
+	}
+	if got := anthropicEndpointURL(root); got != root+"/v1/messages" {
+		t.Fatalf("Anthropic endpoint = %q", got)
+	}
+}
+
 func TestSanitizeProviderMessagesMergesLegacyAssistantTextAndToolCallTurnsIdempotently(t *testing.T) {
 	input := []Message{
 		{

@@ -85,6 +85,36 @@ const contextWindowTokensInput = createOptionalPositiveIntegerModel("contextWind
 const interfacePlaceholder = computed(() =>
   draft.type === "anthropic" ? "例如：https://api.anthropic.com" : "例如：https://api.openai.com/v1",
 );
+
+// 绑定中转站的模型，连接信息由中转站单向下发。此处改为只读展示，
+// 避免用户在这里修改后被继承逻辑覆盖，产生「改了但没生效」的错觉。
+const boundProvider = computed(() => {
+  const providerID = String(draft.providerID || "").trim();
+  if (!providerID) {
+    return null;
+  }
+  return appState.providers.find((item) => item.id === providerID) || null;
+});
+const inheritsConnection = computed(() => Boolean(boundProvider.value));
+const baseURLInput = computed({
+  get() {
+    return boundProvider.value?.baseURL || draft.baseURL;
+  },
+  set(value) {
+    if (!boundProvider.value) {
+      draft.baseURL = value;
+    }
+  },
+});
+const inheritedBaseURLHint = computed(() =>
+  boundProvider.value ? `接口地址继承自中转站「${boundProvider.value.name}」，请到中转站页面修改。` : "",
+);
+// 1M 只影响解析期的生效值，不改写用户填写的上下文窗口，取消勾选即恢复原值。
+const anthropic1MHint = computed(() =>
+  draft.type === "anthropic" && draft.anthropic1MContextEnabled
+    ? "已启用 1M：实际生效上下文不低于 1,000,000，无需修改上方数值。"
+    : "",
+);
 const clientProfileStatus = computed(() => {
   if (draft.clientProfile === CLIENT_PROFILE_CLAUDE_CODE) {
     return draft.type === "anthropic"
@@ -180,7 +210,9 @@ async function loadContext() {
 async function persistDraft() {
   const adapter = normalizeModelAdapter(draft);
 
-  const singleCheck = validateModelAdapters([adapter]);
+  // 必须带上中转站列表：绑定了中转站的模型，连接信息由中转站提供，
+  // 缺少这份上下文会被误判为「绑定的中转站已不存在」而必定保存失败。
+  const singleCheck = validateModelAdapters([adapter], appState.providers);
   if (singleCheck) {
     errorMessage.value = singleCheck;
     return { ok: false, error: singleCheck, adapter: null };
@@ -293,15 +325,6 @@ watch(
   },
 );
 
-watch(
-  () => draft.anthropic1MContextEnabled,
-  (enabled) => {
-    if (enabled && draft.contextWindowTokens < 1_000_000) {
-      draft.contextWindowTokens = 1_000_000;
-    }
-  },
-);
-
 onMounted(async () => {
   await loadContext();
 });
@@ -391,11 +414,18 @@ onMounted(async () => {
               <span>接口地址</span>
             </span>
             <input
-              v-model="draft.baseURL"
+              v-model="baseURLInput"
               type="text"
               :placeholder="interfacePlaceholder"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+              :readonly="inheritsConnection"
+              :class="[
+                'h-9 rounded-[6px] border border-[#3f3f3f] px-3 text-sm outline-none transition-colors focus:border-[#10AD5D]',
+                inheritsConnection ? 'bg-[#1c1c1c] text-[#8f8f8f]' : 'bg-[#232323] text-[#e5e5e5]',
+              ]"
             />
+            <span v-if="inheritedBaseURLHint" class="text-xs leading-5 text-[#8f8f8f]">
+              {{ inheritedBaseURLHint }}
+            </span>
           </label>
 
           <label class="flex flex-col gap-1">
@@ -431,6 +461,9 @@ onMounted(async () => {
               placeholder="例如：200000（留空用默认值）"
               class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
             />
+            <span v-if="anthropic1MHint" class="text-xs leading-5 text-[#cbbd91]">
+              {{ anthropic1MHint }}
+            </span>
           </label>
 
           <label v-if="draft.type === 'openai'" class="flex flex-col gap-1">

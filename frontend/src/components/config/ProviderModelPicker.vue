@@ -164,7 +164,11 @@ async function importModelIDs(modelIDs) {
     }
     selected.value = new Set();
     manualModelID.value = "";
-    emit("imported", { added: result.added ?? 0 });
+    emit("imported", {
+      added: result.added ?? 0,
+      skipped: result.skipped ?? 0,
+      requested: result.requested ?? modelIDs.length,
+    });
     await nextTick();
     if (listRef.value) {
       listRef.value.scrollTop = scrollTop;

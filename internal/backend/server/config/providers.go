@@ -104,7 +104,9 @@ func NormalizeProviderConfig(item ProviderConfig) (ProviderConfig, error) {
 	if err != nil {
 		return ProviderConfig{}, fmt.Errorf("中转站 %s 的地址无效: %w", next.Name, err)
 	}
-	next.BaseURL = baseURL
+	// 落盘只保留站点根地址。用户粘贴的完整端点（如 https://x/v1/messages）以及
+	// 历史配置里被探测结果污染的地址，都在这里收敛一次，避免请求期二次拼接。
+	next.BaseURL = trimProviderConnectionEndpoint(baseURL)
 	if next.HeadersJSON != "" {
 		if err := validateHeadersJSON(next.HeadersJSON); err != nil {
 			return ProviderConfig{}, fmt.Errorf("中转站 %s 的自定义请求头无效: %w", next.Name, err)
@@ -180,27 +182,6 @@ func trimProviderConnectionEndpoint(base string) string {
 	return base
 }
 
-func applyProviderInferencePath(baseURL string, inferencePath string) string {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	path := normalizeProviderPath(inferencePath)
-	if base == "" || path == "" {
-		return base
-	}
-	base = trimProviderConnectionEndpoint(base)
-	lowerPath := strings.ToLower(path)
-	if strings.HasPrefix(lowerPath, "http://") || strings.HasPrefix(lowerPath, "https://") {
-		return path
-	}
-	lowerBase := strings.ToLower(base)
-	if strings.HasSuffix(lowerBase, lowerPath) {
-		return base
-	}
-	if strings.HasSuffix(lowerBase, "/v1") && strings.HasPrefix(lowerPath, "/v1/") {
-		return base + path[len("/v1"):]
-	}
-	return base + path
-}
-
 // ApplyProviderInheritance 把中转站的连接信息物化到模型适配器上。
 //
 // 物化必须发生在计算 channelID 之前：channelID 由 baseURL 与 apiKey 派生，
@@ -219,7 +200,10 @@ func ApplyProviderInheritance(adapter ModelAdapterConfig, providers []ProviderCo
 	if strings.TrimSpace(resolved.ClientProfile) == "" && strings.TrimSpace(provider.ClientProfile) != "" {
 		resolved.ClientProfile = provider.ClientProfile
 	}
-	resolved.BaseURL = applyProviderInferencePath(provider.BaseURL, provider.InferencePath)
+	// baseURL 只承载站点根地址。协议端点（/v1/messages、/v1/responses 等）属于
+	// adapter 的协议职责，由各 adapter 在发请求时派生，中转站不参与拼接，
+	// 否则 Anthropic 探测出的 /v1/messages 会被带进 OpenAI 模型的请求地址。
+	resolved.BaseURL = strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
 	if strings.TrimSpace(provider.APIKey) != "" {
 		resolved.APIKey = provider.APIKey
 	}
@@ -260,8 +244,11 @@ func RepairProviderReferences(adapters []ModelAdapterConfig, providers []Provide
 			if strings.TrimSpace(adapter.Type) != "" && strings.TrimSpace(provider.Type) != strings.TrimSpace(adapter.Type) {
 				continue
 			}
-			providerBase := applyProviderInferencePath(provider.BaseURL, provider.InferencePath)
-			if strings.EqualFold(strings.TrimRight(providerBase, "/"), strings.TrimRight(adapter.BaseURL, "/")) {
+			// 一律按站点根地址比较：迁移期落盘的 adapter.BaseURL 可能带着
+			// 旧版物化进去的端点后缀，剥离后才能与新语义下的 provider 对上。
+			providerBase := trimProviderConnectionEndpoint(strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/"))
+			adapterBase := trimProviderConnectionEndpoint(strings.TrimRight(strings.TrimSpace(adapter.BaseURL), "/"))
+			if strings.EqualFold(providerBase, adapterBase) {
 				matches = append(matches, provider)
 			}
 		}

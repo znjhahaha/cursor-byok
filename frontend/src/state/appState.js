@@ -168,6 +168,33 @@ function normalizeBaseURL(value) {
   }
 }
 
+// 中转站地址只承载站点根地址。协议端点由各 adapter 在请求时派生，
+// 因此用户粘贴的完整端点、以及历史配置里被探测结果污染的地址都在此收敛。
+const PROVIDER_ENDPOINT_SUFFIXES = [
+  "/v1/chat/completions",
+  "/v1/responses",
+  "/v1/messages",
+  "/v1/models",
+  "/chat/completions",
+  "/responses",
+  "/messages",
+  "/models",
+];
+
+function trimProviderConnectionEndpoint(value) {
+  const text = asString(value);
+  if (!text) {
+    return "";
+  }
+  const lower = text.toLowerCase();
+  for (const suffix of PROVIDER_ENDPOINT_SUFFIXES) {
+    if (lower.endsWith(suffix)) {
+      return text.slice(0, text.length - suffix.length).replace(/\/+$/, "");
+    }
+  }
+  return text;
+}
+
 function buildModelAdapterIdentityKey(adapter) {
   return [
     normalizeBaseURL(adapter.baseURL),
@@ -416,7 +443,9 @@ export function normalizeModelAdapter(source) {
     customHeadersJSON,
     anthropicExtraParamsEnabled,
     anthropicExtraParamsJSON,
-    contextWindowTokens: anthropic1MContextEnabled ? Math.max(contextWindowTokens, 1_000_000) : contextWindowTokens,
+    // 持久层只保存用户填写的意图值。1M 的下限派生只发生在解析期
+    // （resolver.go / local_runtime.go），这样取消勾选即可回到原值。
+    contextWindowTokens,
     maxCompletionTokens: asPositiveInteger(
       raw.maxCompletionTokens ?? raw.max_completion_tokens ?? raw.max_tokens ?? raw.max_token,
     ),
@@ -469,7 +498,7 @@ export function normalizeProvider(source) {
     id: asString(raw.id),
     name: asString(raw.name),
     type: SUPPORTED_MODEL_ADAPTER_TYPES.has(normalizedType) ? normalizedType : "",
-    baseURL: normalizeBaseURL(raw.baseURL || raw.url),
+    baseURL: trimProviderConnectionEndpoint(normalizeBaseURL(raw.baseURL || raw.url)),
     apiKey: asString(raw.apiKey || raw.key),
     clientProfile: normalizedClientProfile || CLIENT_PROFILE_GENERIC,
     userAgent: asString(raw.userAgent ?? raw.user_agent),
@@ -486,37 +515,62 @@ export function normalizeProviders(source) {
   return asArray(source).map((item) => normalizeProvider(item));
 }
 
-export function validateProviders(source) {
+function validateProviderBaseURL(value) {
+  const text = asString(value);
+  if (!text) {
+    return "接口地址不能为空，例如：https://anyrouter.top";
+  }
+  try {
+    const parsed = new URL(text);
+    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname) {
+      return "接口地址无效，请填写站点根地址，例如：https://anyrouter.top";
+    }
+    return "";
+  } catch (_error) {
+    return "接口地址无效，请填写站点根地址，例如：https://anyrouter.top";
+  }
+}
+
+export function validateProviderDetails(source) {
   const providers = normalizeProviders(source);
   const seenIDs = new Set();
   for (const [index, provider] of providers.entries()) {
     const prefix = `中转站 ${provider.name || index + 1}`;
     if (!provider.name) {
-      return `${prefix} 的名称不能为空`;
+      return { index, field: "name", message: `${prefix} 的名称不能为空` };
     }
     if (!SUPPORTED_MODEL_ADAPTER_TYPES.has(provider.type)) {
-      return `${prefix} 的类型仅支持 OpenAI 或 Anthropic`;
+      return { index, field: "type", message: `${prefix} 的类型仅支持 OpenAI 或 Anthropic` };
     }
-    if (!provider.baseURL) {
-      return `${prefix} 的接口地址不能为空`;
+    const baseURLError = validateProviderBaseURL(provider.baseURL);
+    if (baseURLError) {
+      return { index, field: "baseURL", message: `${prefix} 的${baseURLError}` };
     }
     if (!SUPPORTED_CLIENT_PROFILES.has(provider.clientProfile)) {
-      return `${prefix} 的客户端模式仅支持 generic、claude-code 或 codex`;
+      return {
+        index,
+        field: "clientProfile",
+        message: `${prefix} 的客户端模式仅支持 generic、claude-code 或 codex`,
+      };
     }
     if (provider.headersJSON) {
       const headersError = validateHeadersJSON(provider.headersJSON);
       if (headersError) {
-        return `${prefix} 的 ${headersError}`;
+        return { index, field: "headersJSON", message: `${prefix} 的 ${headersError}` };
       }
     }
     if (provider.id) {
       if (seenIDs.has(provider.id)) {
-        return `${prefix} 的标识重复`;
+        return { index, field: "id", message: `${prefix} 的标识重复` };
       }
       seenIDs.add(provider.id);
     }
   }
-  return "";
+  return null;
+}
+
+export function validateProviders(source) {
+  return validateProviderDetails(source)?.message || "";
 }
 
 // findProviderByID 按 id 而非数组下标定位，
@@ -688,16 +742,21 @@ function normalizeConfig(source) {
   };
 }
 
-function repairModelAdapterProviderReferences(adapters, providers) {
+export function repairModelAdapterProviderReferences(adapters, providers) {
   return adapters.map((adapter) => {
-    if (!adapter.providerID || findProviderByID(providers, adapter.providerID)) {
+    if (!adapter.providerID) {
       return adapter;
     }
+    const boundProvider = findProviderByID(providers, adapter.providerID);
+    if (boundProvider) {
+      return { ...adapter, baseURL: boundProvider.baseURL };
+    }
+    const adapterBaseURL = trimProviderConnectionEndpoint(normalizeBaseURL(adapter.baseURL));
     const matches = providers.filter((provider) =>
       (!adapter.type || provider.type === adapter.type)
-      && normalizeBaseURL(provider.baseURL) === normalizeBaseURL(adapter.baseURL));
+      && trimProviderConnectionEndpoint(normalizeBaseURL(provider.baseURL)) === adapterBaseURL);
     if (matches.length === 1) {
-      return { ...adapter, providerID: matches[0].id };
+      return { ...adapter, providerID: matches[0].id, baseURL: matches[0].baseURL };
     }
     if (adapter.baseURL && adapter.apiKey) {
       return { ...adapter, providerID: "" };
@@ -1645,17 +1704,14 @@ async function runProviderModelsFetch(normalized, key, force) {
       writeProviderModelCatalog(key, result);
     }
 
-    // 探测结果属于连接配置：命中后立即物化到 provider，后续拉取与真实推理都直接走已知路径。
+    // 只有模型列表路径属于站点特性，值得物化回 provider。
+    // 推理端点由各 adapter 在请求期按协议派生，回写它会污染站点地址：
+    // Anthropic 探测出的 /v1/messages 曾被拼进同站 OpenAI 模型的请求 URL。
     const resolvedProvider = {
       ...normalized,
       modelsPath: result.resolvedPath || normalized.modelsPath,
-      inferencePath: result.inferencePath || normalized.inferencePath,
     };
-    if (
-      normalized.id &&
-      (resolvedProvider.modelsPath !== normalized.modelsPath ||
-        resolvedProvider.inferencePath !== normalized.inferencePath)
-    ) {
+    if (normalized.id && resolvedProvider.modelsPath !== normalized.modelsPath) {
       const saved = await saveProvider(resolvedProvider);
       if (!saved.ok) {
         return { ok: false, error: saved.error, result };
@@ -1670,6 +1726,18 @@ async function runProviderModelsFetch(normalized, key, force) {
       result: normalizeProviderModelsResult({ providerID: normalized.id, error: message }),
     };
   }
+}
+
+// formatImportSummary 把导入结果拼成一句可读反馈。
+// 放在状态层而不是各个视图里，保证中转站编辑器与列表面板的口径一致。
+export function formatImportSummary(summary) {
+  const source = summary && typeof summary === "object" ? summary : {};
+  const added = asPositiveInteger(source.added);
+  const skipped = asPositiveInteger(source.skipped);
+  if (added === 0) {
+    return skipped > 0 ? `所选 ${skipped} 个模型均已存在，未新增` : "没有可导入的模型";
+  }
+  return skipped > 0 ? `已导入 ${added} 个模型，跳过 ${skipped} 个重复` : `已导入 ${added} 个模型`;
 }
 
 // importProviderModels 批量生成模型配置。
@@ -1690,10 +1758,12 @@ export async function importProviderModels(providerID, modelIDs) {
     nextAdapters.filter((item) => item.providerID === id).map((item) => item.modelID),
   );
 
+  const requestedIDs = asArray(modelIDs).map((item) => asString(item)).filter(Boolean);
   let added = 0;
-  for (const rawModelID of asArray(modelIDs)) {
-    const modelID = asString(rawModelID);
-    if (!modelID || existing.has(modelID)) {
+  let skipped = 0;
+  for (const modelID of requestedIDs) {
+    if (existing.has(modelID)) {
+      skipped += 1;
       continue;
     }
     existing.add(modelID);
@@ -1713,8 +1783,9 @@ export async function importProviderModels(providerID, modelIDs) {
     });
   }
 
+  const requested = requestedIDs.length;
   if (added === 0) {
-    return { ok: true, error: "", added: 0 };
+    return { ok: true, error: "", added: 0, skipped, requested };
   }
 
   const result = await persistConfigPayload(
@@ -1724,7 +1795,7 @@ export async function importProviderModels(providerID, modelIDs) {
     },
     { modelAdaptersOnly: true },
   );
-  return { ...result, added };
+  return { ...result, added, skipped, requested };
 }
 
 export async function syncUsageSeries(days = 30) {

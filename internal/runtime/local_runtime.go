@@ -135,9 +135,6 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			next.AnthropicExtraParamsEnabled = item.AnthropicExtraParamsEnabled
 			next.AnthropicExtraParamsJSON = strings.TrimSpace(item.AnthropicExtraParamsJSON)
 			next.Anthropic1MContextEnabled = item.Anthropic1MContextEnabled || hasAnthropic1MSuffix(item.ModelID)
-			if next.Anthropic1MContextEnabled && next.ContextWindowTokens < 1_000_000 {
-				next.ContextWindowTokens = 1_000_000
-			}
 		}
 		next.CustomHeadersEnabled = item.CustomHeadersEnabled
 		next.CustomHeadersJSON = strings.TrimSpace(item.CustomHeadersJSON)

@@ -11,13 +11,14 @@ import {
   CLIENT_PROFILE_OPTIONS,
   createEmptyProvider,
   fetchProviderModels,
+  formatImportSummary,
   normalizeProvider,
   saveProvider,
   toUserError,
-  validateProviders,
+  validateProviderDetails,
 } from "@/state/appState";
 import { Window } from "@wailsio/runtime";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
 
 const providerTypeTabs = [
   { label: "OpenAI", value: "openai", icon: "icon-[bxl--openai]" },
@@ -39,7 +40,7 @@ const fieldTips = {
   userAgent: "部分中转站按 User-Agent 做白名单，UA 不匹配会直接拒绝而不进入认证。",
   headersJSON: "附加请求头 JSON 对象，值必须是字符串。会与模型自身的自定义请求头合并，模型优先。",
   modelsPath: "拉取模型列表的路径。留空时自动探测 /v1/models、/models、/api/v1/models。",
-  inferencePath: "真实模型请求路径。留空时在模型列表不可用的情况下自动探测；也可手工填写。",
+  inferencePath: "最近一次连接探测命中的推理端点，仅用于诊断；真实请求路径由模型协议在请求时派生。",
   note: "仅本地展示的说明文字。",
 };
 
@@ -49,14 +50,37 @@ const errorMessage = ref("");
 const fetching = ref(false);
 const statusMessage = ref("");
 const advancedOpen = ref(false);
+const invalidField = ref("");
+const nameInputRef = ref(null);
+const baseURLInputRef = ref(null);
+const typeTabsRef = ref(null);
+const clientProfileRef = ref(null);
+const headersJSONRef = ref(null);
+// 窗口打开时是否为「新增」。套用预设后 draft.id 会有值，用它判断会让预设区块
+// 当场消失，用户看不到自己刚点的结果，因此单独记一次初始态。
+const startedAsNew = ref(false);
+const selectedPresetID = ref("");
+
+const builtinPresets = computed(() =>
+  appState.providers.filter((provider) => provider.builtin),
+);
+const builtinPresetOptions = computed(() => [
+  { label: "不使用预设（自定义）", value: "", icon: "icon-[mdi--tune-variant]" },
+  ...builtinPresets.value.map((provider) => ({
+    label: `${provider.name} · ${provider.type === "anthropic" ? "Anthropic" : "OpenAI"}`,
+    value: provider.id,
+    icon: provider.type === "anthropic" ? "icon-[logos--claude-icon]" : "icon-[bxl--openai]",
+  })),
+]);
 
 const isEditing = computed(() => Boolean(draft.id));
-const title = computed(() => (isEditing.value ? "编辑中转站" : "新增中转站"));
+const title = computed(() => (startedAsNew.value || !isEditing.value ? "新增中转站" : "编辑中转站"));
 const catalogKey = computed(() => draft.id || draft.baseURL);
 const catalog = computed(() => appState.providerModelCatalog[catalogKey.value] ?? null);
 const models = computed(() => catalog.value?.models ?? []);
 const modelCountText = computed(() => `共 ${models.value.length} 个模型`);
-const hasCustomRequestPaths = computed(() => Boolean(draft.modelsPath || draft.inferencePath));
+const hasCustomRequestPaths = computed(() => Boolean(draft.modelsPath));
+const detectedInferencePath = computed(() => catalog.value?.inferencePath || draft.inferencePath || "尚未探测");
 const advancedSummary = computed(() => {
   const configured = [];
   if (draft.userAgent) {
@@ -77,9 +101,36 @@ const baseURLPlaceholder = computed(() =>
 
 const headersPlaceholder = JSON.stringify({ "X-Api-Version": "2024-01-01" });
 
-function handleImported({ added }) {
+function applyBuiltinPreset(providerID) {
+  const id = String(providerID || "").trim();
+  selectedPresetID.value = id;
+  invalidField.value = "";
+  const currentAPIKey = draft.apiKey;
+  if (!id) {
+    Object.assign(draft, createEmptyProvider(), { apiKey: currentAPIKey });
+    errorMessage.value = "";
+    statusMessage.value = "已切换为自定义中转站，请填写名称和接口地址";
+    return;
+  }
+
+  const preset = builtinPresets.value.find((provider) => provider.id === id);
+  if (!preset) {
+    errorMessage.value = "所选内置预设已不存在";
+    statusMessage.value = "";
+    return;
+  }
+
+  Object.assign(draft, normalizeProvider({
+    ...preset,
+    apiKey: currentAPIKey || preset.apiKey,
+  }));
   errorMessage.value = "";
-  statusMessage.value = added > 0 ? `已导入 ${added} 个模型` : "所选模型均已存在，未新增";
+  statusMessage.value = `已套用「${preset.name}」预设，只需填写访问密钥`;
+}
+
+function handleImported(summary) {
+  errorMessage.value = "";
+  statusMessage.value = formatImportSummary(summary);
 }
 
 function handlePickerError(message) {
@@ -89,7 +140,6 @@ function handlePickerError(message) {
 
 function resetRequestPaths() {
   draft.modelsPath = "";
-  draft.inferencePath = "";
   errorMessage.value = "";
   statusMessage.value = "已恢复自动探测，保存后生效";
 }
@@ -98,27 +148,59 @@ async function loadContext() {
   try {
     const ctx = await getProviderEditorContext();
     const parsed = JSON.parse(ctx?.providerJSON || "{}");
-    Object.assign(draft, normalizeProvider(parsed));
+    const provider = normalizeProvider(parsed);
+    startedAsNew.value = !provider.id;
+    selectedPresetID.value = provider.builtin ? provider.id : "";
+    Object.assign(draft, provider);
     if (!draft.type) {
       draft.type = "openai";
     }
   } catch (_error) {
+    startedAsNew.value = true;
+    selectedPresetID.value = "";
     Object.assign(draft, createEmptyProvider());
   } finally {
     loading.value = false;
   }
 }
 
+async function focusValidationField(field) {
+  if (field === "headersJSON") {
+    advancedOpen.value = true;
+  }
+  await nextTick();
+  const target = {
+    name: nameInputRef.value,
+    baseURL: baseURLInputRef.value,
+    type: typeTabsRef.value?.querySelector("button"),
+    clientProfile: clientProfileRef.value?.$el?.querySelector("button"),
+    headersJSON: headersJSONRef.value,
+  }[field];
+  target?.focus?.();
+}
+
+function clearValidationField(field) {
+  if (invalidField.value !== field) {
+    return;
+  }
+  invalidField.value = "";
+  errorMessage.value = "";
+}
+
 // persistDraft 是「拉取模型」与「导入模型」的共同前置：
 // 这两个动作都需要一个已落盘的 provider id 才能建立归属关系。
 async function persistDraft() {
   const provider = normalizeProvider(draft);
-  const validationError = validateProviders([provider]);
-  if (validationError) {
-    errorMessage.value = validationError;
-    return { ok: false, error: validationError, provider: null };
+  const validation = validateProviderDetails([provider]);
+  if (validation) {
+    invalidField.value = validation.field;
+    errorMessage.value = validation.message;
+    statusMessage.value = "";
+    await focusValidationField(validation.field);
+    return { ok: false, error: validation.message, provider: null };
   }
 
+  invalidField.value = "";
   const result = await saveProvider(provider);
   if (!result.ok) {
     errorMessage.value = result.error;
@@ -221,6 +303,27 @@ onMounted(async () => {
 
     <div v-else class="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
       <div class="flex flex-col gap-3">
+        <section
+          v-if="startedAsNew && builtinPresetOptions.length > 1"
+          class="rounded-[10px] border border-[#28563b] bg-[#17271e] p-3.5"
+        >
+          <div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,320px)_1fr]">
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-[#d8f3e2]">快速套用内置预设</span>
+              <Select
+                :model-value="selectedPresetID"
+                :options="builtinPresetOptions"
+                placeholder="选择中转站预设"
+                aria-label="中转站内置预设"
+                @update:model-value="applyBuiltinPreset"
+              />
+            </label>
+            <p class="text-xs leading-5 text-[#9bb8a5]">
+              预设会填充名称、协议、根地址和客户端模式，不包含密钥；保存时复用内置站点，不会创建重复项。
+            </p>
+          </div>
+        </section>
+
         <section class="rounded-[10px] border border-[#343434] bg-[#252525] p-3.5">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -234,7 +337,11 @@ onMounted(async () => {
               >
                 内置预设
               </span>
-              <div class="center-row gap-1.5">
+              <div
+                ref="typeTabsRef"
+                class="center-row gap-1.5 rounded-[8px]"
+                :class="invalidField === 'type' ? 'ring-2 ring-[#ef4444]' : ''"
+              >
                 <button
                   v-for="tab in providerTypeTabs"
                   :key="tab.value"
@@ -243,7 +350,7 @@ onMounted(async () => {
                   :class="draft.type === tab.value
                     ? 'border-[#1ca35a] bg-[#123322] text-white'
                     : 'border-[#343434] bg-[#202020] text-[#a3a3a3] hover:border-[#4a4a4a] hover:text-[#e5e5e5]'"
-                  @click="draft.type = tab.value"
+                  @click="draft.type = tab.value; clearValidationField('type')"
                 >
                   <span :class="[tab.icon, 'text-[16px]']"></span>
                   <span>{{ tab.label }}</span>
@@ -259,10 +366,15 @@ onMounted(async () => {
                 <span>中转站名称</span>
               </span>
               <input
+                ref="nameInputRef"
                 v-model="draft.name"
                 type="text"
                 placeholder="例如：AnyRouter"
-                class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                :class="[
+                  'h-9 rounded-[6px] border bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]',
+                  invalidField === 'name' ? 'border-[#ef4444] ring-1 ring-[#ef4444]' : 'border-[#3f3f3f]',
+                ]"
+                @input="clearValidationField('name')"
               />
             </label>
 
@@ -272,10 +384,15 @@ onMounted(async () => {
                 <span>接口地址</span>
               </span>
               <input
+                ref="baseURLInputRef"
                 v-model="draft.baseURL"
                 type="text"
                 :placeholder="baseURLPlaceholder"
-                class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                :class="[
+                  'h-9 rounded-[6px] border bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]',
+                  invalidField === 'baseURL' ? 'border-[#ef4444] ring-1 ring-[#ef4444]' : 'border-[#3f3f3f]',
+                ]"
+                @input="clearValidationField('baseURL')"
               />
             </label>
 
@@ -299,8 +416,11 @@ onMounted(async () => {
                 <span>客户端模式</span>
               </span>
               <Select
+                ref="clientProfileRef"
                 v-model="draft.clientProfile"
                 :options="CLIENT_PROFILE_OPTIONS"
+                :button-class="invalidField === 'clientProfile' ? '!border-[#ef4444] ring-1 ring-[#ef4444]' : ''"
+                @update:model-value="clearValidationField('clientProfile')"
               />
             </label>
           </div>
@@ -309,8 +429,8 @@ onMounted(async () => {
         <section class="rounded-[10px] border border-[#343434] bg-[#252525] p-3.5">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3 class="text-sm font-medium text-white">请求路径</h3>
-              <p class="mt-1 text-xs text-[#8f8f8f]">留空时自动探测；只有非标准中转站通常需要手工填写。</p>
+              <h3 class="text-sm font-medium text-white">模型列表与探测诊断</h3>
+              <p class="mt-1 text-xs text-[#8f8f8f]">模型列表路径可留空自动探测；推理端点仅作诊断，真实请求由模型协议派生。</p>
             </div>
             <Button
               variant="text"
@@ -337,13 +457,13 @@ onMounted(async () => {
             <label class="flex flex-col gap-1">
               <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
                 <Tooltip :content="fieldTips.inferencePath" />
-                <span>模型请求路径</span>
+                <span>探测到的推理端点</span>
               </span>
               <input
-                v-model="draft.inferencePath"
+                :value="detectedInferencePath"
                 type="text"
-                :placeholder="draft.type === 'anthropic' ? '留空自动探测，例如：/v1/messages' : '留空自动探测，例如：/v1/chat/completions'"
-                class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                readonly
+                class="h-9 rounded-[6px] border border-[#343434] bg-[#1c1c1c] px-3 text-sm text-[#8f8f8f] outline-none"
               />
             </label>
           </div>
@@ -425,11 +545,16 @@ onMounted(async () => {
                   <span>自定义请求头 JSON</span>
                 </span>
                 <textarea
+                  ref="headersJSONRef"
                   v-model="draft.headersJSON"
                   rows="4"
                   spellcheck="false"
                   :placeholder="headersPlaceholder"
-                  class="min-h-[96px] w-full resize-y rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                  :class="[
+                    'min-h-[96px] w-full resize-y rounded-[6px] border bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]',
+                    invalidField === 'headersJSON' ? 'border-[#ef4444] ring-1 ring-[#ef4444]' : 'border-[#3f3f3f]',
+                  ]"
+                  @input="clearValidationField('headersJSON')"
                 />
               </label>
 

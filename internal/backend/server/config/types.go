@@ -156,9 +156,8 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			next.AnthropicExtraParamsEnabled = item.AnthropicExtraParamsEnabled
 			next.AnthropicExtraParamsJSON = strings.TrimSpace(item.AnthropicExtraParamsJSON)
 			next.Anthropic1MContextEnabled = item.Anthropic1MContextEnabled || hasAnthropic1MSuffix(next.ModelID)
-			if next.Anthropic1MContextEnabled && next.ContextWindowTokens < 1_000_000 {
-				next.ContextWindowTokens = 1_000_000
-			}
+			// 归一化只保存用户意图：1M 的生效值由解析期（resolver.go）派生。
+			// 若在这里改写 ContextWindowTokens，用户原填的窗口会被永久覆盖，取消勾选后无值可回退。
 		}
 		next.CustomHeadersEnabled = item.CustomHeadersEnabled
 		next.CustomHeadersJSON = strings.TrimSpace(item.CustomHeadersJSON)
