@@ -243,6 +243,7 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 		BaseURL:                     strings.TrimSpace(adapter.BaseURL),
 		APIKey:                      strings.TrimSpace(adapter.APIKey),
 		ProviderModelID:             strings.TrimSpace(adapter.ModelID),
+		ClientProfile:               strings.TrimSpace(adapter.ClientProfile),
 		ResolvedChannelID:           strings.TrimSpace(adapter.ID),
 		ResolvedChannelName:         strings.TrimSpace(adapter.DisplayName),
 		ResolvedContextWindowTokens: adapter.ContextWindowTokens,
@@ -310,6 +311,8 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 		BaseURL:                     strings.TrimSpace(adapter.BaseURL),
 		APIKey:                      strings.TrimSpace(adapter.APIKey),
 		ProviderModelID:             strings.TrimSpace(adapter.ModelID),
+		ClientProfile:               strings.TrimSpace(adapter.ClientProfile),
+		Anthropic1MContextEnabled:   adapter.Anthropic1MContextEnabled,
 		ResolvedChannelID:           strings.TrimSpace(adapter.ID),
 		ResolvedChannelName:         strings.TrimSpace(adapter.DisplayName),
 		ResolvedContextWindowTokens: adapter.ContextWindowTokens,
@@ -592,6 +595,7 @@ func buildModelAdapterTestRequestHash(adapter serverconfig.ModelAdapterConfig) s
 		source.BaseURL,
 		source.APIKey,
 		source.ModelID,
+		source.ClientProfile,
 		source.ReasoningEffort,
 		source.OpenAIEndpoint,
 		strconv.Itoa(source.OpenAIExtraParamsEnabled),
@@ -604,6 +608,7 @@ func buildModelAdapterTestRequestHash(adapter serverconfig.ModelAdapterConfig) s
 		strconv.Itoa(source.MaxCompletionTokens),
 		strconv.Itoa(source.AnthropicMaxTokens),
 		source.AnthropicThinkingEffort,
+		strconv.Itoa(source.Anthropic1MContextEnabled),
 	}, "\n")
 	hasher := fnv.New32a()
 	_, _ = hasher.Write([]byte(payload))
@@ -616,6 +621,7 @@ type modelAdapterTestHashSource struct {
 	BaseURL                     string
 	APIKey                      string
 	ModelID                     string
+	ClientProfile               string
 	ReasoningEffort             string
 	OpenAIEndpoint              string
 	OpenAIExtraParamsEnabled    int
@@ -628,6 +634,7 @@ type modelAdapterTestHashSource struct {
 	MaxCompletionTokens         int
 	AnthropicMaxTokens          int
 	AnthropicThinkingEffort     string
+	Anthropic1MContextEnabled   int
 }
 
 func normalizeModelAdapterTestHashSource(adapter serverconfig.ModelAdapterConfig) modelAdapterTestHashSource {
@@ -640,6 +647,7 @@ func normalizeModelAdapterTestHashSource(adapter serverconfig.ModelAdapterConfig
 		BaseURL:                     baseURL,
 		APIKey:                      strings.TrimSpace(adapter.APIKey),
 		ModelID:                     strings.TrimSpace(adapter.ModelID),
+		ClientProfile:               strings.TrimSpace(adapter.ClientProfile),
 		ReasoningEffort:             normalizeModelAdapterTestProviderReasoning(adapter),
 		OpenAIEndpoint:              modelchannel.NormalizeOpenAIEndpoint(adapter.Type, adapter.OpenAIEndpoint),
 		OpenAIExtraParamsEnabled:    normalizeModelAdapterTestBool(adapter.Type == "openai" && adapter.OpenAIExtraParamsEnabled),
@@ -652,6 +660,7 @@ func normalizeModelAdapterTestHashSource(adapter serverconfig.ModelAdapterConfig
 		MaxCompletionTokens:         normalizeModelAdapterTestInt(adapter.MaxCompletionTokens),
 		AnthropicMaxTokens:          normalizeModelAdapterTestInt(adapter.AnthropicMaxTokens),
 		AnthropicThinkingEffort:     normalizeModelAdapterTestProviderAnthropicThinkingEffort(adapter),
+		Anthropic1MContextEnabled:   normalizeModelAdapterTestBool(adapter.Type == "anthropic" && adapter.Anthropic1MContextEnabled),
 	}
 }
 

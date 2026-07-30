@@ -31,6 +31,8 @@ type ModelAdapterConfig struct {
 	APIKey                      string `json:"apiKey" yaml:"apiKey"`
 	TooltipData                 string `json:"tooltipData" yaml:"tooltipData"`
 	ModelID                     string `json:"modelID" yaml:"modelID"`
+	ClientProfile               string `json:"clientProfile,omitempty" yaml:"clientProfile,omitempty"`
+	Anthropic1MContextEnabled   bool   `json:"anthropic1MContextEnabled,omitempty" yaml:"anthropic1MContextEnabled,omitempty"`
 	ReasoningEffort             string `json:"reasoningEffort" yaml:"reasoningEffort"`
 	OpenAIEndpoint              string `json:"openAIEndpoint" yaml:"openAIEndpoint"`
 	OpenAIExtraParamsEnabled    bool   `json:"openAIExtraParamsEnabled" yaml:"openAIExtraParamsEnabled"`
@@ -105,10 +107,11 @@ func NormalizeConfig(input Config) (Config, error) {
 		return Config{}, err
 	}
 	output.Providers = providers
-	if err := ValidateProviderReferences(input.ModelAdapters, providers); err != nil {
+	repairedAdapters := RepairProviderReferences(input.ModelAdapters, providers)
+	if err := ValidateProviderReferences(repairedAdapters, providers); err != nil {
 		return Config{}, err
 	}
-	adapters, err := NormalizeModelAdapterConfigs(ApplyProviderInheritanceAll(input.ModelAdapters, providers))
+	adapters, err := NormalizeModelAdapterConfigs(ApplyProviderInheritanceAll(repairedAdapters, providers))
 	if err != nil {
 		return Config{}, err
 	}
@@ -137,6 +140,7 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			APIKey:               strings.TrimSpace(item.APIKey),
 			TooltipData:          strings.TrimSpace(item.TooltipData),
 			ModelID:              strings.TrimSpace(item.ModelID),
+			ClientProfile:        normalizeClientProfile(item.ClientProfile),
 			ReasoningEffort:      normalizeReasoningEffort(item.ReasoningEffort),
 			OpenAIEndpoint:       modelchannel.NormalizeOpenAIEndpoint(item.Type, item.OpenAIEndpoint),
 			ContextWindowTokens:  normalizeMaxCompletionTokens(item.ContextWindowTokens),
@@ -151,6 +155,10 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			next.AnthropicThinkingEffort = normalizeAnthropicThinkingEffort(item.AnthropicThinkingEffort)
 			next.AnthropicExtraParamsEnabled = item.AnthropicExtraParamsEnabled
 			next.AnthropicExtraParamsJSON = strings.TrimSpace(item.AnthropicExtraParamsJSON)
+			next.Anthropic1MContextEnabled = item.Anthropic1MContextEnabled || hasAnthropic1MSuffix(next.ModelID)
+			if next.Anthropic1MContextEnabled && next.ContextWindowTokens < 1_000_000 {
+				next.ContextWindowTokens = 1_000_000
+			}
 		}
 		next.CustomHeadersEnabled = item.CustomHeadersEnabled
 		next.CustomHeadersJSON = strings.TrimSpace(item.CustomHeadersJSON)
@@ -159,6 +167,8 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			return nil, errors.New("模型适配器 displayName 不能为空")
 		case next.Type == "":
 			return nil, errors.New("模型适配器 type 仅支持 openai 或 anthropic")
+		case !isSupportedClientProfile(next.ClientProfile):
+			return nil, errors.New("模型适配器 clientProfile 仅支持 generic、claude-code 或 codex")
 		case next.APIKey == "":
 			return nil, errors.New("模型适配器 apiKey 不能为空")
 		case next.TooltipData == "":
@@ -192,6 +202,32 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 		normalized = append(normalized, next)
 	}
 	return normalized, nil
+}
+
+func normalizeClientProfile(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "generic":
+		return "generic"
+	case "claude-code":
+		return "claude-code"
+	case "codex":
+		return "codex"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func isSupportedClientProfile(value string) bool {
+	switch normalizeClientProfile(value) {
+	case "generic", "claude-code", "codex":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasAnthropic1MSuffix(modelID string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(modelID)), "[1m]")
 }
 
 func validateJSONMap(value string, fieldName string) error {

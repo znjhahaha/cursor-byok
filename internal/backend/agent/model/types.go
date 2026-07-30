@@ -84,6 +84,10 @@ type StreamRequest struct {
 	APIKey string
 	// ProviderModelID 表示 provider 侧真实模型标识。
 	ProviderModelID string
+	// ClientProfile 表示出站请求使用的客户端指纹模式。
+	ClientProfile string
+	// Anthropic1MContextEnabled 表示是否为 Claude Code 兼容请求派生 [1m] wire model。
+	Anthropic1MContextEnabled bool
 	// ResolvedChannelID 表示本次请求实际命中的 adapter 渠道 ID。
 	ResolvedChannelID string
 	// ResolvedChannelName 表示本次请求实际命中的 adapter 展示名。

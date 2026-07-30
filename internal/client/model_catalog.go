@@ -373,6 +373,7 @@ func applyProviderModelsHeaders(httpReq *http.Request, provider serverconfig.Pro
 	} else if apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimPrefix(apiKey, "Bearer "))
 	}
+	modeladapter.ApplyClientProfileHeaders(httpReq, provider.ClientProfile)
 	if agent := strings.TrimSpace(provider.UserAgent); agent != "" {
 		httpReq.Header.Set("User-Agent", agent)
 	}

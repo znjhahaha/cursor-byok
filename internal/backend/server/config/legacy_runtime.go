@@ -22,6 +22,8 @@ func (store *Store) LegacyRuntimeSnapshot(ctx context.Context) (legacyruntime.Ru
 			APIKey:                      item.APIKey,
 			TooltipData:                 item.TooltipData,
 			ModelID:                     item.ModelID,
+			ClientProfile:               item.ClientProfile,
+			Anthropic1MContextEnabled:   item.Anthropic1MContextEnabled,
 			ReasoningEffort:             item.ReasoningEffort,
 			OpenAIEndpoint:              item.OpenAIEndpoint,
 			OpenAIExtraParamsEnabled:    item.OpenAIExtraParamsEnabled,

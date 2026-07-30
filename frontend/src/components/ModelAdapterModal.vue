@@ -4,6 +4,9 @@ import Select from "@/components/ui/Select.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
 import {
   ANTHROPIC_THINKING_EFFORT_DEFAULT,
+  CLIENT_PROFILE_CLAUDE_CODE,
+  CLIENT_PROFILE_CODEX,
+  CLIENT_PROFILE_GENERIC,
   createEmptyModelAdapter,
   normalizeModelAdapter,
   OPENAI_ENDPOINT_CHAT_COMPLETIONS,
@@ -16,6 +19,12 @@ import { computed, reactive, watch } from "vue";
 const modelTypeOptions = [
   { label: "openai", value: "openai", icon: "icon-[bxl--openai]" },
   { label: "anthropic", value: "anthropic", icon: "icon-[logos--claude-icon]" },
+];
+
+const clientProfileOptions = [
+  { label: "通用协议", value: CLIENT_PROFILE_GENERIC, icon: "icon-[mdi--web]" },
+  { label: "Claude Code", value: CLIENT_PROFILE_CLAUDE_CODE, icon: "icon-[logos--claude-icon]" },
+  { label: "Codex", value: CLIENT_PROFILE_CODEX, icon: "icon-[bxl--openai]" },
 ];
 
 const reasoningEffortOptions = [
@@ -41,6 +50,8 @@ const openAIEndpointOptions = [
 ];
 
 const fieldTips = {
+  clientProfile: "选择出站请求的客户端兼容指纹。Claude Code 仅用于 Anthropic 路径；Codex 仅用于 OpenAI Responses 路径。",
+  anthropic1MContext: "启用后本地上下文至少按 1,000,000 token 计算，并仅在发送请求时为模型 ID 追加 [1m]、发送 1M beta。自定义请求头仍可覆盖 beta 列表。",
   openAIExtraParams: "开启后会把 JSON 对象覆盖到 OpenAI 请求体。同名字段以这里为准。OpenAI service_tier 支持 auto、default、flex、scale、priority；priority 可用于高优先级/Fast 类场景。",
 };
 
@@ -119,6 +130,12 @@ watch(() => draft.openAIExtraParamsEnabled, (enabled) => {
   }
 });
 
+watch(() => draft.anthropic1MContextEnabled, (enabled) => {
+  if (enabled && draft.contextWindowTokens < 1000000) {
+    draft.contextWindowTokens = 1000000;
+  }
+});
+
 function handleCancel() {
   emit("cancel");
 }
@@ -189,6 +206,17 @@ function handleSave() {
                   v-model="draft.baseURL"
                   type="text"
                   class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                />
+              </label>
+
+              <label class="mt-3 flex flex-col gap-1">
+                <span class="flex items-center gap-1.5 text-sm text-[#d4d4d4]">
+                  <Tooltip :content="fieldTips.clientProfile" />
+                  <span>客户端模式</span>
+                </span>
+                <Select
+                  v-model="draft.clientProfile"
+                  :options="clientProfileOptions"
                 />
               </label>
 
@@ -275,6 +303,26 @@ function handleSave() {
                     :options="anthropicThinkingEffortOptions"
                   />
                 </label>
+              </div>
+
+              <div
+                v-if="draft.type === 'anthropic'"
+                class="mt-3 rounded-[8px] border border-[#6b5520] bg-[#2b2515] p-3"
+              >
+                <label class="flex items-center justify-between gap-3">
+                  <span class="flex items-center gap-1.5 text-sm text-[#f5d98b]">
+                    <Tooltip :content="fieldTips.anthropic1MContext" />
+                    <span>启用 Claude Code 1M 上下文</span>
+                  </span>
+                  <input
+                    v-model="draft.anthropic1MContextEnabled"
+                    type="checkbox"
+                    class="size-4 accent-[#10AD5D]"
+                  />
+                </label>
+                <p class="mt-2 text-xs leading-5 text-[#cbbd91]">
+                  仅 Claude Code 模式会在出站模型 ID 上追加 [1m] 并发送 1M beta；长上下文可能显著增加费用与等待时间。
+                </p>
               </div>
 
               <label class="mt-3 flex flex-col gap-1">

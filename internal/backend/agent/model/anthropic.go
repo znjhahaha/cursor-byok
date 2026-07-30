@@ -220,11 +220,19 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 	if modelID == "" {
 		return fmt.Errorf("anthropic model id is empty")
 	}
+	modelID = anthropicWireModelID(modelID, req.ClientProfile, req.Anthropic1MContextEnabled)
 
 	startedAt := time.Now().UTC()
 	finishedAt := time.Time{}
 	requestURL := anthropicEndpointURL(baseURL)
 	body := cloneRequestBodyOverride(req.RequestBodyOverride)
+	if len(body) > 0 && req.Anthropic1MContextEnabled {
+		overrideModel := strings.TrimSpace(fmt.Sprint(body["model"]))
+		if overrideModel == "" || overrideModel == "<nil>" {
+			overrideModel = modelID
+		}
+		body["model"] = anthropicWireModelID(overrideModel, req.ClientProfile, true)
+	}
 	if len(body) == 0 {
 		thinkingConfig := buildAnthropicThinkingConfig(req)
 		relocateImages := shouldRelocateAnthropicImages(baseURL)
@@ -310,7 +318,8 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		ApplyAnthropicCompatibleAuthHeaders(httpReq, apiKey)
 		httpReq.Header.Set("anthropic-version", "2023-06-01")
 		httpReq.Header.Set("content-type", "application/json")
-		httpReq.Header.Set("User-Agent", AnthropicClaudeCodeUserAgent)
+		ApplyClientProfileHeaders(httpReq, anthropicClientProfile(req.ClientProfile))
+		applyAnthropicExtendedContextHeader(httpReq, req.ClientProfile, req.Anthropic1MContextEnabled)
 		if err := ApplyCustomHeaders(httpReq, req.CustomHeadersEnabled, req.CustomHeadersJSON); err != nil {
 			return nil, err
 		}

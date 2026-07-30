@@ -58,6 +58,8 @@ func resolveModelAdapterChannel(adapters []ModelAdapterConfig, providers []Provi
 		BaseURL:                     strings.TrimSpace(matched.BaseURL),
 		APIKey:                      strings.TrimSpace(matched.APIKey),
 		Model:                       strings.TrimSpace(matched.ModelID),
+		ClientProfile:               normalizeClientProfile(matched.ClientProfile),
+		Anthropic1MContextEnabled:   matched.Anthropic1MContextEnabled,
 		OpenAIEndpoint:              strings.TrimSpace(matched.OpenAIEndpoint),
 		OpenAIExtraParamsEnabled:    matched.OpenAIExtraParamsEnabled,
 		OpenAIExtraParamsJSON:       strings.TrimSpace(matched.OpenAIExtraParamsJSON),
@@ -76,6 +78,9 @@ func resolveModelAdapterChannel(adapters []ModelAdapterConfig, providers []Provi
 	}
 	if matched.ContextWindowTokens > 0 {
 		resolved.ContextWindowTokens = matched.ContextWindowTokens
+	}
+	if matched.Anthropic1MContextEnabled && resolved.ContextWindowTokens < 1_000_000 {
+		resolved.ContextWindowTokens = 1_000_000
 	}
 	if matched.MaxCompletionTokens > 0 {
 		resolved.MaxTokens = matched.MaxCompletionTokens

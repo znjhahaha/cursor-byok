@@ -64,6 +64,7 @@ func buildProviderModelsRequestHash(provider serverconfig.ProviderConfig) string
 		strings.TrimSpace(provider.Type),
 		strings.TrimSpace(provider.BaseURL),
 		strings.TrimSpace(provider.APIKey),
+		strings.TrimSpace(provider.ClientProfile),
 		strings.TrimSpace(provider.UserAgent),
 		strings.TrimSpace(provider.HeadersJSON),
 		strings.TrimSpace(provider.ModelsPath),

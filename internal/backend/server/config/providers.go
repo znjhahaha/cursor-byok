@@ -21,6 +21,7 @@ type ProviderConfig struct {
 	Type          string `json:"type" yaml:"type"`
 	BaseURL       string `json:"baseURL" yaml:"baseURL"`
 	APIKey        string `json:"apiKey" yaml:"apiKey"`
+	ClientProfile string `json:"clientProfile,omitempty" yaml:"clientProfile,omitempty"`
 	UserAgent     string `json:"userAgent" yaml:"userAgent"`
 	HeadersJSON   string `json:"headersJSON" yaml:"headersJSON"`
 	ModelsPath    string `json:"modelsPath" yaml:"modelsPath"`
@@ -60,6 +61,12 @@ func NormalizeProviderConfigs(input []ProviderConfig) ([]ProviderConfig, error) 
 			continue
 		}
 		normalized[index].Builtin = true
+		if strings.TrimSpace(normalized[index].ClientProfile) == "" {
+			normalized[index].ClientProfile = preset.ClientProfile
+		}
+		if isLegacyBuiltinUserAgent(normalized[index].UserAgent) {
+			normalized[index].UserAgent = ""
+		}
 		if strings.TrimSpace(normalized[index].HomeURL) == "" {
 			normalized[index].HomeURL = preset.HomeURL
 		}
@@ -75,6 +82,7 @@ func NormalizeProviderConfig(item ProviderConfig) (ProviderConfig, error) {
 		Name:          strings.TrimSpace(item.Name),
 		Type:          normalizeModelAdapterType(item.Type),
 		APIKey:        strings.TrimSpace(item.APIKey),
+		ClientProfile: strings.ToLower(strings.TrimSpace(item.ClientProfile)),
 		UserAgent:     strings.TrimSpace(item.UserAgent),
 		HeadersJSON:   strings.TrimSpace(item.HeadersJSON),
 		ModelsPath:    normalizeProviderPath(item.ModelsPath),
@@ -88,6 +96,9 @@ func NormalizeProviderConfig(item ProviderConfig) (ProviderConfig, error) {
 	}
 	if next.Type == "" {
 		return ProviderConfig{}, fmt.Errorf("中转站 %s 的 type 仅支持 openai 或 anthropic", next.Name)
+	}
+	if next.ClientProfile != "" && !isSupportedClientProfile(next.ClientProfile) {
+		return ProviderConfig{}, fmt.Errorf("中转站 %s 的 clientProfile 仅支持 generic、claude-code 或 codex", next.Name)
 	}
 	baseURL, err := modelchannel.NormalizeBaseURL(item.BaseURL)
 	if err != nil {
@@ -203,6 +214,9 @@ func ApplyProviderInheritance(adapter ModelAdapterConfig, providers []ProviderCo
 		return adapter
 	}
 	resolved := adapter
+	if strings.TrimSpace(provider.ClientProfile) != "" {
+		resolved.ClientProfile = provider.ClientProfile
+	}
 	resolved.BaseURL = applyProviderInferencePath(provider.BaseURL, provider.InferencePath)
 	if strings.TrimSpace(provider.APIKey) != "" {
 		resolved.APIKey = provider.APIKey
@@ -216,6 +230,48 @@ func ApplyProviderInheritance(adapter ModelAdapterConfig, providers []ProviderCo
 		resolved.CustomHeadersJSON = merged
 	}
 	return resolved
+}
+
+func isLegacyBuiltinUserAgent(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "claude-cli/1.0.60 (external, cli)", "claude-cli/1.0.25":
+		return true
+	default:
+		return false
+	}
+}
+
+// RepairProviderReferences fixes stale persisted provider IDs without discarding
+// otherwise complete model adapter connection data.
+func RepairProviderReferences(adapters []ModelAdapterConfig, providers []ProviderConfig) []ModelAdapterConfig {
+	repaired := append([]ModelAdapterConfig(nil), adapters...)
+	for index := range repaired {
+		adapter := repaired[index]
+		if strings.TrimSpace(adapter.ProviderID) == "" {
+			continue
+		}
+		if _, ok := FindProvider(providers, adapter.ProviderID); ok {
+			continue
+		}
+		matches := make([]ProviderConfig, 0, 1)
+		for _, provider := range providers {
+			if strings.TrimSpace(adapter.Type) != "" && strings.TrimSpace(provider.Type) != strings.TrimSpace(adapter.Type) {
+				continue
+			}
+			providerBase := applyProviderInferencePath(provider.BaseURL, provider.InferencePath)
+			if strings.EqualFold(strings.TrimRight(providerBase, "/"), strings.TrimRight(adapter.BaseURL, "/")) {
+				matches = append(matches, provider)
+			}
+		}
+		if len(matches) == 1 {
+			repaired[index].ProviderID = matches[0].ID
+			continue
+		}
+		if strings.TrimSpace(adapter.BaseURL) != "" && strings.TrimSpace(adapter.APIKey) != "" {
+			repaired[index].ProviderID = ""
+		}
+	}
+	return repaired
 }
 
 // ApplyProviderInheritanceAll 对整份适配器列表做物化。

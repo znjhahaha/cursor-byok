@@ -52,6 +52,10 @@ type ModelAdapterConfig struct {
 	TooltipData string `json:"tooltipData"`
 	// ModelID 表示当前声明中的 ModelID。
 	ModelID string `json:"modelID"`
+	// ClientProfile 表示出站请求使用的客户端指纹模式。
+	ClientProfile string `json:"clientProfile,omitempty"`
+	// Anthropic1MContextEnabled 表示是否启用 Claude Code 1M 上下文 wire 语义。
+	Anthropic1MContextEnabled bool `json:"anthropic1MContextEnabled,omitempty"`
 	// ReasoningEffort 表示当前声明中的 ReasoningEffort。
 	ReasoningEffort string `json:"reasoningEffort"`
 	// OpenAIEndpoint 表示 OpenAI 兼容适配器使用的 API 端点。
@@ -115,6 +119,7 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			APIKey:               strings.TrimSpace(item.APIKey),
 			TooltipData:          strings.TrimSpace(item.TooltipData),
 			ModelID:              strings.TrimSpace(item.ModelID),
+			ClientProfile:        normalizeClientProfile(item.ClientProfile),
 			ReasoningEffort:      normalizeReasoningEffort(item.ReasoningEffort),
 			OpenAIEndpoint:       modelchannel.NormalizeOpenAIEndpoint(item.Type, item.OpenAIEndpoint),
 			ContextWindowTokens:  normalizeMaxCompletionTokens(item.ContextWindowTokens),
@@ -129,6 +134,10 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			next.AnthropicThinkingEffort = normalizeAnthropicThinkingEffort(item.AnthropicThinkingEffort)
 			next.AnthropicExtraParamsEnabled = item.AnthropicExtraParamsEnabled
 			next.AnthropicExtraParamsJSON = strings.TrimSpace(item.AnthropicExtraParamsJSON)
+			next.Anthropic1MContextEnabled = item.Anthropic1MContextEnabled || hasAnthropic1MSuffix(item.ModelID)
+			if next.Anthropic1MContextEnabled && next.ContextWindowTokens < 1_000_000 {
+				next.ContextWindowTokens = 1_000_000
+			}
 		}
 		next.CustomHeadersEnabled = item.CustomHeadersEnabled
 		next.CustomHeadersJSON = strings.TrimSpace(item.CustomHeadersJSON)
@@ -274,6 +283,10 @@ type ResolvedChannel struct {
 	APIKey string
 	// Model 表示当前声明中的 Model。
 	Model string
+	// ClientProfile 表示出站请求使用的客户端指纹模式。
+	ClientProfile string
+	// Anthropic1MContextEnabled 表示是否启用 Claude Code 1M 上下文 wire 语义。
+	Anthropic1MContextEnabled bool
 	// TimeoutMS 表示当前声明中的 TimeoutMS。
 	TimeoutMS int
 	// ContextWindowTokens 表示当前声明中的 ContextWindowTokens。
@@ -412,6 +425,8 @@ func (s *FixedChannelService) SelectChannelForModel(ctx context.Context, modelID
 			BaseURL:                     strings.TrimSpace(adapter.BaseURL),
 			APIKey:                      strings.TrimSpace(adapter.APIKey),
 			Model:                       strings.TrimSpace(adapter.ModelID),
+			ClientProfile:               strings.TrimSpace(adapter.ClientProfile),
+			Anthropic1MContextEnabled:   adapter.Anthropic1MContextEnabled,
 			TimeoutMS:                   configurableChannelTimeoutMS,
 			ContextWindowTokens:         configurableChannelContextWindowTokens,
 			MaxTokens:                   configurableChannelMaxTokens,
@@ -430,6 +445,9 @@ func (s *FixedChannelService) SelectChannelForModel(ctx context.Context, modelID
 		}
 		if adapter.ContextWindowTokens > 0 {
 			resolved.ContextWindowTokens = adapter.ContextWindowTokens
+		}
+		if adapter.Anthropic1MContextEnabled && resolved.ContextWindowTokens < 1_000_000 {
+			resolved.ContextWindowTokens = 1_000_000
 		}
 		if adapter.MaxCompletionTokens > 0 {
 			resolved.MaxTokens = adapter.MaxCompletionTokens
@@ -450,6 +468,21 @@ func (s *FixedChannelService) SelectChannelForModel(ctx context.Context, modelID
 	}
 	resolved := s.channel
 	return &resolved, nil
+}
+
+func normalizeClientProfile(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "claude-code":
+		return "claude-code"
+	case "codex":
+		return "codex"
+	default:
+		return "generic"
+	}
+}
+
+func hasAnthropic1MSuffix(modelID string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(modelID)), "[1m]")
 }
 
 // RecordRunRequestUsage 用于处理与 RecordRunRequestUsage 相关的逻辑。

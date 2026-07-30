@@ -29,6 +29,10 @@ const GENERIC_SERVICE_ERROR = "服务错误";
 const SUPPORTED_MODEL_ADAPTER_TYPES = new Set(["openai", "anthropic"]);
 const SUPPORTED_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 const SUPPORTED_ANTHROPIC_THINKING_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
+const SUPPORTED_CLIENT_PROFILES = new Set(["generic", "claude-code", "codex"]);
+export const CLIENT_PROFILE_GENERIC = "generic";
+export const CLIENT_PROFILE_CLAUDE_CODE = "claude-code";
+export const CLIENT_PROFILE_CODEX = "codex";
 export const ANTHROPIC_THINKING_EFFORT_DEFAULT = "xhigh";
 export const OPENAI_ENDPOINT_RESPONSES = "/v1/responses";
 export const OPENAI_ENDPOINT_CHAT_COMPLETIONS = "/v1/chat/completions";
@@ -185,6 +189,7 @@ export function buildModelAdapterTestRequestHash(source) {
     normalizeBaseURL(adapter.baseURL),
     asString(adapter.apiKey),
     asString(adapter.modelID),
+    asString(adapter.clientProfile),
     adapter.type === "openai" ? asString(adapter.reasoningEffort || "medium") : "",
     adapter.type === "openai" ? normalizeOpenAIEndpoint(adapter.openAIEndpoint) : "",
     adapter.type === "openai" ? String(Boolean(adapter.openAIExtraParamsEnabled)) : "false",
@@ -197,6 +202,7 @@ export function buildModelAdapterTestRequestHash(source) {
     String(asPositiveInteger(adapter.maxCompletionTokens)),
     String(asPositiveInteger(adapter.anthropicMaxTokens)),
     adapter.type === "anthropic" ? asString(adapter.anthropicThinkingEffort || ANTHROPIC_THINKING_EFFORT_DEFAULT) : "",
+    adapter.type === "anthropic" ? String(Boolean(adapter.anthropic1MContextEnabled)) : "false",
   ].join("\n"));
 }
 
@@ -274,6 +280,8 @@ export function createEmptyModelAdapter() {
     apiKey: "",
     tooltipData: "备注",
     modelID: "",
+    clientProfile: CLIENT_PROFILE_GENERIC,
+    anthropic1MContextEnabled: false,
     reasoningEffort: "medium",
     openAIEndpoint: OPENAI_ENDPOINT_RESPONSES,
     openAIExtraParamsEnabled: false,
@@ -373,6 +381,15 @@ export function normalizeModelAdapter(source) {
   const anthropicExtraParamsJSON = normalizedType === "anthropic"
     ? asString(raw.anthropicExtraParamsJSON ?? raw.anthropic_extra_params_json) || EXTRA_PARAMS_DEFAULT_JSON
     : "";
+  const normalizedClientProfile = asString(raw.clientProfile ?? raw.client_profile).toLowerCase();
+  const modelID = asString(raw.modelID);
+  const anthropic1MContextEnabled = normalizedType === "anthropic"
+    ? asBoolean(raw.anthropic1MContextEnabled ?? raw.anthropic_1m_context_enabled)
+      || /\[1m\]$/i.test(modelID)
+    : false;
+  const contextWindowTokens = asPositiveInteger(
+    raw.contextWindowTokens ?? raw.context_window_tokens ?? raw.maxInputTokens ?? raw.max_input_tokens,
+  );
   return {
     id: asString(raw.id),
     providerID: asString(raw.providerID ?? raw.provider_id),
@@ -381,7 +398,9 @@ export function normalizeModelAdapter(source) {
     baseURL: normalizeBaseURL(raw.baseURL || raw.url),
     apiKey: asString(raw.apiKey || raw.key),
     tooltipData: asString(raw.tooltipData),
-    modelID: asString(raw.modelID),
+    modelID,
+    clientProfile: normalizedClientProfile || CLIENT_PROFILE_GENERIC,
+    anthropic1MContextEnabled,
     reasoningEffort: SUPPORTED_REASONING_EFFORTS.has(normalizedReasoningEffort)
       ? normalizedReasoningEffort
       : "medium",
@@ -392,9 +411,7 @@ export function normalizeModelAdapter(source) {
     customHeadersJSON,
     anthropicExtraParamsEnabled,
     anthropicExtraParamsJSON,
-    contextWindowTokens: asPositiveInteger(
-      raw.contextWindowTokens ?? raw.context_window_tokens ?? raw.maxInputTokens ?? raw.max_input_tokens,
-    ),
+    contextWindowTokens: anthropic1MContextEnabled ? Math.max(contextWindowTokens, 1_000_000) : contextWindowTokens,
     maxCompletionTokens: asPositiveInteger(
       raw.maxCompletionTokens ?? raw.max_completion_tokens ?? raw.max_tokens ?? raw.max_token,
     ),
@@ -428,6 +445,7 @@ export function createEmptyProvider() {
     type: "openai",
     baseURL: "",
     apiKey: "",
+    clientProfile: CLIENT_PROFILE_GENERIC,
     userAgent: "",
     headersJSON: "",
     modelsPath: "",
@@ -441,12 +459,14 @@ export function createEmptyProvider() {
 export function normalizeProvider(source) {
   const raw = source && typeof source === "object" ? source : {};
   const normalizedType = asString(raw.type).toLowerCase();
+  const normalizedClientProfile = asString(raw.clientProfile ?? raw.client_profile).toLowerCase();
   return {
     id: asString(raw.id),
     name: asString(raw.name),
     type: SUPPORTED_MODEL_ADAPTER_TYPES.has(normalizedType) ? normalizedType : "",
     baseURL: normalizeBaseURL(raw.baseURL || raw.url),
     apiKey: asString(raw.apiKey || raw.key),
+    clientProfile: normalizedClientProfile || CLIENT_PROFILE_GENERIC,
     userAgent: asString(raw.userAgent ?? raw.user_agent),
     headersJSON: asString(raw.headersJSON ?? raw.headers_json),
     modelsPath: asString(raw.modelsPath ?? raw.models_path),
@@ -474,6 +494,9 @@ export function validateProviders(source) {
     }
     if (!provider.baseURL) {
       return `${prefix} 的接口地址不能为空`;
+    }
+    if (!SUPPORTED_CLIENT_PROFILES.has(provider.clientProfile)) {
+      return `${prefix} 的客户端模式仅支持 generic、claude-code 或 codex`;
     }
     if (provider.headersJSON) {
       const headersError = validateHeadersJSON(provider.headersJSON);
@@ -519,6 +542,9 @@ export function validateModelAdapters(source, providers = []) {
     }
     if (!SUPPORTED_MODEL_ADAPTER_TYPES.has(adapter.type)) {
       return `${prefix} 的类型仅支持 OpenAI 或 Anthropic`;
+    }
+    if (!SUPPORTED_CLIENT_PROFILES.has(adapter.clientProfile)) {
+      return `${prefix} 的客户端模式仅支持 generic、claude-code 或 codex`;
     }
     if (!effectiveBaseURL) {
       return `${prefix} 的接口地址不能为空`;
@@ -638,13 +664,15 @@ function normalizeConfig(source) {
   const raw = source && typeof source === "object" ? source : {};
   const routing = raw.routing && typeof raw.routing === "object" ? raw.routing : {};
   const homeMetrics = raw.homeMetrics && typeof raw.homeMetrics === "object" ? raw.homeMetrics : {};
+  const providers = normalizeProviders(raw.providers);
+  const modelAdapters = repairModelAdapterProviderReferences(normalizeModelAdapters(raw.modelAdapters), providers);
   return {
     log: asBoolean(raw.log),
     providerStreamIdleTimeout: asPositiveInteger(raw.providerStreamIdleTimeout),
     backendListenAddr: asString(raw.configBackendListenAddr) || asString(raw.backendListenAddr),
     proxyListenAddr: asString(raw.configProxyListenAddr) || asString(raw.proxyListenAddr),
-    providers: normalizeProviders(raw.providers),
-    modelAdapters: normalizeModelAdapters(raw.modelAdapters),
+    providers,
+    modelAdapters,
     routing: {
       mode: normalizeRouteMode(routing.mode),
     },
@@ -653,6 +681,24 @@ function normalizeConfig(source) {
     },
     lastAgentModelHash: asString(raw.lastAgentModelHash),
   };
+}
+
+function repairModelAdapterProviderReferences(adapters, providers) {
+  return adapters.map((adapter) => {
+    if (!adapter.providerID || findProviderByID(providers, adapter.providerID)) {
+      return adapter;
+    }
+    const matches = providers.filter((provider) =>
+      (!adapter.type || provider.type === adapter.type)
+      && normalizeBaseURL(provider.baseURL) === normalizeBaseURL(adapter.baseURL));
+    if (matches.length === 1) {
+      return { ...adapter, providerID: matches[0].id };
+    }
+    if (adapter.baseURL && adapter.apiKey) {
+      return { ...adapter, providerID: "" };
+    }
+    return adapter;
+  });
 }
 
 function asNullableRate(value) {
@@ -1654,6 +1700,7 @@ export async function importProviderModels(providerID, modelIDs) {
       type: provider.type,
       baseURL: provider.baseURL,
       apiKey: provider.apiKey,
+      clientProfile: provider.clientProfile,
       tooltipData: provider.name,
       modelID,
       openAIEndpoint: provider.type === "openai" ? OPENAI_ENDPOINT_CHAT_COMPLETIONS : "",

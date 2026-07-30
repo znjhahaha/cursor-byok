@@ -52,6 +52,8 @@ func (router *Router) Stream(ctx context.Context, req StreamRequest, sink func(M
 	resolved.BaseURL = strings.TrimSpace(channel.BaseURL)
 	resolved.APIKey = strings.TrimSpace(channel.APIKey)
 	resolved.ProviderModelID = strings.TrimSpace(channel.Model)
+	resolved.ClientProfile = NormalizeClientProfile(channel.ClientProfile)
+	resolved.Anthropic1MContextEnabled = channel.Anthropic1MContextEnabled
 	resolved.ResolvedChannelID = strings.TrimSpace(channel.ID)
 	resolved.ResolvedChannelName = strings.TrimSpace(channel.Name)
 	resolved.ResolvedContextWindowTokens = channel.ContextWindowTokens

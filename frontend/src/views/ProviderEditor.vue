@@ -8,6 +8,9 @@ import Tooltip from "@/components/ui/Tooltip.vue";
 import { getProviderEditorContext } from "@/services/clientApi";
 import {
   appState,
+  CLIENT_PROFILE_CLAUDE_CODE,
+  CLIENT_PROFILE_CODEX,
+  CLIENT_PROFILE_GENERIC,
   createEmptyProvider,
   fetchProviderModels,
   normalizeProvider,
@@ -23,10 +26,16 @@ const providerTypeTabs = [
   { label: "Anthropic", value: "anthropic", icon: "icon-[logos--claude-icon]" },
 ];
 
-// 常见站点的 UA 白名单绕过值。agentrouter 只有携带 claude-cli 标识才会进入认证层。
+const clientProfileOptions = [
+  { label: "通用协议", value: CLIENT_PROFILE_GENERIC, icon: "icon-[mdi--web]" },
+  { label: "Claude Code", value: CLIENT_PROFILE_CLAUDE_CODE, icon: "icon-[logos--claude-icon]" },
+  { label: "Codex", value: CLIENT_PROFILE_CODEX, icon: "icon-[bxl--openai]" },
+];
+
+// 高级覆盖值；通常应优先选择“客户端模式”，由运行时生成完整且一致的请求头。
 const userAgentPresets = [
   { label: "不指定（使用默认）", value: "", icon: "icon-[mdi--web]" },
-  { label: "claude-cli/1.0.60 (external, cli)", value: "claude-cli/1.0.60 (external, cli)", icon: "icon-[logos--claude-icon]" },
+  { label: "claude-cli/2.1.158 (external, sdk-cli)", value: "claude-cli/2.1.158 (external, sdk-cli)", icon: "icon-[logos--claude-icon]" },
 ];
 
 const fieldTips = {
@@ -34,6 +43,7 @@ const fieldTips = {
   type: "决定该站点使用 OpenAI 还是 Anthropic 协议进行认证与请求。",
   baseURL: "中转站的 API 根地址，例如 https://anyrouter.top。",
   apiKey: "该中转站的访问密钥。填写后，站点下的所有模型都会继承它。",
+  clientProfile: "通用协议只发送必要请求头；Claude Code 和 Codex 模式会发送对应客户端的兼容请求指纹。自定义请求头仍可覆盖这些默认值。",
   userAgent: "部分中转站按 User-Agent 做白名单，UA 不匹配会直接拒绝而不进入认证。",
   headersJSON: "附加请求头 JSON 对象，值必须是字符串。会与模型自身的自定义请求头合并，模型优先。",
   modelsPath: "拉取模型列表的路径。留空时自动探测 /v1/models、/models、/api/v1/models。",
@@ -236,6 +246,17 @@ onMounted(async () => {
               allow-visibility-toggle
               placeholder="例如：sk-xxxxxx"
               autocomplete="off"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.clientProfile" />
+              <span>客户端模式</span>
+            </span>
+            <Select
+              v-model="draft.clientProfile"
+              :options="clientProfileOptions"
             />
           </label>
 
