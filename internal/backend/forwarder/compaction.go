@@ -1634,7 +1634,12 @@ func (service *Service) generateCompactionSummary(ctx context.Context, stream *A
 		case modeladapter.ModelEventKindTurnFinished:
 			usage = turnUsageSnapshot{
 				Provider:          event.Provider,
-				Model:             event.Model,
+				WireModel:         event.Model,
+				RequestedModelID:  event.RequestedModelID,
+				ChannelID:         event.ResolvedChannelID,
+				ChannelName:       event.ResolvedChannelName,
+				ProviderID:        event.ResolvedProviderID,
+				ProviderName:      event.ResolvedProviderName,
 				InputTokens:       event.InputTokens,
 				OutputTokens:      event.OutputTokens,
 				CacheReadTokens:   event.CacheReadTokens,

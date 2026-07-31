@@ -126,11 +126,20 @@ func (router *Router) Stream(ctx context.Context, req StreamRequest, sink func(M
 		}
 	}
 
+	resolvedSink := func(event ModelEvent) error {
+		event.RequestedModelID = strings.TrimSpace(req.ModelID)
+		event.ResolvedChannelID = strings.TrimSpace(channel.ID)
+		event.ResolvedChannelName = strings.TrimSpace(channel.Name)
+		event.ResolvedProviderID = strings.TrimSpace(channel.ProviderID)
+		event.ResolvedProviderName = strings.TrimSpace(channel.GroupName)
+		return sink(event)
+	}
+
 	switch resolved.Provider {
 	case "anthropic":
-		return router.anthropic.Stream(ctx, resolved, sink)
+		return router.anthropic.Stream(ctx, resolved, resolvedSink)
 	case "openai":
-		return router.openai.Stream(ctx, resolved, sink)
+		return router.openai.Stream(ctx, resolved, resolvedSink)
 	default:
 		return fmt.Errorf("unsupported provider %q", resolved.Provider)
 	}

@@ -186,6 +186,16 @@ type ModelEvent struct {
 	Provider string
 	// Model 表示当前事件所属模型标识。
 	Model string
+	// RequestedModelID 表示 Cursor 请求使用的稳定模型标识。
+	RequestedModelID string
+	// ResolvedChannelID 表示本次请求实际命中的稳定渠道 ID。
+	ResolvedChannelID string
+	// ResolvedChannelName 表示本次请求实际命中的渠道展示名。
+	ResolvedChannelName string
+	// ResolvedProviderID 表示渠道所属中转站的持久化 ID。
+	ResolvedProviderID string
+	// ResolvedProviderName 表示渠道所属中转站的展示名。
+	ResolvedProviderName string
 	// Text 表示文本增量。
 	Text string
 	// ThinkingStyle 表示思考样式。

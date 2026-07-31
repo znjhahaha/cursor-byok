@@ -33,6 +33,7 @@ vi.mock("@/services/clientApi", () => {
 import {
   createEmptyModelAdapter,
   formatImportSummary,
+  formatModelAdapterTestSummary,
   normalizeModelAdapter,
   normalizeProvider,
   repairModelAdapterProviderReferences,
@@ -95,6 +96,18 @@ describe("中转站继承校验", () => {
 
   it("缺少 providers 上下文时能复现悬空引用错误", () => {
     expect(validateModelAdapters([adapterFixture()])).toContain("绑定的中转站已不存在");
+  });
+});
+
+describe("模型测试部分成功状态", () => {
+  it("收到正文但流未完整结束时显示可用警告而不是超时失败", () => {
+    expect(formatModelAdapterTestSummary({
+      status: "success",
+      availability: "available",
+      benchmarkComplete: false,
+      warning: "已收到有效文本，但测速流未完整结束",
+      firstTextTokenMS: 5200,
+    })).toContain("测速未完整结束");
   });
 });
 

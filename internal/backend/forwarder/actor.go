@@ -475,6 +475,27 @@ func (service *Service) applyProviderModelEvent(stream *ActiveStream, event mode
 	accumulatedReasoningItemID := stream.ProviderAccumulatedReasoningItemID
 	accumulatedReasoningStatus := stream.ProviderAccumulatedReasoningStatus
 	accumulatedReasoningSummary := append([]byte(nil), stream.ProviderAccumulatedReasoningSummary...)
+	if strings.TrimSpace(event.Provider) != "" {
+		stream.ProviderUsage.Provider = strings.TrimSpace(event.Provider)
+	}
+	if strings.TrimSpace(event.Model) != "" {
+		stream.ProviderUsage.WireModel = strings.TrimSpace(event.Model)
+	}
+	if strings.TrimSpace(event.RequestedModelID) != "" {
+		stream.ProviderUsage.RequestedModelID = strings.TrimSpace(event.RequestedModelID)
+	}
+	if strings.TrimSpace(event.ResolvedChannelID) != "" {
+		stream.ProviderUsage.ChannelID = strings.TrimSpace(event.ResolvedChannelID)
+	}
+	if strings.TrimSpace(event.ResolvedChannelName) != "" {
+		stream.ProviderUsage.ChannelName = strings.TrimSpace(event.ResolvedChannelName)
+	}
+	if strings.TrimSpace(event.ResolvedProviderID) != "" {
+		stream.ProviderUsage.ProviderID = strings.TrimSpace(event.ResolvedProviderID)
+	}
+	if strings.TrimSpace(event.ResolvedProviderName) != "" {
+		stream.ProviderUsage.ProviderName = strings.TrimSpace(event.ResolvedProviderName)
+	}
 	stream.mu.Unlock()
 
 	switch event.Kind {
@@ -593,7 +614,12 @@ func (service *Service) applyProviderModelEvent(stream *ActiveStream, event mode
 		stream.ProviderFinishReason = strings.TrimSpace(event.FinishReason)
 		stream.ProviderUsage = turnUsageSnapshot{
 			Provider:          event.Provider,
-			Model:             event.Model,
+			WireModel:         event.Model,
+			RequestedModelID:  event.RequestedModelID,
+			ChannelID:         event.ResolvedChannelID,
+			ChannelName:       event.ResolvedChannelName,
+			ProviderID:        event.ResolvedProviderID,
+			ProviderName:      event.ResolvedProviderName,
 			InputTokens:       event.InputTokens,
 			OutputTokens:      event.OutputTokens,
 			CacheReadTokens:   event.CacheReadTokens,
@@ -695,6 +721,7 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 	accumulatedReasoningSummary := append([]byte(nil), stream.ProviderAccumulatedReasoningSummary...)
 	finishReason := stream.ProviderFinishReason
 	usage := stream.ProviderUsage
+	estimatedInputTokens := stream.ProviderEstimatedInputTokens
 	hadToolInvocation := stream.ToolInvocationCount > 0
 	terminalToolInvocation := stream.ProviderTerminalToolInvocation
 	existingCompletion := stream.PendingProviderCompletion
@@ -710,11 +737,22 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 	stream.ProviderAccumulatedReasoningSummary = nil
 	stream.ProviderFinishReason = ""
 	stream.ProviderUsage = turnUsageSnapshot{}
+	stream.ProviderEstimatedInputTokens = 0
 	stream.ProviderTerminalToolInvocation = false
 	stream.ToolInvocationCount = 0
 	status := stream.Status
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
+
+	if usage.InputTokens <= 0 && estimatedInputTokens > 0 {
+		usage.InputTokens = maxPositiveInt64(usage.InputTokens, estimatedInputTokens)
+		usage.EstimatedInputTokens = usage.InputTokens
+	}
+	if usage.OutputTokens <= 0 {
+		estimatedOutput := estimateTextTokens(accumulatedText) + estimateTextTokens(accumulatedReasoning)
+		usage.OutputTokens = maxPositiveInt64(usage.OutputTokens, estimatedOutput)
+		usage.EstimatedOutputTokens = usage.OutputTokens
+	}
 
 	if errors.Is(payload.Err, errProviderLoopInterrupted) || isTerminalStreamStatus(status) {
 		return nil

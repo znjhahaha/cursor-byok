@@ -578,7 +578,7 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 	currentEvent := ""
 	dataLines := make([]string, 0, 2)
 	flush := func() error {
-		if currentEvent == "" || len(dataLines) == 0 {
+		if len(dataLines) == 0 {
 			dataLines = dataLines[:0]
 			return nil
 		}
@@ -592,11 +592,18 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		if err := json.Unmarshal([]byte(payloadLine), &event); err != nil {
 			return err
 		}
-		if currentEvent == "error" || strings.TrimSpace(event.Type) == "error" {
+		eventName := strings.TrimSpace(currentEvent)
+		if eventName == "" {
+			// The SSE event field is optional. Several Anthropic-compatible
+			// relays (including some AnyRouter paths) only emit data lines and
+			// identify the event with the JSON type field.
+			eventName = strings.TrimSpace(event.Type)
+		}
+		if eventName == "error" || strings.TrimSpace(event.Type) == "error" {
 			return errorFromEvent(event)
 		}
 
-		switch currentEvent {
+		switch eventName {
 		case "message_start":
 			if strings.TrimSpace(event.Message.Model) != "" {
 				currentModel = strings.TrimSpace(event.Message.Model)

@@ -16,6 +16,8 @@ type HomeMetricsSummary struct {
 	CacheReadTokens    int64    `json:"cacheReadTokens"`
 	CacheWriteTokens   int64    `json:"cacheWriteTokens"`
 	CacheHitRate       *float64 `json:"cacheHitRate"`
+	EstimatedTokens    int64    `json:"estimatedTokens"`
+	UnreportedCalls    int64    `json:"unreportedCalls"`
 }
 
 // UsageSeries 定义按天与按中转站的用量序列。
@@ -55,6 +57,8 @@ func (service *MetricsService) GetHomeMetricsSummary() (HomeMetricsSummary, erro
 		CacheReadTokens:    summary.CacheReadTokens,
 		CacheWriteTokens:   summary.CacheWriteTokens,
 		CacheHitRate:       summary.CacheHitRate,
+		EstimatedTokens:    summary.EstimatedTokens,
+		UnreportedCalls:    summary.UnreportedCalls,
 	}, nil
 }
 

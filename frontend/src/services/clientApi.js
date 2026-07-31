@@ -1,5 +1,7 @@
 import {
   GetModelAdapterTestResults,
+  GetDiagnosticLogs,
+  ExportDiagnosticBundle,
   GetProviderModelsCache,
   GetState,
   ListProviderModels,
@@ -177,6 +179,14 @@ export function testModelAdapter(adapter) {
 
 export function getModelAdapterTestResults() {
   return withApiLogging("GetModelAdapterTestResults", undefined, () => GetModelAdapterTestResults());
+}
+
+export function getDiagnosticLogs(query) {
+  return withApiLogging("GetDiagnosticLogs", query, () => GetDiagnosticLogs(query));
+}
+
+export function exportDiagnosticBundle() {
+  return withApiLogging("ExportDiagnosticBundle", undefined, () => ExportDiagnosticBundle());
 }
 
 export function listProviderModels(provider) {

@@ -24,6 +24,12 @@ type ModelAdapterTestResult = client.ModelAdapterTestResult
 // ModelAdapterTestResultsPayload 定义测速结果事件载荷。
 type ModelAdapterTestResultsPayload = client.ModelAdapterTestResultsPayload
 
+type DiagnosticLogQuery = client.DiagnosticLogQuery
+
+type DiagnosticLogPage = client.DiagnosticLogPage
+
+type DiagnosticExportResult = client.DiagnosticExportResult
+
 // ProviderConfig 定义 API 中转站配置结构。
 type ProviderConfig = serverconfig.ProviderConfig
 
@@ -111,6 +117,14 @@ func (s *ProxyService) TestModelAdapter(adapter ModelAdapterConfig) (ModelAdapte
 // GetModelAdapterTestResults 用于处理与 GetModelAdapterTestResults 相关的逻辑。
 func (s *ProxyService) GetModelAdapterTestResults() []ModelAdapterTestResult {
 	return s.core.GetModelAdapterTestResults()
+}
+
+func (s *ProxyService) GetDiagnosticLogs(query DiagnosticLogQuery) (DiagnosticLogPage, error) {
+	return s.core.GetDiagnosticLogs(query)
+}
+
+func (s *ProxyService) ExportDiagnosticBundle() (DiagnosticExportResult, error) {
+	return s.core.ExportDiagnosticBundle()
 }
 
 // ListProviderModels 拉取指定中转站的可用模型列表，命中缓存时直接返回。

@@ -263,6 +263,9 @@ export function formatModelAdapterTestSummary(source) {
   if (status !== "success") {
     return "";
   }
+  if (result.benchmarkComplete === false && asString(result.warning)) {
+    return `可用 | 首字 ${formatDuration(result.firstTextTokenMS)} | 测速未完整结束`;
+  }
   const roundedTPS = Math.max(0, Math.round(asNumber(result.tokensPerSecond)));
   return `${roundedTPS} t/s | 首字 ${formatDuration(result.firstTextTokenMS)}`;
 }
@@ -279,6 +282,9 @@ function normalizeModelAdapterTestResult(source) {
     totalDurationMS: Math.max(0, Math.round(asNumber(raw.totalDurationMS))),
     outputTokens: Math.max(0, Math.round(asNumber(raw.outputTokens))),
     tokensEstimated: asBoolean(raw.tokensEstimated),
+    availability: asString(raw.availability) || (status === "success" ? "available" : "unavailable"),
+    benchmarkComplete: asBoolean(raw.benchmarkComplete),
+    warning: asString(raw.warning),
     summaryText: asString(raw.summaryText),
     error: asString(raw.error),
     rawResponse: asString(raw.rawResponse),
@@ -810,6 +816,7 @@ function buildConfigPayload(source = appState) {
 
 function applyConfigToState(config, { modelAdaptersOnly = false } = {}) {
   const normalized = normalizeConfig(config);
+  appState.log = normalized.log;
   if (modelAdaptersOnly) {
     appState.providers = normalized.providers;
     appState.modelAdapters = normalized.modelAdapters;
@@ -1053,11 +1060,19 @@ const cachedConfig = normalizeConfig(cachedState);
 
 export const appState = reactive({
   appVersion: "",
+  log: cachedConfig.log,
   providers: cachedConfig.providers,
   modelAdapters: cachedConfig.modelAdapters,
   modelAdapterTestResults: {},
   providerModelCatalog: {},
-  usageSeries: { days: [], providers: [], models: [], hours: [] },
+  usageSeries: {
+    days: [],
+    providers: [],
+    models: [],
+    hours: [],
+    timezone: "Asia/Shanghai",
+    legacyUTCDates: false,
+  },
   usageSeriesLoading: false,
   usageSeriesError: "",
   configBackendListenAddr: cachedConfig.backendListenAddr,
@@ -1359,6 +1374,7 @@ export async function persistUserConfig() {
   const currentConfig = await loadPersistedUserConfig();
   return persistConfigPayload({
     ...currentConfig,
+    log: appState.log,
     providers: normalizeProviders(appState.providers),
     modelAdapters: normalizeModelAdapters(appState.modelAdapters),
     routing: {
@@ -1369,6 +1385,21 @@ export async function persistUserConfig() {
       includeCacheWriteInHitRate: appState.includeCacheWriteInHitRate,
     },
   });
+}
+
+export async function saveDetailedLogging(value) {
+  const currentConfig = await loadPersistedUserConfig();
+  const previousValue = appState.log;
+  const nextValue = asBoolean(value);
+  appState.log = nextValue;
+  const result = await persistConfigPayload({
+    ...currentConfig,
+    log: nextValue,
+  });
+  if (!result.ok) {
+    appState.log = previousValue;
+  }
+  return result;
 }
 
 export async function saveIncludeCacheWriteInHitRate(value) {
@@ -1808,6 +1839,8 @@ export async function syncUsageSeries(days = 30) {
       providers: asArray(data.providers),
       models: asArray(data.models),
       hours: asArray(data.hours),
+      timezone: asString(data.timezone) || "Asia/Shanghai",
+      legacyUTCDates: asBoolean(data.legacyUTCDates),
     };
     appState.usageSeriesError = "";
     return { ok: true, error: "" };

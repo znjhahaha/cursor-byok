@@ -1,7 +1,6 @@
 package forwarder
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -14,15 +13,35 @@ import (
 )
 
 type turnUsageSnapshot struct {
-	Provider          string
-	Model             string
-	InputTokens       int64
-	OutputTokens      int64
-	CacheReadTokens   int64
-	CacheWriteTokens  int64
-	UsagePresent      bool
-	CacheReadPresent  bool
-	CacheWritePresent bool
+	Provider              string
+	WireModel             string
+	RequestedModelID      string
+	ChannelID             string
+	ChannelName           string
+	ProviderID            string
+	ProviderName          string
+	InputTokens           int64
+	OutputTokens          int64
+	EstimatedInputTokens  int64
+	EstimatedOutputTokens int64
+	CacheReadTokens       int64
+	CacheWriteTokens      int64
+	UsagePresent          bool
+	CacheReadPresent      bool
+	CacheWritePresent     bool
+}
+
+func (snapshot turnUsageSnapshot) usageSource() string {
+	switch {
+	case snapshot.UsagePresent && (snapshot.EstimatedInputTokens > 0 || snapshot.EstimatedOutputTokens > 0):
+		return "mixed"
+	case snapshot.UsagePresent:
+		return "provider"
+	case snapshot.EstimatedInputTokens > 0 || snapshot.EstimatedOutputTokens > 0:
+		return "estimated"
+	default:
+		return "missing"
+	}
 }
 
 func (snapshot turnUsageSnapshot) hasAny() bool {
@@ -338,24 +357,34 @@ func (service *Service) recordTurnUsageSnapshot(stream *ActiveStream, conversati
 		modelName = modelID
 	}
 	provider := strings.TrimSpace(usage.Provider)
-	if strings.TrimSpace(usage.Model) != "" {
-		modelName = strings.TrimSpace(usage.Model)
+	if strings.TrimSpace(usage.ChannelName) != "" {
+		modelName = strings.TrimSpace(usage.ChannelName)
+	} else if strings.TrimSpace(usage.RequestedModelID) != "" {
+		modelName = strings.TrimSpace(usage.RequestedModelID)
 	}
-	providerID, providerName := service.resolveUsageProviderIdentity(modelID)
+	providerID := strings.TrimSpace(usage.ProviderID)
+	providerName := strings.TrimSpace(usage.ProviderName)
 	effectiveModelCallID := firstNonEmpty(strings.TrimSpace(modelCallID), strings.TrimSpace(requestID))
 	if service.usageStore != nil {
 		if err := service.usageStore.UpsertEvent(usageFileEvent{
-			EventID:          usageEventID(requestID, effectiveModelCallID),
-			Kind:             usageEventKindProvider,
-			ProviderID:       providerID,
-			ProviderName:     providerName,
-			Model:            modelName,
-			At:               lastEventAt,
-			InputTokens:      usage.InputTokens,
-			OutputTokens:     usage.OutputTokens,
-			CacheReadTokens:  usage.CacheReadTokens,
-			CacheWriteTokens: usage.CacheWriteTokens,
-			UsagePresent:     usage.UsagePresent,
+			EventID:               usageEventID(requestID, effectiveModelCallID),
+			Kind:                  usageEventKindProvider,
+			ProviderID:            providerID,
+			ProviderName:          providerName,
+			Model:                 modelName,
+			WireModel:             strings.TrimSpace(usage.WireModel),
+			ChannelID:             strings.TrimSpace(usage.ChannelID),
+			ChannelName:           strings.TrimSpace(usage.ChannelName),
+			At:                    lastEventAt,
+			InputTokens:           usage.InputTokens,
+			OutputTokens:          usage.OutputTokens,
+			EstimatedInputTokens:  usage.EstimatedInputTokens,
+			EstimatedOutputTokens: usage.EstimatedOutputTokens,
+			UsageSource:           usage.usageSource(),
+			UsageMissing:          !usage.UsagePresent || usage.EstimatedInputTokens > 0 || usage.EstimatedOutputTokens > 0,
+			CacheReadTokens:       usage.CacheReadTokens,
+			CacheWriteTokens:      usage.CacheWriteTokens,
+			UsagePresent:          usage.UsagePresent,
 		}); err != nil {
 			return err
 		}
@@ -385,21 +414,6 @@ func (service *Service) recordTurnUsageSnapshot(stream *ActiveStream, conversati
 	return nil
 }
 
-// resolveUsageProviderIdentity 反查模型所属的中转站。
-//
-// 复用 resolver 而非扩展 modeladapter 事件链路：归属信息只在统计落盘时需要，
-// 沿事件链透传会让适配器层承担与推理无关的字段。
-func (service *Service) resolveUsageProviderIdentity(modelID string) (string, string) {
-	if service == nil || service.resolver == nil {
-		return "", ""
-	}
-	channel, err := service.resolver.SelectChannelForModel(context.Background(), strings.TrimSpace(modelID))
-	if err != nil || channel == nil {
-		return "", ""
-	}
-	return strings.TrimSpace(channel.ProviderID), strings.TrimSpace(channel.GroupName)
-}
-
 func (service *Service) recordTurnFinalizedSnapshot(stream *ActiveStream, conversationID string, turnSeq int64, requestID string, status string, errorText string) error {
 	_ = stream
 	_ = errorText
@@ -414,18 +428,25 @@ func (service *Service) recordTurnFinalizedSnapshot(stream *ActiveStream, conver
 		usage = aggregate
 	}
 	return service.usageStore.UpsertEvent(usageFileEvent{
-		EventID:          eventID,
-		Kind:             usageEventKindTurn,
-		Status:           normalizeUsageTurnStatus(status),
-		ProviderID:       usage.ProviderID,
-		ProviderName:     usage.ProviderName,
-		Model:            usage.Model,
-		At:               time.Now().UTC(),
-		InputTokens:      usage.InputTokens,
-		OutputTokens:     usage.OutputTokens,
-		CacheReadTokens:  usage.CacheReadTokens,
-		CacheWriteTokens: usage.CacheWriteTokens,
-		UsagePresent:     usage.UsagePresent,
+		EventID:               eventID,
+		Kind:                  usageEventKindTurn,
+		Status:                normalizeUsageTurnStatus(status),
+		ProviderID:            usage.ProviderID,
+		ProviderName:          usage.ProviderName,
+		Model:                 usage.Model,
+		WireModel:             usage.WireModel,
+		ChannelID:             usage.ChannelID,
+		ChannelName:           usage.ChannelName,
+		At:                    time.Now().UTC(),
+		InputTokens:           usage.InputTokens,
+		OutputTokens:          usage.OutputTokens,
+		EstimatedInputTokens:  usage.EstimatedInputTokens,
+		EstimatedOutputTokens: usage.EstimatedOutputTokens,
+		UsageSource:           usage.UsageSource,
+		UsageMissing:          usage.UsageMissing,
+		CacheReadTokens:       usage.CacheReadTokens,
+		CacheWriteTokens:      usage.CacheWriteTokens,
+		UsagePresent:          usage.UsagePresent,
 	})
 }
 

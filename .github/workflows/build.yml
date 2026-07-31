@@ -40,6 +40,16 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install Yarn Classic
+        run: npm install --global yarn@${{ env.YARN_VERSION }}
+
       - name: Install protoc
         uses: arduino/setup-protoc@v3
         with:
@@ -70,6 +80,14 @@ jobs:
 
       - name: Run Go tests
         run: go test ./internal/... ./scripts/...
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: yarn test --run
 
   build:
     name: Build ${{ matrix.name }}

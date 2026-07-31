@@ -25,13 +25,16 @@ import (
 )
 
 const (
-	modelAdapterTestUpdatedEvent      = "model-adapter-test:updated"
-	modelAdapterTestPrompt            = "Output the numbers 1 through 120 separated by a single space. No commas, no newlines, no explanation."
-	modelAdapterTestTimeout           = 45 * time.Second
-	modelAdapterTestDefaultMaxTokens  = 65_536
-	modelAdapterTestEmptyTextError    = "未收到文本输出，无法计算测速结果"
-	modelAdapterTestMaxErrorBodyBytes = 8192
+	modelAdapterTestUpdatedEvent       = "model-adapter-test:updated"
+	modelAdapterTestPrompt             = "Output the numbers 1 through 32 separated by a single space. No commas, no newlines, no explanation."
+	modelAdapterTestTimeout            = 45 * time.Second
+	modelAdapterTestDefaultMaxTokens   = 128
+	modelAdapterTestTargetOutputTokens = 12
+	modelAdapterTestEmptyTextError     = "未收到文本输出，无法计算测速结果"
+	modelAdapterTestMaxErrorBodyBytes  = 8192
 )
+
+var errModelAdapterBenchmarkComplete = errors.New("model adapter benchmark target reached")
 
 type ModelAdapterTestStatus string
 
@@ -44,18 +47,21 @@ const (
 
 // ModelAdapterTestResult 表示一次模型测速结果。
 type ModelAdapterTestResult struct {
-	AdapterID        string  `json:"adapterID"`
-	RequestHash      string  `json:"requestHash"`
-	Status           string  `json:"status"`
-	TokensPerSecond  float64 `json:"tokensPerSecond"`
-	FirstTextTokenMS int64   `json:"firstTextTokenMS"`
-	TotalDurationMS  int64   `json:"totalDurationMS"`
-	OutputTokens     int64   `json:"outputTokens"`
-	TokensEstimated  bool    `json:"tokensEstimated"`
-	SummaryText      string  `json:"summaryText"`
-	Error            string  `json:"error"`
-	RawResponse      string  `json:"rawResponse"`
-	TestedAt         string  `json:"testedAt"`
+	AdapterID         string  `json:"adapterID"`
+	RequestHash       string  `json:"requestHash"`
+	Status            string  `json:"status"`
+	Availability      string  `json:"availability"`
+	BenchmarkComplete bool    `json:"benchmarkComplete"`
+	Warning           string  `json:"warning"`
+	TokensPerSecond   float64 `json:"tokensPerSecond"`
+	FirstTextTokenMS  int64   `json:"firstTextTokenMS"`
+	TotalDurationMS   int64   `json:"totalDurationMS"`
+	OutputTokens      int64   `json:"outputTokens"`
+	TokensEstimated   bool    `json:"tokensEstimated"`
+	SummaryText       string  `json:"summaryText"`
+	Error             string  `json:"error"`
+	RawResponse       string  `json:"rawResponse"`
+	TestedAt          string  `json:"testedAt"`
 }
 
 // ModelAdapterTestResultsPayload 用于向前端广播当前测速结果快照。
@@ -64,12 +70,13 @@ type ModelAdapterTestResultsPayload struct {
 }
 
 type modelAdapterTestMetrics struct {
-	firstTextTokenAt time.Time
-	finishedAt       time.Time
-	outputTokens     int64
-	outputProvided   bool
-	text             strings.Builder
-	rawResponse      string
+	firstTextTokenAt  time.Time
+	finishedAt        time.Time
+	outputTokens      int64
+	outputProvided    bool
+	benchmarkComplete bool
+	text              strings.Builder
+	rawResponse       string
 }
 
 type modelAdapterTestArtifactObserver struct {
@@ -119,13 +126,14 @@ func (s *ProxyService) TestModelAdapter(adapter serverconfig.ModelAdapterConfig)
 	normalized, err := normalizeSingleModelAdapterConfig(adapter)
 	if err != nil {
 		result := ModelAdapterTestResult{
-			AdapterID:   adapterID,
-			RequestHash: requestHash,
-			Status:      string(ModelAdapterTestStatusError),
-			SummaryText: buildModelAdapterTestErrorSummary(err),
-			Error:       buildModelAdapterTestErrorSummary(err),
-			RawResponse: strings.TrimSpace(modelAdapterTestErrorMessage(err)),
-			TestedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+			AdapterID:    adapterID,
+			RequestHash:  requestHash,
+			Status:       string(ModelAdapterTestStatusError),
+			Availability: "unavailable",
+			SummaryText:  buildModelAdapterTestErrorSummary(err),
+			Error:        buildModelAdapterTestErrorSummary(err),
+			RawResponse:  strings.TrimSpace(modelAdapterTestErrorMessage(err)),
+			TestedAt:     time.Now().UTC().Format(time.RFC3339Nano),
 		}
 		s.storeAndEmitModelAdapterTestResult(result)
 		return result, err
@@ -166,6 +174,17 @@ func (s *ProxyService) runModelAdapterTest(adapter serverconfig.ModelAdapterConf
 	startedAt := time.Now().UTC()
 	metrics, requestErr := s.executeModelAdapterNonStreamingTest(ctx, adapter)
 	if requestErr != nil {
+		if metrics != nil && !metrics.firstTextTokenAt.IsZero() && strings.TrimSpace(metrics.text.String()) != "" {
+			result := buildSuccessfulModelAdapterTestResult(
+				adapter.ID,
+				requestHash,
+				startedAt,
+				metrics,
+				false,
+				"已收到有效文本，但测速流未完整结束",
+			)
+			return result, nil
+		}
 		result := buildErroredModelAdapterTestResult(adapter.ID, requestHash, requestErr)
 		return result, requestErr
 	}
@@ -179,6 +198,13 @@ func (s *ProxyService) runModelAdapterTest(adapter serverconfig.ModelAdapterConf
 		return result, emptyTextErr
 	}
 
+	return buildSuccessfulModelAdapterTestResult(adapter.ID, requestHash, startedAt, metrics, metrics.benchmarkComplete, ""), nil
+}
+
+func buildSuccessfulModelAdapterTestResult(adapterID string, requestHash string, startedAt time.Time, metrics *modelAdapterTestMetrics, benchmarkComplete bool, warning string) ModelAdapterTestResult {
+	if metrics == nil {
+		metrics = &modelAdapterTestMetrics{}
+	}
 	outputTokens := metrics.outputTokens
 	tokensEstimated := false
 	if !metrics.outputProvided || outputTokens <= 0 {
@@ -202,19 +228,22 @@ func (s *ProxyService) runModelAdapterTest(adapter serverconfig.ModelAdapterConf
 	}
 
 	result := ModelAdapterTestResult{
-		AdapterID:        adapter.ID,
-		RequestHash:      requestHash,
-		Status:           string(ModelAdapterTestStatusSuccess),
-		TokensPerSecond:  tokensPerSecond,
-		FirstTextTokenMS: firstTextTokenMS,
-		TotalDurationMS:  totalDurationMS,
-		OutputTokens:     outputTokens,
-		TokensEstimated:  tokensEstimated,
-		TestedAt:         time.Now().UTC().Format(time.RFC3339Nano),
-		RawResponse:      strings.TrimSpace(metrics.rawResponse),
+		AdapterID:         adapterID,
+		RequestHash:       requestHash,
+		Status:            string(ModelAdapterTestStatusSuccess),
+		Availability:      "available",
+		BenchmarkComplete: benchmarkComplete,
+		Warning:           strings.TrimSpace(warning),
+		TokensPerSecond:   tokensPerSecond,
+		FirstTextTokenMS:  firstTextTokenMS,
+		TotalDurationMS:   totalDurationMS,
+		OutputTokens:      outputTokens,
+		TokensEstimated:   tokensEstimated,
+		TestedAt:          time.Now().UTC().Format(time.RFC3339Nano),
+		RawResponse:       strings.TrimSpace(metrics.rawResponse),
 	}
 	result.SummaryText = buildModelAdapterTestSummaryText(result)
-	return result, nil
+	return result
 }
 
 func (s *ProxyService) executeModelAdapterNonStreamingTest(ctx context.Context, adapter serverconfig.ModelAdapterConfig) (*modelAdapterTestMetrics, error) {
@@ -233,6 +262,15 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 	metrics := &modelAdapterTestMetrics{}
 	observer := &modelAdapterTestArtifactObserver{}
 	maxTokens := modelAdapterTestConfiguredOpenAIMaxTokens(adapter)
+	extraParamsEnabled, extraParamsJSON := modelAdapterTestExtraParams(
+		adapter.OpenAIExtraParamsEnabled,
+		adapter.OpenAIExtraParamsJSON,
+		"max_tokens",
+		"max_completion_tokens",
+		"max_output_tokens",
+		"reasoning",
+		"reasoning_effort",
+	)
 	requestID := "model-adapter-test-" + buildModelAdapterTestRequestHash(adapter)
 	req := modeladapter.StreamRequest{
 		RequestID:                   requestID,
@@ -249,8 +287,8 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 		ResolvedContextWindowTokens: adapter.ContextWindowTokens,
 		ReasoningEffort:             strings.TrimSpace(adapter.ReasoningEffort),
 		OpenAIEndpoint:              strings.TrimSpace(adapter.OpenAIEndpoint),
-		OpenAIExtraParamsEnabled:    adapter.OpenAIExtraParamsEnabled,
-		OpenAIExtraParamsJSON:       strings.TrimSpace(adapter.OpenAIExtraParamsJSON),
+		OpenAIExtraParamsEnabled:    extraParamsEnabled,
+		OpenAIExtraParamsJSON:       extraParamsJSON,
 		CustomHeadersEnabled:        adapter.CustomHeadersEnabled,
 		CustomHeadersJSON:           strings.TrimSpace(adapter.CustomHeadersJSON),
 		Messages:                    []modeladapter.Message{{Role: "user", Content: modelAdapterTestPrompt}},
@@ -268,6 +306,11 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 				metrics.firstTextTokenAt = now
 			}
 			_, _ = metrics.text.WriteString(event.Text)
+			if estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
+				metrics.finishedAt = now
+				metrics.benchmarkComplete = true
+				return errModelAdapterBenchmarkComplete
+			}
 		case modeladapter.ModelEventKindTurnFinished:
 			metrics.finishedAt = now
 			if event.OutputTokens > 0 {
@@ -283,8 +326,14 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		metrics.finishedAt = time.Now().UTC()
+		metrics.rawResponse = observer.RawResponse()
+		if errors.Is(err, errModelAdapterBenchmarkComplete) {
+			return metrics, nil
+		}
+		return metrics, err
 	}
+	metrics.benchmarkComplete = true
 	if metrics.finishedAt.IsZero() {
 		metrics.finishedAt = time.Now().UTC()
 	}
@@ -300,7 +349,18 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 	metrics := &modelAdapterTestMetrics{}
 	observer := &modelAdapterTestArtifactObserver{}
 	maxTokens := modelAdapterTestConfiguredAnthropicMaxTokens(adapter)
-	thinkingEffort := normalizeModelAdapterTestAnthropicThinkingEffort(adapter.AnthropicThinkingEffort)
+	// A connectivity benchmark should not force adaptive thinking. Some Claude
+	// compatible relays spend the entire short benchmark budget in a thinking
+	// block even though normal Agent requests work correctly. Leaving both
+	// fields empty preserves the provider default and asks for ordinary text.
+	thinkingEffort := ""
+	extraParamsEnabled, extraParamsJSON := modelAdapterTestExtraParams(
+		adapter.AnthropicExtraParamsEnabled,
+		adapter.AnthropicExtraParamsJSON,
+		"max_tokens",
+		"thinking",
+		"output_config",
+	)
 	requestID := "model-adapter-test-" + buildModelAdapterTestRequestHash(adapter)
 	req := modeladapter.StreamRequest{
 		RequestID:                   requestID,
@@ -321,8 +381,8 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 		AnthropicThinkingEffort:     thinkingEffort,
 		CustomHeadersEnabled:        adapter.CustomHeadersEnabled,
 		CustomHeadersJSON:           strings.TrimSpace(adapter.CustomHeadersJSON),
-		AnthropicExtraParamsEnabled: adapter.AnthropicExtraParamsEnabled,
-		AnthropicExtraParamsJSON:    strings.TrimSpace(adapter.AnthropicExtraParamsJSON),
+		AnthropicExtraParamsEnabled: extraParamsEnabled,
+		AnthropicExtraParamsJSON:    extraParamsJSON,
 		ThinkingBudgetTokens:        adapter.ThinkingBudgetTokens,
 		Messages:                    []modeladapter.Message{{Role: "user", Content: modelAdapterTestPrompt}},
 		MaxTokens:                   maxTokens,
@@ -339,6 +399,11 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 				metrics.firstTextTokenAt = now
 			}
 			_, _ = metrics.text.WriteString(event.Text)
+			if estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
+				metrics.finishedAt = now
+				metrics.benchmarkComplete = true
+				return errModelAdapterBenchmarkComplete
+			}
 		case modeladapter.ModelEventKindTurnFinished:
 			metrics.finishedAt = now
 			if event.OutputTokens > 0 {
@@ -354,8 +419,14 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		metrics.finishedAt = time.Now().UTC()
+		metrics.rawResponse = observer.RawResponse()
+		if errors.Is(err, errModelAdapterBenchmarkComplete) {
+			return metrics, nil
+		}
+		return metrics, err
 	}
+	metrics.benchmarkComplete = true
 	if metrics.finishedAt.IsZero() {
 		metrics.finishedAt = time.Now().UTC()
 	}
@@ -437,19 +508,23 @@ func buildErroredModelAdapterTestResult(adapterID string, requestHash string, er
 	message := strings.TrimSpace(modelAdapterTestErrorMessage(err))
 	summary := buildModelAdapterTestErrorSummary(err)
 	return ModelAdapterTestResult{
-		AdapterID:   strings.TrimSpace(adapterID),
-		RequestHash: strings.TrimSpace(requestHash),
-		Status:      string(ModelAdapterTestStatusError),
-		SummaryText: summary,
-		Error:       summary,
-		RawResponse: message,
-		TestedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+		AdapterID:    strings.TrimSpace(adapterID),
+		RequestHash:  strings.TrimSpace(requestHash),
+		Status:       string(ModelAdapterTestStatusError),
+		Availability: "unavailable",
+		SummaryText:  summary,
+		Error:        summary,
+		RawResponse:  message,
+		TestedAt:     time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
 
 func buildModelAdapterTestSummaryText(result ModelAdapterTestResult) string {
 	if strings.TrimSpace(result.Status) != string(ModelAdapterTestStatusSuccess) {
 		return firstNonEmptyTrimmed(result.SummaryText, "测试失败")
+	}
+	if !result.BenchmarkComplete {
+		return fmt.Sprintf("可用 | 首字 %s | 测速未完整结束", formatModelAdapterTestDuration(result.FirstTextTokenMS))
 	}
 	return fmt.Sprintf("%d t/s | 首字 %s", int(math.Round(maxFloat64(result.TokensPerSecond, 0))), formatModelAdapterTestDuration(result.FirstTextTokenMS))
 }
@@ -708,23 +783,34 @@ func normalizeModelAdapterTestProviderAnthropicThinkingEffort(adapter serverconf
 }
 
 func modelAdapterTestConfiguredAnthropicMaxTokens(adapter serverconfig.ModelAdapterConfig) int {
-	if adapter.AnthropicMaxTokens > 0 {
-		return adapter.AnthropicMaxTokens
-	}
-	if adapter.MaxCompletionTokens > 0 {
-		return adapter.MaxCompletionTokens
-	}
+	_ = adapter
 	return modelAdapterTestDefaultMaxTokens
 }
 
 func modelAdapterTestConfiguredOpenAIMaxTokens(adapter serverconfig.ModelAdapterConfig) int {
-	if adapter.MaxCompletionTokens > 0 {
-		return adapter.MaxCompletionTokens
-	}
-	if adapter.AnthropicMaxTokens > 0 {
-		return adapter.AnthropicMaxTokens
-	}
+	_ = adapter
 	return modelAdapterTestDefaultMaxTokens
+}
+
+func modelAdapterTestExtraParams(enabled bool, raw string, protectedKeys ...string) (bool, string) {
+	if !enabled || strings.TrimSpace(raw) == "" {
+		return false, ""
+	}
+	var params map[string]any
+	if json.Unmarshal([]byte(raw), &params) != nil || params == nil {
+		return enabled, strings.TrimSpace(raw)
+	}
+	for _, key := range protectedKeys {
+		delete(params, key)
+	}
+	if len(params) == 0 {
+		return false, ""
+	}
+	body, err := json.Marshal(params)
+	if err != nil {
+		return enabled, strings.TrimSpace(raw)
+	}
+	return true, string(body)
 }
 
 func normalizeModelAdapterTestBool(value bool) int {

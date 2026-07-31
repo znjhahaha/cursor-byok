@@ -154,6 +154,7 @@ type ActiveStream struct {
 	ProviderSyntheticThinkingPublished          bool
 	ProviderFinishReason                        string
 	ProviderUsage                               turnUsageSnapshot
+	ProviderEstimatedInputTokens                int64
 	ProviderTerminalToolInvocation              bool
 	PendingCompaction                           *PendingCompaction
 

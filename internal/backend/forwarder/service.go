@@ -1359,11 +1359,13 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 		return service.failStream(stream, "unknown", err)
 	}
 	maxTokens, requestKnobs := service.resolveProviderOutputBudget(modelID, conversation, compiled)
+	estimatedInputTokens, _ := requestKnobs["compiled_prompt_tokens_estimate"].(int64)
 	service.maybeSaveLastAgentModelHash(conversation, modelID, mode, currentPass)
 	ctx, cancel := context.WithCancel(context.Background())
 	stream.mu.Lock()
 	stream.ProviderActive = true
 	stream.ProviderCancel = cancel
+	stream.ProviderEstimatedInputTokens = estimatedInputTokens
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
 	service.setTurnPhase(stream, TurnPhaseProviderRunning)

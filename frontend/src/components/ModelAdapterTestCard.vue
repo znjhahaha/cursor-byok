@@ -71,7 +71,7 @@ const panelClass = computed(() => {
   if (normalizedStatus.value === "error") {
     return "border-[#4b1d1d] bg-[#2a1313]";
   }
-  if (normalizedStatus.value === "success" && props.result?.tokensEstimated) {
+  if (normalizedStatus.value === "success" && (!props.result?.benchmarkComplete || props.result?.tokensEstimated)) {
     return "border-[#5a4314] bg-[#2f2612]";
   }
   if (normalizedStatus.value === "success") {
@@ -90,7 +90,7 @@ const summaryClass = computed(() => {
   if (normalizedStatus.value === "error") {
     return "text-[#fca5a5]";
   }
-  if (normalizedStatus.value === "success" && props.result?.tokensEstimated) {
+  if (normalizedStatus.value === "success" && (!props.result?.benchmarkComplete || props.result?.tokensEstimated)) {
     return "text-[#fcd34d]";
   }
   if (normalizedStatus.value === "success") {
@@ -157,6 +157,12 @@ const summaryClass = computed(() => {
       class="mt-2 text-xs text-[#8f8f8f]"
     >
       输出 Token 为估算值
+    </div>
+    <div
+      v-if="normalizedStatus === 'success' && result?.warning"
+      class="mt-2 rounded-[6px] border border-[#5a4314] bg-[#221b0d] px-2 py-1.5 text-xs text-[#fcd34d]"
+    >
+      {{ result.warning }}
     </div>
   </div>
 </template>

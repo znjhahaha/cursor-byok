@@ -2,6 +2,7 @@
 import ModelListPanel from "@/components/config/ModelListPanel.vue";
 import ProviderListPanel from "@/components/config/ProviderListPanel.vue";
 import UsageStatsPanel from "@/components/config/UsageStatsPanel.vue";
+import DiagnosticsPanel from "@/components/config/DiagnosticsPanel.vue";
 import { showModal } from "@/composables/useModal";
 import { reloadUserConfig } from "@/state/appState";
 import { Events } from "@wailsio/runtime";
@@ -11,6 +12,7 @@ const mainTabs = [
   { label: "中转站", value: "providers", icon: "icon-[mdi--server-network]" },
   { label: "模型配置", value: "models", icon: "icon-[mdi--api]" },
   { label: "调用统计", value: "stats", icon: "icon-[mdi--chart-bar]" },
+  { label: "日志与诊断", value: "diagnostics", icon: "icon-[mdi--text-box-search-outline]" },
 ];
 
 const activeTab = ref("providers");
@@ -19,6 +21,7 @@ const PANEL_COMPONENTS = {
   providers: ProviderListPanel,
   models: ModelListPanel,
   stats: UsageStatsPanel,
+  diagnostics: DiagnosticsPanel,
 };
 
 const activePanel = computed(() => PANEL_COMPONENTS[activeTab.value] ?? ProviderListPanel);
