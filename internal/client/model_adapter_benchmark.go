@@ -26,7 +26,7 @@ import (
 
 const (
 	modelAdapterTestUpdatedEvent       = "model-adapter-test:updated"
-	modelAdapterTestPrompt             = "Output the numbers 1 through 32 separated by a single space. No commas, no newlines, no explanation."
+	modelAdapterTestPrompt             = "Output the numbers 1 through 120 separated by a single space. No commas, no newlines, no explanation."
 	modelAdapterTestTimeout            = 45 * time.Second
 	modelAdapterTestDefaultMaxTokens   = 128
 	modelAdapterTestTargetOutputTokens = 12
@@ -174,7 +174,10 @@ func (s *ProxyService) runModelAdapterTest(adapter serverconfig.ModelAdapterConf
 	startedAt := time.Now().UTC()
 	metrics, requestErr := s.executeModelAdapterNonStreamingTest(ctx, adapter)
 	if requestErr != nil {
-		if metrics != nil && !metrics.firstTextTokenAt.IsZero() && strings.TrimSpace(metrics.text.String()) != "" {
+		if metrics != nil &&
+			shouldCompleteModelAdapterTestEarly(adapter, metrics.rawResponse) &&
+			!metrics.firstTextTokenAt.IsZero() &&
+			strings.TrimSpace(metrics.text.String()) != "" {
 			result := buildSuccessfulModelAdapterTestResult(
 				adapter.ID,
 				requestHash,
@@ -306,7 +309,8 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 				metrics.firstTextTokenAt = now
 			}
 			_, _ = metrics.text.WriteString(event.Text)
-			if estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
+			if shouldCompleteModelAdapterTestEarly(adapter, observer.RawResponse()) &&
+				estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
 				metrics.finishedAt = now
 				metrics.benchmarkComplete = true
 				return errModelAdapterBenchmarkComplete
@@ -399,7 +403,8 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 				metrics.firstTextTokenAt = now
 			}
 			_, _ = metrics.text.WriteString(event.Text)
-			if estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
+			if shouldCompleteModelAdapterTestEarly(adapter, observer.RawResponse()) &&
+				estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
 				metrics.finishedAt = now
 				metrics.benchmarkComplete = true
 				return errModelAdapterBenchmarkComplete
@@ -650,6 +655,28 @@ func estimateBenchmarkTextTokens(text string) int64 {
 		return 1
 	}
 	return estimated
+}
+
+func shouldCompleteModelAdapterTestEarly(adapter serverconfig.ModelAdapterConfig, rawResponse string) bool {
+	identity := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.Join([]string{
+		adapter.ProviderID,
+		adapter.DisplayName,
+		adapter.BaseURL,
+	}, " ")))
+	if strings.Contains(identity, "anyrouter") {
+		return true
+	}
+	if normalizeModelAdapterTestType(adapter.Type) != "anthropic" {
+		return false
+	}
+	hasData := false
+	hasEvent := false
+	for _, line := range strings.Split(rawResponse, "\n") {
+		line = strings.TrimSpace(line)
+		hasData = hasData || strings.HasPrefix(line, "data:")
+		hasEvent = hasEvent || strings.HasPrefix(line, "event:")
+	}
+	return hasData && !hasEvent
 }
 
 func buildModelAdapterTestCacheKey(adapter serverconfig.ModelAdapterConfig, requestHash string) string {

@@ -371,6 +371,7 @@ onDeactivated(() => {
           <Card
             v-for="(adapter, index) in filteredAdapters"
             :key="adapter.id || `${adapter.baseURL}-${adapter.modelID}-${index}`"
+            class="h-full [&>div]:h-full"
           >
             <div class="flex h-full min-h-[154px] flex-col justify-between gap-3">
               <div class="flex flex-col gap-2.5">

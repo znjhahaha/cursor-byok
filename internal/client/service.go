@@ -49,6 +49,8 @@ type ProxyService struct {
 	configPath string
 	// store 表示统一的配置存储。
 	store *serverconfig.Store
+	// configUnsubscribe 解除配置与文件日志开关之间的热加载绑定。
+	configUnsubscribe func()
 	// caCertPEM 表示当前声明中的 caCertPEM。
 	caCertPEM []byte
 
@@ -93,8 +95,26 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 		logger.Errorf("init backend host failed: %v", err)
 	} else {
 		service.backendHost = host
+		service.bindFileLogging(host.ConfigManager())
 	}
 	return service
+}
+
+func (s *ProxyService) bindFileLogging(configs *serverconfig.Manager) {
+	if s == nil || configs == nil {
+		return
+	}
+	logger.SetFileLoggingEnabled(configs.Current().Log)
+	unsubscribe := configs.Subscribe(func(cfg serverconfig.Config) {
+		logger.SetFileLoggingEnabled(cfg.Log)
+	})
+	s.configMu.Lock()
+	previous := s.configUnsubscribe
+	s.configUnsubscribe = unsubscribe
+	s.configMu.Unlock()
+	if previous != nil {
+		previous()
+	}
 }
 
 func (s *ProxyService) ensureBackendHost() error {
@@ -109,6 +129,7 @@ func (s *ProxyService) ensureBackendHost() error {
 		return err
 	}
 	s.backendHost = host
+	s.bindFileLogging(host.ConfigManager())
 	return nil
 }
 

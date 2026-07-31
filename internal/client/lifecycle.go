@@ -265,6 +265,13 @@ func (s *ProxyService) ShutdownForQuit() {
 			finalErr = errors.Join(finalErr, err)
 		}
 	}
+	s.configMu.Lock()
+	unsubscribe := s.configUnsubscribe
+	s.configUnsubscribe = nil
+	s.configMu.Unlock()
+	if unsubscribe != nil {
+		unsubscribe()
+	}
 	if finalErr != nil {
 		s.setLastError(finalErr)
 	}

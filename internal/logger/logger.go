@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -21,41 +20,50 @@ import (
 )
 
 const (
-	appLogMaxLines        = 10000
-	appLogTrimReserveLine = 1000
+	appLogMaxBytes    int64 = 4 * 1024 * 1024
+	appLogBackupCount       = 2
 )
 
 var (
-	initOnce    sync.Once
-	logFile     *os.File
-	logFilePath string
+	initOnce sync.Once
+	fileSink *switchableFileHandler
 )
 
 // Init 配置默认 slog logger，并把标准库 log 接到同一输出。
 func Init() {
 	initOnce.Do(func() {
-		handlers := []slog.Handler{tint.NewHandler(colorable.NewColorableStdout(), &tint.Options{
+		consoleHandler := tint.NewHandler(colorable.NewColorableStdout(), &tint.Options{
 			Level:      slog.LevelInfo,
 			TimeFormat: "15:04:05.000",
 			NoColor:    disableColor(),
-		})}
-		fileHandler, path, fileErr := buildFileHandler()
-		if fileErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "[logger] 初始化日志文件失败: %v\n", fileErr)
-		} else if fileHandler != nil {
-			handlers = append(handlers, fileHandler)
-			logFilePath = path
-		}
-		handler := handlers[0]
-		if len(handlers) > 1 {
-			handler = &multiHandler{handlers: handlers}
-		}
-		slog.SetDefault(slog.New(handler))
+		})
+		fileSink = newSwitchableFileHandler(
+			filepath.Join(appdata.LogsRootPath(), "app.log"),
+			appLogMaxBytes,
+			appLogBackupCount,
+		)
+		slog.SetDefault(slog.New(&multiHandler{handlers: []slog.Handler{consoleHandler, fileSink}}))
 		stdlog.SetFlags(0)
-		if logFilePath != "" {
-			slog.Info("应用日志已写入文件", "path", logFilePath, "pid", os.Getpid())
-		}
 	})
+}
+
+// SetFileLoggingEnabled 热切换文件日志；控制台日志始终保留。
+func SetFileLoggingEnabled(value bool) {
+	Init()
+	if fileSink == nil || !fileSink.SetEnabled(value) {
+		return
+	}
+	if value {
+		slog.Info("详细日志已启用", "path", filepath.Join(appdata.LogsRootPath(), "app.log"), "pid", os.Getpid())
+		return
+	}
+	slog.Info("详细日志已关闭")
+}
+
+// FileLoggingEnabled 返回当前是否写入应用日志文件。
+func FileLoggingEnabled() bool {
+	Init()
+	return fileSink != nil && fileSink.EnabledForWriting()
 }
 
 // Info 输出 info 级日志。
@@ -100,184 +108,206 @@ func disableColor() bool {
 	return !isatty.IsTerminal(fd) && !isatty.IsCygwinTerminal(fd)
 }
 
-func buildFileHandler() (slog.Handler, string, error) {
-	if err := appdata.EnsureAssistantHome(); err != nil {
-		return nil, "", err
-	}
-	path := filepath.Join(appdata.LogsRootPath(), "app.log")
-	writer, err := newLineWindowFileWriter(path, appLogMaxLines, appLogTrimReserveLine)
-	if err != nil {
-		return nil, "", err
-	}
-	logFile = writer.file
-	return tint.NewHandler(writer, &tint.Options{
-		Level:      slog.LevelInfo,
-		TimeFormat: time.RFC3339,
-		NoColor:    true,
-	}), path, nil
+type fileHandlerState struct {
+	mu      sync.RWMutex
+	enabled bool
+	writer  *rollingFileWriter
 }
 
-type lineWindowFileWriter struct {
+type switchableFileHandler struct {
+	state   *fileHandlerState
+	handler slog.Handler
+}
+
+func newSwitchableFileHandler(path string, maxBytes int64, backupCount int) *switchableFileHandler {
+	writer := &rollingFileWriter{
+		path:        strings.TrimSpace(path),
+		maxBytes:    maxBytes,
+		backupCount: backupCount,
+	}
+	return &switchableFileHandler{
+		state: &fileHandlerState{writer: writer},
+		handler: tint.NewHandler(writer, &tint.Options{
+			Level:      slog.LevelInfo,
+			TimeFormat: time.RFC3339,
+			NoColor:    true,
+		}),
+	}
+}
+
+func (handler *switchableFileHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	if handler == nil || handler.state == nil || handler.handler == nil {
+		return false
+	}
+	handler.state.mu.RLock()
+	defer handler.state.mu.RUnlock()
+	return handler.state.enabled && handler.handler.Enabled(ctx, level)
+}
+
+func (handler *switchableFileHandler) Handle(ctx context.Context, record slog.Record) error {
+	if handler == nil || handler.state == nil || handler.handler == nil {
+		return nil
+	}
+	handler.state.mu.RLock()
+	defer handler.state.mu.RUnlock()
+	if !handler.state.enabled || !handler.handler.Enabled(ctx, record.Level) {
+		return nil
+	}
+	return handler.handler.Handle(ctx, record)
+}
+
+func (handler *switchableFileHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	if handler == nil {
+		return handler
+	}
+	return &switchableFileHandler{state: handler.state, handler: handler.handler.WithAttrs(attrs)}
+}
+
+func (handler *switchableFileHandler) WithGroup(name string) slog.Handler {
+	if handler == nil {
+		return handler
+	}
+	return &switchableFileHandler{state: handler.state, handler: handler.handler.WithGroup(name)}
+}
+
+func (handler *switchableFileHandler) SetEnabled(value bool) bool {
+	if handler == nil || handler.state == nil {
+		return false
+	}
+	handler.state.mu.Lock()
+	defer handler.state.mu.Unlock()
+	previous := handler.state.enabled
+	handler.state.enabled = value
+	if !value && handler.state.writer != nil {
+		_ = handler.state.writer.Close()
+	}
+	return previous != value
+}
+
+func (handler *switchableFileHandler) EnabledForWriting() bool {
+	if handler == nil || handler.state == nil {
+		return false
+	}
+	handler.state.mu.RLock()
+	defer handler.state.mu.RUnlock()
+	return handler.state.enabled
+}
+
+type rollingFileWriter struct {
 	mu          sync.Mutex
 	path        string
 	file        *os.File
-	lineCount   int
-	openLine    bool
-	maxLines    int
-	trimReserve int
+	size        int64
+	maxBytes    int64
+	backupCount int
 }
 
-func newLineWindowFileWriter(path string, maxLines int, trimReserve int) (*lineWindowFileWriter, error) {
-	writer := &lineWindowFileWriter{
-		path:        path,
-		maxLines:    maxLines,
-		trimReserve: trimReserve,
-	}
-	if err := writer.openLocked(); err != nil {
-		return nil, err
-	}
-	lineCount, openLine, err := countFileLines(path)
-	if err != nil {
-		_ = writer.file.Close()
-		return nil, err
-	}
-	writer.lineCount = lineCount
-	writer.openLine = openLine
-	if maxLines > 0 && lineCount > maxLines {
-		if err := writer.trimToLastLinesLocked(maxLines); err != nil {
-			_ = writer.file.Close()
-			return nil, err
-		}
-	}
-	return writer, nil
-}
-
-func (writer *lineWindowFileWriter) Write(payload []byte) (int, error) {
-	writer.mu.Lock()
-	defer writer.mu.Unlock()
-	if writer == nil || writer.file == nil {
+func (writer *rollingFileWriter) Write(payload []byte) (int, error) {
+	if writer == nil || strings.TrimSpace(writer.path) == "" {
 		return 0, fmt.Errorf("log file writer is not initialized")
 	}
-	newLines := writer.countIncomingLines(payload)
-	if writer.maxLines > 0 && newLines > 0 && writer.lineCount+newLines > writer.maxLines {
-		target := writer.maxLines - newLines - writer.trimReserve
-		if target < 0 {
-			target = writer.maxLines - newLines
-		}
-		if target < 0 {
-			target = 0
-		}
-		if err := writer.trimToLastLinesLocked(target); err != nil {
+	if len(payload) == 0 {
+		return 0, nil
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if err := writer.openLocked(); err != nil {
+		return 0, err
+	}
+	if writer.maxBytes > 0 && writer.size > 0 && writer.size+int64(len(payload)) > writer.maxBytes {
+		if err := writer.rotateLocked(); err != nil {
 			return 0, err
 		}
 	}
 	written, err := writer.file.Write(payload)
-	writer.lineCount += writer.countIncomingLines(payload[:written])
-	if written > 0 {
-		writer.openLine = payload[written-1] != '\n'
-	}
+	writer.size += int64(written)
 	return written, err
 }
 
-func (writer *lineWindowFileWriter) openLocked() error {
+func (writer *rollingFileWriter) Close() error {
+	if writer == nil {
+		return nil
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	return writer.closeLocked()
+}
+
+func (writer *rollingFileWriter) openLocked() error {
+	if writer.file != nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(writer.path), 0o755); err != nil {
+		return err
+	}
 	file, err := os.OpenFile(writer.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
+	info, statErr := file.Stat()
+	if statErr != nil {
+		_ = file.Close()
+		return statErr
+	}
 	writer.file = file
-	logFile = file
+	writer.size = info.Size()
 	return nil
 }
 
-func (writer *lineWindowFileWriter) trimToLastLinesLocked(targetLines int) error {
-	if writer.file != nil {
-		if err := writer.file.Close(); err != nil {
-			return err
-		}
-		writer.file = nil
+func (writer *rollingFileWriter) closeLocked() error {
+	if writer.file == nil {
+		return nil
 	}
-	payload, err := os.ReadFile(writer.path)
-	if err != nil {
-		if reopenErr := writer.openLocked(); reopenErr != nil {
-			return errors.Join(err, reopenErr)
-		}
+	err := writer.file.Close()
+	writer.file = nil
+	return err
+}
+
+func (writer *rollingFileWriter) rotateLocked() error {
+	if err := writer.closeLocked(); err != nil {
 		return err
 	}
-	trimmed, lineCount := lastLinesBytes(payload, targetLines)
-	if err := os.WriteFile(writer.path, trimmed, 0o644); err != nil {
-		if reopenErr := writer.openLocked(); reopenErr != nil {
-			return errors.Join(err, reopenErr)
+	if writer.backupCount <= 0 {
+		if err := removeIfExists(writer.path); err != nil {
+			return errors.Join(err, writer.openLocked())
 		}
-		return err
+		writer.size = 0
+		return writer.openLocked()
 	}
-	if err := writer.openLocked(); err != nil {
-		return err
-	}
-	writer.lineCount = lineCount
-	writer.openLine = len(trimmed) > 0 && trimmed[len(trimmed)-1] != '\n'
-	return nil
-}
-
-func (writer *lineWindowFileWriter) countIncomingLines(payload []byte) int {
-	if len(payload) == 0 {
-		return 0
-	}
-	newlineCount := bytes.Count(payload, []byte{'\n'})
-	endsWithNewline := payload[len(payload)-1] == '\n'
-	delta := newlineCount
-	switch {
-	case writer.openLine && endsWithNewline:
-		delta--
-	case !writer.openLine && !endsWithNewline:
-		delta++
-	}
-	if delta < 0 {
-		return 0
-	}
-	return delta
-}
-
-func countFileLines(path string) (int, bool, error) {
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return 0, false, nil
+	for index := writer.backupCount; index >= 1; index-- {
+		target := fmt.Sprintf("%s.%d", writer.path, index)
+		if err := removeIfExists(target); err != nil {
+			return errors.Join(err, writer.openLocked())
 		}
-		return 0, false, err
-	}
-	return countBytesLines(payload), len(payload) > 0 && payload[len(payload)-1] != '\n', nil
-}
-
-func countBytesLines(payload []byte) int {
-	if len(payload) == 0 {
-		return 0
-	}
-	count := bytes.Count(payload, []byte{'\n'})
-	if payload[len(payload)-1] != '\n' {
-		count++
-	}
-	return count
-}
-
-func lastLinesBytes(payload []byte, targetLines int) ([]byte, int) {
-	if len(payload) == 0 || targetLines <= 0 {
-		return nil, 0
-	}
-	lineCount := countBytesLines(payload)
-	if lineCount <= targetLines {
-		return append([]byte(nil), payload...), lineCount
-	}
-	dropLines := lineCount - targetLines
-	offset := 0
-	for i := 0; i < dropLines; i++ {
-		next := bytes.IndexByte(payload[offset:], '\n')
-		if next < 0 {
-			return nil, 0
+		if index == 1 {
+			if err := renameIfExists(writer.path, target); err != nil {
+				return errors.Join(err, writer.openLocked())
+			}
+			continue
 		}
-		offset += next + 1
+		source := fmt.Sprintf("%s.%d", writer.path, index-1)
+		if err := renameIfExists(source, target); err != nil {
+			return errors.Join(err, writer.openLocked())
+		}
 	}
-	trimmed := append([]byte(nil), payload[offset:]...)
-	return trimmed, countBytesLines(trimmed)
+	writer.size = 0
+	return writer.openLocked()
+}
+
+func removeIfExists(path string) error {
+	err := os.Remove(path)
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func renameIfExists(source string, target string) error {
+	err := os.Rename(source, target)
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 type multiHandler struct {
