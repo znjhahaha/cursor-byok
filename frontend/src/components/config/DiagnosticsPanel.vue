@@ -1,8 +1,9 @@
 <script setup>
 import Button from "@/components/ui/Button.vue";
 import Select from "@/components/ui/Select.vue";
+import Switch from "@/components/ui/Switch.vue";
 import { exportDiagnosticBundle, getDiagnosticLogs, openLogsDirectory } from "@/services/clientApi";
-import { appState, saveDetailedLogging } from "@/state/appState";
+import { appState, refreshDetailedLoggingState, saveDetailedLogging } from "@/state/appState";
 import { computed, onActivated, onMounted, ref } from "vue";
 
 const levelOptions = [
@@ -67,12 +68,21 @@ async function loadMore() {
   }
 }
 
-async function toggleLogging(event) {
+async function toggleLogging(value) {
   saving.value = true;
-  const result = await saveDetailedLogging(event.target.checked);
+  error.value = "";
+  const result = await saveDetailedLogging(value);
   saving.value = false;
   if (!result?.ok) {
     error.value = result?.error || "日志设置保存失败";
+  }
+}
+
+async function syncLoggingState() {
+  try {
+    await refreshDetailedLoggingState();
+  } catch (cause) {
+    error.value = String(cause?.message || cause || "日志状态读取失败");
   }
 }
 
@@ -94,23 +104,31 @@ async function exportBundle() {
   }
 }
 
-onMounted(refresh);
-onActivated(refresh);
+onMounted(() => {
+  void syncLoggingState();
+  void refresh();
+});
+onActivated(() => {
+  void syncLoggingState();
+  void refresh();
+});
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[#343434] bg-[#252525] px-3 py-2.5">
-      <label class="center-row gap-2 text-sm text-[#d4d4d4]">
-        <input
-          type="checkbox"
-          class="h-4 w-4 accent-[#1ca35a]"
-          :checked="appState.log"
-          :disabled="saving"
-          @change="toggleLogging"
-        />
-        详细日志（热加载）
-      </label>
+      <Switch
+        class="min-w-[260px]"
+        compact
+        :enabled="appState.log"
+        :busy="saving"
+        label="详细日志"
+        description="记录应用日志和请求诊断文件"
+        :enabled-text="appState.detailedLoggingEffective ? '实际写入中' : '等待后端确认'"
+        disabled-text="已停止写入"
+        busy-text="正在切换..."
+        @change="toggleLogging"
+      />
       <div class="center-row flex-wrap gap-2">
         <Button variant="default" @click="openLogsDirectory">打开目录</Button>
         <Button variant="default" :disabled="entries.length === 0" @click="copySummary">复制摘要</Button>

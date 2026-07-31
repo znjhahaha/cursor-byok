@@ -19,7 +19,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 37,
+          "line": 39,
           "column": 12
         }
       ]
@@ -60,7 +60,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1274,
+          "line": 1278,
           "column": 14
         }
       ]
@@ -72,8 +72,8 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 359,
-          "column": 9
+          "line": 360,
+          "column": 1
         }
       ]
     },
@@ -173,7 +173,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 654,
+          "line": 656,
           "column": 14
         }
       ]
@@ -185,7 +185,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 426,
+          "line": 427,
           "column": 138
         },
         {
@@ -219,7 +219,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 67,
+          "line": 69,
           "column": 12
         }
       ]
@@ -255,7 +255,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 412,
+          "line": 413,
           "column": 19
         }
       ]
@@ -291,7 +291,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 621,
+          "line": 623,
           "column": 14
         }
       ]
@@ -303,7 +303,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 10,
+          "line": 11,
           "column": 12
         }
       ]
@@ -440,7 +440,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 127,
+          "line": 145,
           "column": 64
         }
       ]
@@ -556,7 +556,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 362,
+          "line": 364,
           "column": 14
         }
       ]
@@ -580,7 +580,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1251,
+          "line": 1255,
           "column": 47
         }
       ]
@@ -592,7 +592,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 117,
+          "line": 135,
           "column": 78
         }
       ]
@@ -638,7 +638,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 680,
+          "line": 682,
           "column": 12
         }
       ]
@@ -703,7 +703,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 129,
+          "line": 147,
           "column": 61
         }
       ]
@@ -768,7 +768,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 388,
+          "line": 390,
           "column": 36
         },
         {
@@ -894,7 +894,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1242,
+          "line": 1246,
           "column": 12
         }
       ]
@@ -947,7 +947,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 663,
+          "line": 665,
           "column": 14
         }
       ]
@@ -1032,7 +1032,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1316,
+          "line": 1320,
           "column": 12
         },
         {
@@ -1071,6 +1071,18 @@
         }
       ]
     },
+    "2dc864a8b3c48aeb": {
+      "source": "日志状态读取失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/DiagnosticsPanel.vue",
+          "line": 85,
+          "column": 53
+        }
+      ]
+    },
     "2ec7a0cf6cf58348": {
       "source": "基础连接",
       "kind": "text",
@@ -1090,7 +1102,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 429,
+          "line": 430,
           "column": 94
         },
         {
@@ -1131,7 +1143,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 142,
+          "line": 160,
           "column": 15
         }
       ]
@@ -1143,22 +1155,22 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 565,
+          "line": 567,
           "column": 56
         },
         {
           "file": "src/state/appState.js",
-          "line": 635,
+          "line": 637,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 641,
+          "line": 643,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 647,
+          "line": 649,
           "column": 16
         }
       ]
@@ -1204,7 +1216,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 601,
+          "line": 603,
           "column": 14
         }
       ]
@@ -1240,7 +1252,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1589,
+          "line": 1609,
           "column": 32
         }
       ]
@@ -1252,7 +1264,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 75,
+          "line": 77,
           "column": 36
         }
       ]
@@ -1382,12 +1394,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 532,
+          "line": 534,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 536,
+          "line": 538,
           "column": 12
         }
       ]
@@ -1411,7 +1423,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1308,
+          "line": 1312,
           "column": 14
         }
       ]
@@ -1527,7 +1539,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 66,
+          "line": 68,
           "column": 12
         }
       ]
@@ -1539,12 +1551,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 549,
+          "line": 551,
           "column": 47
         },
         {
           "file": "src/state/appState.js",
-          "line": 609,
+          "line": 611,
           "column": 14
         }
       ]
@@ -1602,7 +1614,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1272,
+          "line": 1276,
           "column": 5
         }
       ]
@@ -1650,7 +1662,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 570,
+          "line": 572,
           "column": 47
         }
       ]
@@ -1674,7 +1686,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 143,
+          "line": 161,
           "column": 15
         }
       ]
@@ -1878,7 +1890,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 624,
+          "line": 626,
           "column": 14
         }
       ]
@@ -2096,7 +2108,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 135,
+          "line": 137,
           "column": 12
         }
       ]
@@ -2120,7 +2132,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 137,
+          "line": 155,
           "column": 1
         }
       ]
@@ -2231,12 +2243,12 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 49,
+          "line": 50,
           "column": 53
         },
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 64,
+          "line": 65,
           "column": 53
         }
       ]
@@ -2289,7 +2301,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 365,
+          "line": 367,
           "column": 12
         }
       ]
@@ -2337,8 +2349,8 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 326,
-          "column": 11
+          "line": 327,
+          "column": 1
         },
         {
           "file": "src/components/ui/MultiSelect.vue",
@@ -2496,7 +2508,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 597,
+          "line": 599,
           "column": 20
         }
       ]
@@ -2508,7 +2520,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 427,
+          "line": 428,
           "column": 155
         }
       ]
@@ -2532,7 +2544,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 381,
+          "line": 383,
           "column": 14
         }
       ]
@@ -2597,7 +2609,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1240,
+          "line": 1244,
           "column": 14
         }
       ]
@@ -2609,7 +2621,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 618,
+          "line": 620,
           "column": 14
         }
       ]
@@ -2703,12 +2715,12 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 411,
+          "line": 412,
           "column": 19
         },
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 424,
+          "line": 425,
           "column": 22
         }
       ]
@@ -2740,7 +2752,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 28,
+          "line": 30,
           "column": 31
         },
         {
@@ -2784,7 +2796,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1769,
+          "line": 1789,
           "column": 26
         }
       ]
@@ -2808,7 +2820,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 145,
+          "line": 163,
           "column": 101
         }
       ]
@@ -3078,7 +3090,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 424,
+          "line": 425,
           "column": 22
         },
         {
@@ -3088,7 +3100,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 258,
+          "line": 260,
           "column": 12
         },
         {
@@ -3117,7 +3129,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 115,
+          "line": 133,
           "column": 62
         }
       ]
@@ -3177,7 +3189,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 527,
+          "line": 529,
           "column": 12
         }
       ]
@@ -3194,7 +3206,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1293,
+          "line": 1297,
           "column": 16
         }
       ]
@@ -3283,7 +3295,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 9,
+          "line": 10,
           "column": 12
         }
       ]
@@ -3319,7 +3331,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1779,
+          "line": 1799,
           "column": 32
         }
       ]
@@ -3372,7 +3384,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1237,
+          "line": 1241,
           "column": 14
         }
       ]
@@ -3432,12 +3444,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 559,
+          "line": 561,
           "column": 18
         },
         {
           "file": "src/state/appState.js",
-          "line": 612,
+          "line": 614,
           "column": 14
         }
       ]
@@ -3618,8 +3630,20 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 630,
+          "line": 632,
           "column": 14
+        }
+      ]
+    },
+    "908eb5a6424b92c5": {
+      "source": "等待后端确认",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/DiagnosticsPanel.vue",
+          "line": 127,
+          "column": 24
         }
       ]
     },
@@ -3842,12 +3866,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1887,
+          "line": 1907,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1908,
+          "line": 1928,
           "column": 32
         }
       ]
@@ -3871,7 +3895,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 91,
+          "line": 101,
           "column": 53
         }
       ]
@@ -3883,7 +3907,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 544,
+          "line": 546,
           "column": 20
         }
       ]
@@ -3943,7 +3967,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 122,
+          "line": 140,
           "column": 1
         }
       ]
@@ -4003,7 +4027,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1314,
+          "line": 1318,
           "column": 14
         }
       ]
@@ -4020,6 +4044,18 @@
         }
       ]
     },
+    "9d47f17781669570": {
+      "source": "记录应用日志和请求诊断文件",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/DiagnosticsPanel.vue",
+          "line": 126,
+          "column": 9
+        }
+      ]
+    },
     "9e02529bcaef36c6": {
       "source": "模型渠道重复，请检查 url、modelID、apiKey、displayName、endpoint 组合",
       "kind": "text",
@@ -4027,7 +4063,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 671,
+          "line": 673,
           "column": 14
         }
       ]
@@ -4063,7 +4099,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 651,
+          "line": 653,
           "column": 14
         }
       ]
@@ -4075,12 +4111,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1260,
+          "line": 1264,
           "column": 12
         },
         {
           "file": "src/state/appState.js",
-          "line": 1303,
+          "line": 1307,
           "column": 87
         }
       ]
@@ -4119,7 +4155,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1523,
+          "line": 1543,
           "column": 14
         }
       ]
@@ -4143,7 +4179,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 13,
+          "line": 14,
           "column": 12
         }
       ]
@@ -4266,7 +4302,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 11,
+          "line": 12,
           "column": 12
         }
       ]
@@ -4392,7 +4428,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1289,
+          "line": 1293,
           "column": 16
         }
       ]
@@ -4476,7 +4512,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 130,
+          "line": 148,
           "column": 69
         },
         {
@@ -4505,7 +4541,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 155,
+          "line": 173,
           "column": 72
         }
       ]
@@ -4519,6 +4555,18 @@
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 472,
           "column": 22
+        }
+      ]
+    },
+    "afe5fbb9577badf3": {
+      "source": "详细日志",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/DiagnosticsPanel.vue",
+          "line": 125,
+          "column": 9
         }
       ]
     },
@@ -4657,6 +4705,18 @@
         }
       ]
     },
+    "b7bd95944d5b5134": {
+      "source": "实际写入中",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/DiagnosticsPanel.vue",
+          "line": 127,
+          "column": 24
+        }
+      ]
+    },
     "b870928f8f9a24c4": {
       "source": "接口端点",
       "kind": "text",
@@ -4729,7 +4789,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 553,
+          "line": 555,
           "column": 50
         }
       ]
@@ -4830,7 +4890,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 546,
+          "line": 548,
           "column": 47
         }
       ]
@@ -4917,7 +4977,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 267,
+          "line": 269,
           "column": 12
         }
       ]
@@ -4941,7 +5001,7 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 397,
+          "line": 398,
           "column": 26
         },
         {
@@ -5006,7 +5066,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1771,
+          "line": 1791,
           "column": 24
         }
       ]
@@ -5066,17 +5126,17 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1494,
+          "line": 1514,
           "column": 28
         },
         {
           "file": "src/state/appState.js",
-          "line": 1496,
+          "line": 1516,
           "column": 38
         },
         {
           "file": "src/state/appState.js",
-          "line": 1531,
+          "line": 1551,
           "column": 93
         }
       ]
@@ -5124,7 +5184,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1249,
+          "line": 1253,
           "column": 51
         }
       ]
@@ -5172,7 +5232,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 357,
+          "line": 359,
           "column": 12
         }
       ]
@@ -5256,7 +5316,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 606,
+          "line": 608,
           "column": 14
         }
       ]
@@ -5285,7 +5345,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1475,
+          "line": 1495,
           "column": 14
         }
       ]
@@ -5321,12 +5381,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 261,
+          "line": 263,
           "column": 38
         },
         {
           "file": "src/state/appState.js",
-          "line": 297,
+          "line": 299,
           "column": 50
         }
       ]
@@ -5362,7 +5422,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 371,
+          "line": 373,
           "column": 49
         },
         {
@@ -5396,7 +5456,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 392,
+          "line": 394,
           "column": 36
         },
         {
@@ -5413,8 +5473,20 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1599,
+          "line": 1619,
           "column": 32
+        }
+      ]
+    },
+    "d7a68abea84c6af2": {
+      "source": "已停止写入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/DiagnosticsPanel.vue",
+          "line": 128,
+          "column": 9
         }
       ]
     },
@@ -5483,18 +5555,6 @@
         }
       ]
     },
-    "dabdbe1daedf20d1": {
-      "source": "详细日志（热加载）",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 112,
-          "column": 1
-        }
-      ]
-    },
     "daede9881787abe7": {
       "source": "备注",
       "kind": "text",
@@ -5502,7 +5562,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 319,
+          "line": 321,
           "column": 18
         },
         {
@@ -5541,7 +5601,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1771,
+          "line": 1791,
           "column": 63
         }
       ]
@@ -5565,7 +5625,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 627,
+          "line": 629,
           "column": 14
         }
       ]
@@ -5577,7 +5637,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 615,
+          "line": 617,
           "column": 14
         }
       ]
@@ -5601,7 +5661,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1271,
+          "line": 1275,
           "column": 5
         }
       ]
@@ -5625,7 +5685,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 126,
+          "line": 144,
           "column": 55
         }
       ]
@@ -5649,8 +5709,20 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 116,
+          "line": 134,
           "column": 89
+        }
+      ]
+    },
+    "dfd1e84510ffd61c": {
+      "source": "正在切换...",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/DiagnosticsPanel.vue",
+          "line": 129,
+          "column": 9
         }
       ]
     },
@@ -5738,8 +5810,20 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 128,
+          "line": 146,
           "column": 60
+        }
+      ]
+    },
+    "e3a6c659f90544e5": {
+      "source": "日志开关未能在后端生效",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/state/appState.js",
+          "line": 1403,
+          "column": 23
         }
       ]
     },
@@ -5803,7 +5887,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 12,
+          "line": 13,
           "column": 12
         }
       ]
@@ -5890,7 +5974,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 270,
+          "line": 272,
           "column": 10
         }
       ]
@@ -5902,7 +5986,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1291,
+          "line": 1295,
           "column": 16
         }
       ]
@@ -5950,7 +6034,7 @@
       "refs": [
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
-          "line": 142,
+          "line": 160,
           "column": 54
         }
       ]
@@ -6010,8 +6094,8 @@
       "refs": [
         {
           "file": "src/components/config/ModelListPanel.vue",
-          "line": 349,
-          "column": 11
+          "line": 350,
+          "column": 1
         }
       ]
     },
@@ -6058,7 +6142,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 378,
+          "line": 380,
           "column": 14
         }
       ]
@@ -6070,7 +6154,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1251,
+          "line": 1255,
           "column": 38
         }
       ]
@@ -6187,12 +6271,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 657,
+          "line": 659,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 660,
+          "line": 662,
           "column": 14
         }
       ]
@@ -6240,7 +6324,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1769,
+          "line": 1789,
           "column": 56
         }
       ]
@@ -6277,7 +6361,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1310,
+          "line": 1314,
           "column": 12
         }
       ]
@@ -6313,7 +6397,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1249,
+          "line": 1253,
           "column": 40
         }
       ]
@@ -6361,7 +6445,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1784,
+          "line": 1804,
           "column": 32
         }
       ]

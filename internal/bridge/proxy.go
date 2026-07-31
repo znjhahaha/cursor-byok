@@ -30,6 +30,8 @@ type DiagnosticLogPage = client.DiagnosticLogPage
 
 type DiagnosticExportResult = client.DiagnosticExportResult
 
+type DetailedLoggingState = client.DetailedLoggingState
+
 // ProviderConfig 定义 API 中转站配置结构。
 type ProviderConfig = serverconfig.ProviderConfig
 
@@ -125,6 +127,14 @@ func (s *ProxyService) GetDiagnosticLogs(query DiagnosticLogQuery) (DiagnosticLo
 
 func (s *ProxyService) ExportDiagnosticBundle() (DiagnosticExportResult, error) {
 	return s.core.ExportDiagnosticBundle()
+}
+
+func (s *ProxyService) GetDetailedLoggingState() (DetailedLoggingState, error) {
+	return s.core.GetDetailedLoggingState()
+}
+
+func (s *ProxyService) SetDetailedLoggingEnabled(value bool) (DetailedLoggingState, error) {
+	return s.core.SetDetailedLoggingEnabled(value)
 }
 
 // ListProviderModels 拉取指定中转站的可用模型列表，命中缓存时直接返回。

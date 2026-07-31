@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -126,15 +127,32 @@ func TestClientProfileHeadersAndCustomHeaderPrecedence(t *testing.T) {
 
 	t.Run("codex", func(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, "https://example.com/v1/responses", nil)
-		ApplyClientProfileHeaders(request, ClientProfileCodex)
+		applyCodexRequestHeaders(request, "session-source", "thread-source")
 		if got := request.Header.Get("Originator"); got != CodexClientOriginator {
 			t.Fatalf("Originator = %q", got)
 		}
 		if got := request.Header.Get("Version"); got != CodexClientVersion {
 			t.Fatalf("Version = %q", got)
 		}
-		if got := request.Header.Get("User-Agent"); !strings.HasPrefix(got, "codex_cli_rs/"+CodexClientVersion+" ") {
+		if got := request.Header.Get("User-Agent"); got != codexUserAgent(runtime.GOOS, runtime.GOARCH) {
 			t.Fatalf("Codex User-Agent = %q", got)
+		}
+		uuidPattern := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+		if got := request.Header.Get("session-id"); !uuidPattern.MatchString(got) {
+			t.Fatalf("Codex session-id = %q", got)
+		}
+		if got := request.Header.Get("thread-id"); !uuidPattern.MatchString(got) {
+			t.Fatalf("Codex thread-id = %q", got)
+		}
+		if got, want := request.Header.Get("session-id"), deterministicCodexUUID("session", "session-source"); got != want {
+			t.Fatalf("Codex session-id = %q, want %q", got, want)
+		}
+		if err := ApplyCustomHeaders(request, true, `{"User-Agent":"custom-codex","Version":"custom-version","session-id":"custom-session","thread-id":"custom-thread"}`); err != nil {
+			t.Fatalf("apply Codex custom headers: %v", err)
+		}
+		if request.Header.Get("User-Agent") != "custom-codex" || request.Header.Get("Version") != "custom-version" ||
+			request.Header.Get("session-id") != "custom-session" || request.Header.Get("thread-id") != "custom-thread" {
+			t.Fatalf("Codex custom header precedence failed: %#v", request.Header)
 		}
 	})
 }
@@ -368,7 +386,7 @@ func TestClaudeCodeRemovesUnsignedThinkingHistory(t *testing.T) {
 }
 
 func TestOpenAIRequestProfileIsLimitedToResponses(t *testing.T) {
-	captures := make(chan capturedProviderRequest, 2)
+	captures := make(chan capturedProviderRequest, 3)
 	server := newProviderCaptureServer(t, captures)
 	defer server.Close()
 
@@ -379,6 +397,9 @@ func TestOpenAIRequestProfileIsLimitedToResponses(t *testing.T) {
 		APIKey:          "secret",
 		ProviderModelID: "gpt-5",
 		ClientProfile:   ClientProfileCodex,
+		ConversationID:  "conversation-codex",
+		RequestID:       "request-codex",
+		RunID:           "run-codex",
 		MaxTokens:       16,
 		RequestBodyOverride: map[string]any{
 			"model":  "gpt-5",
@@ -386,6 +407,15 @@ func TestOpenAIRequestProfileIsLimitedToResponses(t *testing.T) {
 			"input":  []any{},
 		},
 	}
+
+	normalResponses := base
+	normalResponses.OpenAIEndpoint = "/v1/responses"
+	normalResponses.RequestBodyOverride = nil
+	normalResponses.Messages = []Message{{Role: "user", Content: "ping"}}
+	if err := adapter.Stream(context.Background(), normalResponses, func(ModelEvent) error { return nil }); err == nil {
+		t.Fatal("expected capture server status error for normal Responses request")
+	}
+	normalResponsesCapture := <-captures
 
 	responses := base
 	responses.OpenAIEndpoint = "/v1/responses"
@@ -398,6 +428,26 @@ func TestOpenAIRequestProfileIsLimitedToResponses(t *testing.T) {
 	}
 	if got := responsesCapture.Header.Get("Authorization"); got != "Bearer secret" {
 		t.Fatalf("Responses Authorization = %q", got)
+	}
+	if got, want := responsesCapture.Header.Get("session-id"), deterministicCodexUUID("session", base.ConversationID); got != want {
+		t.Fatalf("Responses session-id = %q, want %q", got, want)
+	}
+	if got, want := responsesCapture.Header.Get("thread-id"), deterministicCodexUUID("thread", base.ConversationID); got != want {
+		t.Fatalf("Responses thread-id = %q, want %q", got, want)
+	}
+	if got := responsesCapture.Header.Get("Version"); got != CodexClientVersion {
+		t.Fatalf("Responses Version = %q", got)
+	}
+	if got := responsesCapture.Header.Get("User-Agent"); got != codexUserAgent(runtime.GOOS, runtime.GOARCH) {
+		t.Fatalf("Responses User-Agent = %q", got)
+	}
+	for _, headerName := range []string{"Originator", "Version", "User-Agent", "session-id", "thread-id", "Authorization"} {
+		if normal, override := normalResponsesCapture.Header.Get(headerName), responsesCapture.Header.Get(headerName); normal != override {
+			t.Fatalf("normal and RequestBodyOverride Responses %s differ: %q != %q", headerName, normal, override)
+		}
+	}
+	if got := normalResponsesCapture.Body["model"]; got != "gpt-5" {
+		t.Fatalf("normal Responses model = %v", got)
 	}
 
 	chat := base
@@ -416,6 +466,12 @@ func TestOpenAIRequestProfileIsLimitedToResponses(t *testing.T) {
 	}
 	if got := chatCapture.Header.Get("User-Agent"); got != "" {
 		t.Fatalf("Chat Completions unexpectedly sent client User-Agent: %q", got)
+	}
+	if got := chatCapture.Header.Get("session-id"); got != "" {
+		t.Fatalf("Chat Completions unexpectedly sent session-id: %q", got)
+	}
+	if got := chatCapture.Header.Get("thread-id"); got != "" {
+		t.Fatalf("Chat Completions unexpectedly sent thread-id: %q", got)
 	}
 }
 
@@ -487,6 +543,55 @@ func TestClientProfileSurvivesTransientProviderRetries(t *testing.T) {
 			headers[index].Get("anthropic-beta") != headers[0].Get("anthropic-beta") ||
 			headers[index].Get("X-Claude-Code-Session-Id") != headers[0].Get("X-Claude-Code-Session-Id") {
 			t.Fatalf("retry %d changed Claude Code profile headers", index+1)
+		}
+	}
+	if got := ProviderRetryAttemptSummary(response); got != "attempts=3 statuses=503,503,418" {
+		t.Fatalf("retry summary = %q", got)
+	}
+}
+
+func TestCodexProfileSurvivesTransientProviderRetries(t *testing.T) {
+	var headers []http.Header
+	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		headers = append(headers, request.Header.Clone())
+		status := http.StatusServiceUnavailable
+		if len(headers) == 3 {
+			status = http.StatusTeapot
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     http.Header{"Retry-After": []string{"0"}},
+			Body:       io.NopCloser(strings.NewReader("captured")),
+			Request:    request,
+		}, nil
+	})}
+	req := StreamRequest{
+		ClientProfile:  ClientProfileCodex,
+		OpenAIEndpoint: "/v1/responses",
+		ConversationID: "conversation-codex-retry",
+		RequestID:      "request-codex-retry",
+	}
+	build := func(ctx context.Context) (*http.Request, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://example.com/v1/responses", nil)
+		if err != nil {
+			return nil, err
+		}
+		applyOpenAIRequestProfileHeaders(request, req)
+		return request, nil
+	}
+	response, err := DoProviderRequestWithRetry(context.Background(), client, "openai", "", "", build)
+	if err != nil {
+		t.Fatalf("provider request: %v", err)
+	}
+	defer response.Body.Close()
+	if len(headers) != 3 {
+		t.Fatalf("provider request attempts = %d, want 3", len(headers))
+	}
+	for index := 1; index < len(headers); index++ {
+		for _, name := range []string{"Originator", "Version", "User-Agent", "session-id", "thread-id"} {
+			if headers[index].Get(name) != headers[0].Get(name) {
+				t.Fatalf("retry %d changed Codex header %s", index+1, name)
+			}
 		}
 	}
 	if got := ProviderRetryAttemptSummary(response); got != "attempts=3 statuses=503,503,418" {

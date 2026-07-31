@@ -51,6 +51,9 @@ type ProxyService struct {
 	store *serverconfig.Store
 	// configUnsubscribe 解除配置与文件日志开关之间的热加载绑定。
 	configUnsubscribe func()
+	// setFileLoggingEnabled 与 fileLoggingEnabled 允许配置保存路径确认文件日志的实际状态。
+	setFileLoggingEnabled func(bool)
+	fileLoggingEnabled    func() bool
 	// caCertPEM 表示当前声明中的 caCertPEM。
 	caCertPEM []byte
 
@@ -80,14 +83,16 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 	copy(copiedCert, caCertPEM)
 
 	service := &ProxyService{
-		proxy:            proxy,
-		certManager:      certManager,
-		configPath:       resolveUserConfigPath(),
-		logsRoot:         resolveLogsRootPath(),
-		caCertPEM:        copiedCert,
-		publicClient:     netproxy.NewHTTPClient(publicAPITimeout),
-		modelTestResults: make(map[string]ModelAdapterTestResult),
-		providerModels:   newProviderModelsCache(appdata.ProviderModelsCachePath()),
+		proxy:                 proxy,
+		certManager:           certManager,
+		configPath:            resolveUserConfigPath(),
+		logsRoot:              resolveLogsRootPath(),
+		caCertPEM:             copiedCert,
+		publicClient:          netproxy.NewHTTPClient(publicAPITimeout),
+		modelTestResults:      make(map[string]ModelAdapterTestResult),
+		providerModels:        newProviderModelsCache(appdata.ProviderModelsCachePath()),
+		setFileLoggingEnabled: logger.SetFileLoggingEnabled,
+		fileLoggingEnabled:    logger.FileLoggingEnabled,
 	}
 	service.store = serverconfig.NewStore(service.configPath, service.logsRoot)
 	host, err := backend.NewHost(service.store)
@@ -104,9 +109,9 @@ func (s *ProxyService) bindFileLogging(configs *serverconfig.Manager) {
 	if s == nil || configs == nil {
 		return
 	}
-	logger.SetFileLoggingEnabled(configs.Current().Log)
+	s.setDetailedFileLoggingEnabled(configs.Current().Log)
 	unsubscribe := configs.Subscribe(func(cfg serverconfig.Config) {
-		logger.SetFileLoggingEnabled(cfg.Log)
+		s.setDetailedFileLoggingEnabled(cfg.Log)
 	})
 	s.configMu.Lock()
 	previous := s.configUnsubscribe
@@ -115,6 +120,21 @@ func (s *ProxyService) bindFileLogging(configs *serverconfig.Manager) {
 	if previous != nil {
 		previous()
 	}
+}
+
+func (s *ProxyService) setDetailedFileLoggingEnabled(value bool) {
+	if s != nil && s.setFileLoggingEnabled != nil {
+		s.setFileLoggingEnabled(value)
+		return
+	}
+	logger.SetFileLoggingEnabled(value)
+}
+
+func (s *ProxyService) isDetailedFileLoggingEnabled() bool {
+	if s != nil && s.fileLoggingEnabled != nil {
+		return s.fileLoggingEnabled()
+	}
+	return logger.FileLoggingEnabled()
 }
 
 func (s *ProxyService) ensureBackendHost() error {

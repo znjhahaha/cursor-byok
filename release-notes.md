@@ -5,7 +5,10 @@
 - 新统计按北京时间（Asia/Shanghai）聚合日期和小时，并兼容标记升级前的 UTC 历史数据
 - 优化调用统计页的筛选、摘要卡、小时图、模型详情和窄窗口布局，明确标示估算 Token 与未报告 usage
 - 新增日志与诊断页：支持热加载详细日志、级别/请求 ID/模型筛选、脱敏查看、打开日志目录和导出诊断包
-- 补充流式测试、统计迁移、北京时间跨日、模型详情、日志脱敏及前端状态回归测试
+- 日志开关改为后端确认的真实热开关，界面同步显示文件日志与 debug 记录的实际启停状态，失败时自动回滚
+- 更新 Codex Responses 官方客户端兼容指纹：对齐本机 Codex 0.146.0-alpha.9.2 的 UA，并发送稳定的 session-id/thread-id；保留中转兼容 Version 与自定义 Header 最高优先级
+- Codex 指纹仍只在 OpenAI Responses + codex 模式生效，不影响 Chat Completions、generic、Claude Code、AnyRouter 或 AgentRouter 请求
+- 补充流式测试、统计迁移、北京时间跨日、模型详情、日志脱敏、日志热开关、Codex 正常/覆盖/重试请求及前端状态回归测试
 
 -------0.0.45------
 - 更新 AnyRouter Claude Code 兼容指纹：UA 升级至 Claude Code 2.1.220、Stainless SDK 0.94.0，并补充稳定会话标识

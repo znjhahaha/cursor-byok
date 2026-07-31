@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@wailsio/runtime", () => ({
   Events: { On: vi.fn(() => () => {}) },
@@ -9,6 +9,7 @@ vi.mock("@/services/clientApi", () => {
   return {
     checkForUpdates: stub,
     getAppVersion: stub,
+    getDetailedLoggingState: vi.fn(),
     getHomeMetricsSummary: stub,
     getModelAdapterTestResults: stub,
     getProviderModelsCache: stub,
@@ -24,6 +25,7 @@ vi.mock("@/services/clientApi", () => {
     openProviderEditor: stub,
     refreshProviderModels: stub,
     saveUserConfig: stub,
+    setDetailedLoggingEnabled: vi.fn(),
     startProxyService: stub,
     stopProxyService: stub,
     testModelAdapter: stub,
@@ -31,15 +33,19 @@ vi.mock("@/services/clientApi", () => {
 });
 
 import {
+  appState,
   createEmptyModelAdapter,
   formatImportSummary,
   formatModelAdapterTestSummary,
   normalizeModelAdapter,
   normalizeProvider,
   repairModelAdapterProviderReferences,
+  refreshDetailedLoggingState,
+  saveDetailedLogging,
   validateModelAdapters,
   validateProviderDetails,
 } from "@/state/appState";
+import * as clientApi from "@/services/clientApi";
 
 function providerFixture() {
   return normalizeProvider({
@@ -116,6 +122,61 @@ describe("1M 上下文持久化语义", () => {
     const adapter = normalizeModelAdapter(adapterFixture());
     expect(adapter.anthropic1MContextEnabled).toBe(true);
     expect(adapter.contextWindowTokens).toBe(200_000);
+  });
+});
+
+describe("详细日志开关", () => {
+  beforeEach(() => {
+    vi.mocked(clientApi.getDetailedLoggingState).mockReset();
+    vi.mocked(clientApi.setDetailedLoggingEnabled).mockReset();
+    appState.log = false;
+    appState.detailedLoggingEffective = false;
+    appState.detailedLoggingStateKnown = false;
+  });
+
+  it("以后端确认的实际状态作为开关结果", async () => {
+    vi.mocked(clientApi.setDetailedLoggingEnabled).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      fileEnabled: true,
+      debugEnabled: true,
+    });
+
+    await expect(saveDetailedLogging(true)).resolves.toMatchObject({ ok: true });
+    expect(appState).toMatchObject({
+      log: true,
+      detailedLoggingEffective: true,
+      detailedLoggingStateKnown: true,
+    });
+  });
+
+  it("后端未实际启用时返回错误并回滚界面状态", async () => {
+    vi.mocked(clientApi.setDetailedLoggingEnabled).mockResolvedValue({
+      enabled: false,
+      configured: true,
+      fileEnabled: false,
+      debugEnabled: true,
+    });
+
+    const result = await saveDetailedLogging(true);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("日志开关未能在后端生效");
+    expect(appState.log).toBe(false);
+    expect(appState.detailedLoggingEffective).toBe(false);
+  });
+
+  it("刷新时同步持久化状态和实际文件状态", async () => {
+    vi.mocked(clientApi.getDetailedLoggingState).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      fileEnabled: true,
+      debugEnabled: true,
+    });
+
+    await refreshDetailedLoggingState();
+    expect(appState.log).toBe(true);
+    expect(appState.detailedLoggingEffective).toBe(true);
+    expect(appState.detailedLoggingStateKnown).toBe(true);
   });
 });
 

@@ -27,8 +27,12 @@ const (
 	ClaudeCodeStainlessPackage     = "0.94.0"
 	ClaudeCodeRuntimeVersion       = "v26.3.0"
 	ClaudeCodeStainlessTimeout     = "600"
-	CodexClientVersion             = "0.101.0"
+	CodexClientVersion             = "0.146.0-alpha.9.2"
 	CodexClientOriginator          = "codex_cli_rs"
+	CodexClientTerminal            = "unknown"
+	CodexWindowsVersion            = "10.0.26200"
+	CodexMacOSVersion              = "15.5.0"
+	CodexLinuxVersion              = "6.8.0"
 	anthropicExtendedContextSuffix = "[1m]"
 	AnthropicExtendedContextTokens = 1_000_000
 )
@@ -82,6 +86,17 @@ func openAIClientProfile(value string, endpoint string) string {
 		return ClientProfileCodex
 	}
 	return ClientProfileGeneric
+}
+
+func applyOpenAIRequestProfileHeaders(httpReq *http.Request, req StreamRequest) {
+	profile := openAIClientProfile(req.ClientProfile, req.OpenAIEndpoint)
+	if profile != ClientProfileCodex {
+		ApplyClientProfileHeaders(httpReq, profile)
+		return
+	}
+	sessionSource := firstNonEmptyString(req.ConversationID, req.RunID, req.RequestID, req.ModelCallID)
+	threadSource := firstNonEmptyString(req.ConversationID, req.RequestID, req.RunID, req.ModelCallID)
+	applyCodexRequestHeaders(httpReq, sessionSource, threadSource)
 }
 
 func applyClaudeCodeHeaders(httpReq *http.Request) {
@@ -166,8 +181,54 @@ func deterministicClaudeCodeUUID(kind string, source string) string {
 
 func applyCodexHeaders(httpReq *http.Request) {
 	httpReq.Header.Set("Originator", CodexClientOriginator)
+	// Version is retained for relay compatibility. The official client carries
+	// the same value in User-Agent, while some Codex-only relays still inspect it.
 	httpReq.Header.Set("Version", CodexClientVersion)
-	httpReq.Header.Set("User-Agent", "codex_cli_rs/"+CodexClientVersion+" ("+codexPlatform(runtime.GOOS)+"; "+runtime.GOARCH+")")
+	httpReq.Header.Set("User-Agent", codexUserAgent(runtime.GOOS, runtime.GOARCH))
+}
+
+func applyCodexRequestHeaders(httpReq *http.Request, sessionSource string, threadSource string) {
+	if httpReq == nil {
+		return
+	}
+	applyCodexHeaders(httpReq)
+	httpReq.Header.Set("session-id", deterministicCodexUUID("session", sessionSource))
+	httpReq.Header.Set("thread-id", deterministicCodexUUID("thread", threadSource))
+}
+
+func deterministicCodexUUID(kind string, source string) string {
+	sum := sha256.Sum256([]byte("cursor-byok/codex-" + strings.TrimSpace(kind) + "/" + strings.TrimSpace(source)))
+	bytes := sum[:16]
+	bytes[6] = (bytes[6] & 0x0f) | 0x40
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
+}
+
+func codexUserAgent(goos string, goarch string) string {
+	return CodexClientOriginator + "/" + CodexClientVersion + " (" + codexPlatform(goos) + " " + codexPlatformVersion(goos) + "; " + codexArchitecture(goarch) + ") " + CodexClientTerminal
+}
+
+func codexPlatformVersion(value string) string {
+	switch value {
+	case "darwin":
+		return CodexMacOSVersion
+	case "windows":
+		return CodexWindowsVersion
+	case "linux":
+		return CodexLinuxVersion
+	default:
+		return "0.0.0"
+	}
+}
+
+func codexArchitecture(value string) string {
+	switch value {
+	case "amd64":
+		return "x86_64"
+	default:
+		return value
+	}
 }
 
 func stainlessOS(value string) string {

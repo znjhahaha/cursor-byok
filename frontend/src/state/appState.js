@@ -5,6 +5,7 @@ import {
   checkForUpdates,
   getAppVersion,
   getHomeMetricsSummary,
+  getDetailedLoggingState,
   getModelAdapterTestResults,
   getProviderModelsCache,
   getUsageSeries,
@@ -19,6 +20,7 @@ import {
   openProviderEditor,
   refreshProviderModels as refreshProviderModelsAPI,
   saveUserConfig,
+  setDetailedLoggingEnabled,
   startProxyService,
   stopProxyService,
   testModelAdapter,
@@ -1061,6 +1063,8 @@ const cachedConfig = normalizeConfig(cachedState);
 export const appState = reactive({
   appVersion: "",
   log: cachedConfig.log,
+  detailedLoggingEffective: false,
+  detailedLoggingStateKnown: false,
   providers: cachedConfig.providers,
   modelAdapters: cachedConfig.modelAdapters,
   modelAdapterTestResults: {},
@@ -1388,18 +1392,34 @@ export async function persistUserConfig() {
 }
 
 export async function saveDetailedLogging(value) {
-  const currentConfig = await loadPersistedUserConfig();
   const previousValue = appState.log;
+  const previousEffective = appState.detailedLoggingEffective;
   const nextValue = asBoolean(value);
   appState.log = nextValue;
-  const result = await persistConfigPayload({
-    ...currentConfig,
-    log: nextValue,
-  });
-  if (!result.ok) {
+  try {
+    const state = await setDetailedLoggingEnabled(nextValue);
+    applyDetailedLoggingState(state);
+    if (appState.detailedLoggingEffective !== nextValue) {
+      throw new Error("日志开关未能在后端生效");
+    }
+    return { ok: true, error: "", state };
+  } catch (error) {
     appState.log = previousValue;
+    appState.detailedLoggingEffective = previousEffective;
+    return { ok: false, error: toUserError(error) };
   }
-  return result;
+}
+
+function applyDetailedLoggingState(raw) {
+  const state = raw && typeof raw === "object" ? raw : {};
+  appState.log = asBoolean(state.configured);
+  appState.detailedLoggingEffective = asBoolean(state.enabled);
+  appState.detailedLoggingStateKnown = true;
+  return state;
+}
+
+export async function refreshDetailedLoggingState() {
+  return applyDetailedLoggingState(await getDetailedLoggingState());
 }
 
 export async function saveIncludeCacheWriteInHitRate(value) {

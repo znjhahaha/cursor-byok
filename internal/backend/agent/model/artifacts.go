@@ -61,6 +61,13 @@ func buildWireDiagnostic(req StreamRequest, provider string, model string, body 
 		diagnostic["anthropic_beta"] = claudeCodeBetas(thinkingEnabled, req.Anthropic1MContextEnabled)
 		diagnostic["auth_scheme"] = "bearer"
 	}
+	if strings.EqualFold(strings.TrimSpace(provider), "openai") && openAIClientProfile(profile, req.OpenAIEndpoint) == ClientProfileCodex {
+		diagnostic["profile_version"] = CodexClientVersion
+		diagnostic["originator"] = CodexClientOriginator
+		diagnostic["session_id_present"] = firstNonEmptyString(req.ConversationID, req.RunID, req.RequestID, req.ModelCallID) != ""
+		diagnostic["thread_id_present"] = firstNonEmptyString(req.ConversationID, req.RequestID, req.RunID, req.ModelCallID) != ""
+		diagnostic["auth_scheme"] = "bearer"
+	}
 	return diagnostic
 }
 

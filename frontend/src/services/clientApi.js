@@ -1,6 +1,7 @@
 import {
   GetModelAdapterTestResults,
   GetDiagnosticLogs,
+  GetDetailedLoggingState,
   ExportDiagnosticBundle,
   GetProviderModelsCache,
   GetState,
@@ -8,6 +9,7 @@ import {
   LoadUserConfig,
   RefreshProviderModels,
   SaveUserConfig,
+  SetDetailedLoggingEnabled,
   StartProxy,
   StopProxy,
   TestModelAdapter,
@@ -183,6 +185,14 @@ export function getModelAdapterTestResults() {
 
 export function getDiagnosticLogs(query) {
   return withApiLogging("GetDiagnosticLogs", query, () => GetDiagnosticLogs(query));
+}
+
+export function getDetailedLoggingState() {
+  return withApiLogging("GetDetailedLoggingState", undefined, () => GetDetailedLoggingState());
+}
+
+export function setDetailedLoggingEnabled(value) {
+  return withApiLogging("SetDetailedLoggingEnabled", { value }, () => SetDetailedLoggingEnabled(value));
 }
 
 export function exportDiagnosticBundle() {

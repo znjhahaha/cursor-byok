@@ -12,6 +12,13 @@ import (
 // UserConfig 定义了当前模块中的 UserConfig 类型。
 type UserConfig = serverconfig.Config
 
+type DetailedLoggingState struct {
+	Enabled      bool `json:"enabled"`
+	Configured   bool `json:"configured"`
+	FileEnabled  bool `json:"fileEnabled"`
+	DebugEnabled bool `json:"debugEnabled"`
+}
+
 // LoadUserConfig 用于处理与 LoadUserConfig 相关的逻辑。
 func (s *ProxyService) LoadUserConfig() (UserConfig, error) {
 	if s == nil {
@@ -57,6 +64,43 @@ func (s *ProxyService) SaveUserConfig(cfg UserConfig) error {
 	}
 	s.emitUserConfigChanged(normalized)
 	return nil
+}
+
+func (s *ProxyService) GetDetailedLoggingState() (DetailedLoggingState, error) {
+	cfg, err := s.LoadUserConfig()
+	if err != nil {
+		return DetailedLoggingState{}, err
+	}
+	return s.detailedLoggingState(cfg), nil
+}
+
+func (s *ProxyService) SetDetailedLoggingEnabled(value bool) (DetailedLoggingState, error) {
+	cfg, err := s.LoadUserConfig()
+	if err != nil {
+		return DetailedLoggingState{}, err
+	}
+	cfg.Log = value
+	if err := s.SaveUserConfig(cfg); err != nil {
+		return DetailedLoggingState{}, err
+	}
+	// Keep the dedicated switch authoritative even when the service is created
+	// without a backend host in diagnostics or recovery paths.
+	s.setDetailedFileLoggingEnabled(value)
+	persisted, err := s.LoadUserConfig()
+	if err != nil {
+		return DetailedLoggingState{}, err
+	}
+	return s.detailedLoggingState(persisted), nil
+}
+
+func (s *ProxyService) detailedLoggingState(cfg UserConfig) DetailedLoggingState {
+	fileEnabled := s.isDetailedFileLoggingEnabled()
+	return DetailedLoggingState{
+		Enabled:      cfg.Log && fileEnabled,
+		Configured:   cfg.Log,
+		FileEnabled:  fileEnabled,
+		DebugEnabled: cfg.Log,
+	}
 }
 
 func (s *ProxyService) emitUserConfigChanged(cfg UserConfig) {
