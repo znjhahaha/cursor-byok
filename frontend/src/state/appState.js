@@ -319,6 +319,8 @@ function normalizeModelAdapterTestResult(source) {
     error: asString(raw.error),
     rawResponse: asString(raw.rawResponse),
     testedAt: asString(raw.testedAt),
+    warmupAttempt: Math.max(0, Math.round(asNumber(raw.warmupAttempt))),
+    warmupWaiting: asBoolean(raw.warmupWaiting),
   };
   if (!normalized.summaryText) {
     normalized.summaryText = formatModelAdapterTestSummary(normalized);
@@ -525,6 +527,9 @@ export function createEmptyProvider() {
     builtin: false,
     disabled: false,
     pinned: false,
+    warmupEnabled: false,
+    warmupMaxMinutes: 0,
+    warmupIntervalSeconds: 0,
     homeURL: "",
   };
 }
@@ -551,6 +556,12 @@ export function normalizeProvider(source) {
     // 否则所有存量配置一加载就变成整站停用。
     disabled: asBoolean(raw.disabled),
     pinned: asBoolean(raw.pinned),
+    // 排队预热是 opt-in 的实验功能：极性与 disabled 相反，零值必须等于关闭。
+    // 三个字段都要在这里显式列出——normalizeProvider 是白名单式重建，
+    // 漏掉任何一个都会让用户的设置在下一次保存时被静默剥掉。
+    warmupEnabled: asBoolean(raw.warmupEnabled ?? raw.warmup_enabled),
+    warmupMaxMinutes: asNumber(raw.warmupMaxMinutes ?? raw.warmup_max_minutes, 0),
+    warmupIntervalSeconds: asNumber(raw.warmupIntervalSeconds ?? raw.warmup_interval_seconds, 0),
     homeURL: asString(raw.homeURL ?? raw.home_url),
   };
 }

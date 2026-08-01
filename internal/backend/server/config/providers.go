@@ -35,7 +35,29 @@ type ProviderConfig struct {
 	Disabled bool   `json:"disabled,omitempty" yaml:"disabled,omitempty"`
 	Pinned   bool   `json:"pinned,omitempty" yaml:"pinned,omitempty"`
 	HomeURL  string `json:"homeURL" yaml:"homeURL"`
+	// WarmupEnabled 开启后，探测遇到中转站的「排队/负载已满」响应时会按下面的预算持续重试，
+	// 直到排上队或预算耗尽。极性与 Disabled 相反：这是实验性功能，零值必须等于关闭。
+	//
+	// 之所以做成每站开关而不是按站点名匹配：排队响应用的是 New API / one-api 面板的
+	// 通用错误格式（new_api_error / get_channel_failed），同一份报文可能来自任意一家
+	// 基于该面板搭建的站点，域名与厂商名都不构成可靠特征。
+	WarmupEnabled bool `json:"warmupEnabled,omitempty" yaml:"warmupEnabled,omitempty"`
+	// WarmupMaxMinutes 是单次预热的总时长上限，WarmupIntervalSeconds 是两次尝试的间隔。
+	// 两者为零时按默认值回填，并在 NormalizeProviderConfig 里钳制到安全区间——
+	// 间隔太短会把预热变成对上游的压测。
+	WarmupMaxMinutes      int `json:"warmupMaxMinutes,omitempty" yaml:"warmupMaxMinutes,omitempty"`
+	WarmupIntervalSeconds int `json:"warmupIntervalSeconds,omitempty" yaml:"warmupIntervalSeconds,omitempty"`
 }
+
+// 预热预算的默认值与钳制区间。
+const (
+	DefaultWarmupMaxMinutes      = 10
+	DefaultWarmupIntervalSeconds = 15
+	minWarmupMaxMinutes          = 1
+	maxWarmupMaxMinutes          = 60
+	minWarmupIntervalSeconds     = 5
+	maxWarmupIntervalSeconds     = 300
+)
 
 const providerIDHexLength = 12
 
@@ -99,6 +121,13 @@ func NormalizeProviderConfig(item ProviderConfig) (ProviderConfig, error) {
 		Disabled:      item.Disabled,
 		Pinned:        item.Pinned,
 		HomeURL:       strings.TrimSpace(item.HomeURL),
+		WarmupEnabled: item.WarmupEnabled,
+	}
+	if next.WarmupEnabled {
+		next.WarmupMaxMinutes = clampWarmupBudget(
+			item.WarmupMaxMinutes, DefaultWarmupMaxMinutes, minWarmupMaxMinutes, maxWarmupMaxMinutes)
+		next.WarmupIntervalSeconds = clampWarmupBudget(
+			item.WarmupIntervalSeconds, DefaultWarmupIntervalSeconds, minWarmupIntervalSeconds, maxWarmupIntervalSeconds)
 	}
 	if next.Name == "" {
 		return ProviderConfig{}, errors.New("中转站名称不能为空")
@@ -125,6 +154,21 @@ func NormalizeProviderConfig(item ProviderConfig) (ProviderConfig, error) {
 		next.ID = buildProviderID(next.BaseURL, next.Name)
 	}
 	return next, nil
+}
+
+// clampWarmupBudget 把预算值收进 [min,max]；非正值按默认值处理。
+// 用户从旧配置升级上来时这两个字段是 0，此时不该被当成「立刻超时」。
+func clampWarmupBudget(value int, fallback int, min int, max int) int {
+	if value <= 0 {
+		return fallback
+	}
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 // buildProviderID 为新建的中转站生成稳定标识。

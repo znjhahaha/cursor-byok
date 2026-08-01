@@ -62,6 +62,10 @@ type ModelAdapterTestResult struct {
 	Error             string  `json:"error"`
 	RawResponse       string  `json:"rawResponse"`
 	TestedAt          string  `json:"testedAt"`
+	// WarmupAttempt 是当前已进行的预热尝试次数，WarmupWaiting 表示正卡在排队等待中。
+	// 两者复用现成的 model-adapter-test:updated 全量快照事件下发，前端不需要新协议。
+	WarmupAttempt int  `json:"warmupAttempt,omitempty"`
+	WarmupWaiting bool `json:"warmupWaiting,omitempty"`
 }
 
 // ModelAdapterTestResultsPayload 用于向前端广播当前测速结果快照。
@@ -148,7 +152,16 @@ func (s *ProxyService) TestModelAdapter(adapter serverconfig.ModelAdapterConfig)
 	}
 	s.storeAndEmitModelAdapterTestResult(running)
 
-	result, testErr := s.runModelAdapterTest(normalized, requestHash)
+	// 站点开了排队预热就走长循环，否则保持原来的单次探测。
+	// 分流放在这里而不是 runModelAdapterTest 内部：后者是「一次探测」这个语义单元，
+	// 预热循环要复用它。
+	if budget, ok := s.resolveWarmupBudget(normalized); ok {
+		result, warmupErr := s.warmupModelAdapter(context.Background(), normalized, requestHash, budget)
+		s.storeAndEmitModelAdapterTestResult(result)
+		return result, warmupErr
+	}
+
+	result, testErr := s.runModelAdapterTest(context.Background(), normalized, requestHash)
 	s.storeAndEmitModelAdapterTestResult(result)
 	if testErr != nil {
 		return result, testErr
@@ -167,8 +180,8 @@ func normalizeSingleModelAdapterConfig(adapter serverconfig.ModelAdapterConfig) 
 	return normalized[0], nil
 }
 
-func (s *ProxyService) runModelAdapterTest(adapter serverconfig.ModelAdapterConfig, requestHash string) (ModelAdapterTestResult, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), modelAdapterTestTimeout)
+func (s *ProxyService) runModelAdapterTest(parent context.Context, adapter serverconfig.ModelAdapterConfig, requestHash string) (ModelAdapterTestResult, error) {
+	ctx, cancel := context.WithTimeout(parent, modelAdapterTestTimeout)
 	defer cancel()
 
 	startedAt := time.Now().UTC()

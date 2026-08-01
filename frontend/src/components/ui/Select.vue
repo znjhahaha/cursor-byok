@@ -11,6 +11,10 @@ const props = defineProps({
   placeholder: { type: String, default: "请选择" },
   disabled: { type: Boolean, default: false },
   border: { type: Boolean, default: true },
+  // 只显示一个图标的触发器：用于卡片操作行这类横向空间紧张的场景。
+  // 设了它就不再渲染文案与 chevron，宽度由图标本身决定，
+  // 调用方必须同时给 ariaLabel，否则触发器对读屏软件是空的。
+  triggerIcon: { type: String, default: "" },
   ariaLabel: { type: String, default: "" },
   buttonClass: { type: String, default: "" },
   menuClass: { type: String, default: "" },
@@ -35,6 +39,7 @@ const normalizedOptions = computed(() => props.options.map((option) => {
     label: option?.label ?? option?.value ?? "",
     value: option?.value ?? "",
     icon: option?.icon ?? option?.iconClass ?? "",
+    danger: Boolean(option?.danger),
   };
 }));
 
@@ -204,7 +209,9 @@ function updatePosition() {
   }
 
   computePosition(buttonRef.value, menuRef.value, {
-    placement: "bottom-start",
+    // 图标触发器通常贴在卡片右下角，从左沿展开会直接怼出容器；
+    // 让菜单右对齐再由 shift 兜底。
+    placement: props.triggerIcon ? "bottom-end" : "bottom-start",
     middleware: [
       offset(8),
       flip({ padding: 12 }),
@@ -212,7 +219,7 @@ function updatePosition() {
       size({
         apply({ rects, elements, availableHeight }) {
           Object.assign(elements.floating.style, {
-            minWidth: `${rects.reference.width}px`,
+            minWidth: props.triggerIcon ? "168px" : `${rects.reference.width}px`,
             maxHeight: `${Math.max(96, Math.min(availableHeight, 320))}px`,
           });
         },
@@ -269,11 +276,17 @@ onBeforeUnmount(() => {
       ref="buttonRef"
       type="button"
       :disabled="disabled"
-      class="flex h-9 items-center rounded-[6px] bg-[#232323] px-3 text-left text-sm text-[#e5e5e5] outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+      class="flex items-center rounded-[6px] bg-[#232323] text-left text-sm text-[#e5e5e5] outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60"
       :class="[
-        border
+        triggerIcon
+          ? 'h-6 w-6 shrink-0 justify-center border border-[#3f3f3f] text-[#a3a3a3] hover:text-[#e5e5e5] focus-visible:ring-2 focus-visible:ring-[#10AD5D]/35'
+          : 'h-9 px-3',
+        !triggerIcon && border
           ? 'w-full justify-between gap-2 border border-[#3f3f3f] focus:border-[#10AD5D]'
-          : 'w-auto justify-start gap-2 border border-transparent focus-visible:ring-2 focus-visible:ring-[#10AD5D]/35',
+          : '',
+        !triggerIcon && !border
+          ? 'w-auto justify-start gap-2 border border-transparent focus-visible:ring-2 focus-visible:ring-[#10AD5D]/35'
+          : '',
         buttonClass,
       ]"
       :aria-expanded="isOpen"
@@ -282,24 +295,27 @@ onBeforeUnmount(() => {
       @click="toggleMenu"
       @keydown="handleButtonKeydown"
     >
-      <span
-        class="flex min-w-0 items-center gap-2"
-        :class="[
-          border ? 'flex-1' : 'shrink-0',
-          selectedOption
-            ? (border ? 'text-[#e5e5e5]' : 'text-current')
-            : 'text-[#7b7b7b]',
-        ]"
-      >
-        <span v-if="selectedOption?.icon" :class="[selectedOption.icon, 'text-[16px] shrink-0']" aria-hidden="true"></span>
-        <span class="truncate">{{ selectedLabel }}</span>
-      </span>
-      <span
-        class="pointer-events-none center-row transition-transform duration-200"
-        :class="[border ? 'text-[#8f8f8f]' : 'text-current', isOpen ? 'rotate-180' : '']"
-      >
-        <span class="icon-[mdi--chevron-down] text-[18px]"></span>
-      </span>
+      <span v-if="triggerIcon" :class="[triggerIcon, 'text-[16px]']" aria-hidden="true"></span>
+      <template v-else>
+        <span
+          class="flex min-w-0 items-center gap-2"
+          :class="[
+            border ? 'flex-1' : 'shrink-0',
+            selectedOption
+              ? (border ? 'text-[#e5e5e5]' : 'text-current')
+              : 'text-[#7b7b7b]',
+          ]"
+        >
+          <span v-if="selectedOption?.icon" :class="[selectedOption.icon, 'text-[16px] shrink-0']" aria-hidden="true"></span>
+          <span class="truncate">{{ selectedLabel }}</span>
+        </span>
+        <span
+          class="pointer-events-none center-row transition-transform duration-200"
+          :class="[border ? 'text-[#8f8f8f]' : 'text-current', isOpen ? 'rotate-180' : '']"
+        >
+          <span class="icon-[mdi--chevron-down] text-[18px]"></span>
+        </span>
+      </template>
     </button>
   </div>
 
@@ -325,8 +341,12 @@ onBeforeUnmount(() => {
               :class="[
                 option.value === modelValue
                   ? 'bg-[#10AD5D]/15 text-[#10d06f]'
-                  : 'text-[#e5e5e5] hover:bg-[#303030]',
-                activeIndex === index ? 'bg-[#303030]' : '',
+                  : option.danger
+                    ? 'text-[#f87171] hover:bg-[#3a2626]'
+                    : 'text-[#e5e5e5] hover:bg-[#303030]',
+                activeIndex === index ? (option.danger ? 'bg-[#3a2626]' : 'bg-[#303030]') : '',
+                // 危险项与常规项之间留一条分隔线，避免「删除」紧贴普通操作被误点。
+                option.danger ? 'mt-1 border-t border-[#3f3f3f] pt-2' : '',
               ]"
               :aria-selected="option.value === modelValue"
               tabindex="0"

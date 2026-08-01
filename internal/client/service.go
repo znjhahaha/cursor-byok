@@ -72,6 +72,9 @@ type ProxyService struct {
 	modelTestResults map[string]ModelAdapterTestResult
 	// providerModels 保存中转站模型列表缓存，跨窗口共享并落盘。
 	providerModels *providerModelsCache
+	// warmupMu 与 warmupActive 限制并发运行的排队预热循环数。
+	warmupMu     sync.Mutex
+	warmupActive int
 }
 
 // NewProxyService 用于处理与 NewProxyService 相关的逻辑。

@@ -4,6 +4,7 @@ import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
 import Select from "@/components/ui/Select.vue";
 import Skeleton from "@/components/ui/Skeleton.vue";
+import Switch from "@/components/ui/Switch.vue";
 import Tooltip from "@/components/ui/Tooltip.vue";
 import { getProviderEditorContext } from "@/services/clientApi";
 import {
@@ -43,6 +44,7 @@ const fieldTips = {
   modelsPath: "拉取模型列表的路径。留空时自动探测 /v1/models、/models、/api/v1/models。",
   inferencePath: "最近一次连接探测命中的推理端点，仅用于诊断；真实请求路径由模型协议在请求时派生。",
   nameTemplate: "该站点下模型的显示名模板，支持 {provider} 与 {model} 两个占位符。留空按「站点名-模型ID」生成。",
+  warmupEnabled: "部分中转站在满载时会返回「负载已达上限」而不是排队，导致探测直接失败。开启后探测会按下面的预算低频重试，直到排上队或预算耗尽。只影响探测，不影响真实对话。",
   note: "仅本地展示的说明文字。",
 };
 
@@ -93,6 +95,10 @@ const advancedSummary = computed(() => {
   }
   if (draft.nameTemplate) {
     configured.push("显示名模板");
+  }
+  // 预热开着会显著改变探测行为，折叠时必须在摘要里可见。
+  if (draft.warmupEnabled) {
+    configured.push("排队预热");
   }
   if (draft.note) {
     configured.push("备注");
@@ -588,6 +594,52 @@ onMounted(async () => {
                   预览：{{ nameTemplatePreview }}
                 </span>
               </label>
+
+              <!-- 排队预热：实验性，默认关闭。开着它会让探测在遇到排队响应时
+                   持续重试到预算耗尽，所以预算输入必须显式可见，不能只给一个开关。 -->
+              <div class="flex flex-col gap-2 rounded-[8px] border border-[#3f3f3f] bg-[#1f1f1f] p-3">
+                <div class="center-row justify-between gap-3">
+                  <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                    <Tooltip :content="fieldTips.warmupEnabled" />
+                    <span>排队预热</span>
+                    <span class="rounded-[999px] border border-[#4a3a1d] bg-[#2a2113] px-[6px] py-[1px] text-[10px] text-[#e0b464]">
+                      实验性
+                    </span>
+                  </span>
+                  <Switch
+                    compact
+                    enabled-text="探测遇到排队会自动重试"
+                    disabled-text="探测遇到排队立即失败"
+                    :enabled="draft.warmupEnabled"
+                    @change="draft.warmupEnabled = $event"
+                  />
+                </div>
+                <div v-if="draft.warmupEnabled" class="grid grid-cols-2 gap-2">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs text-[#8f8f8f]">最长等待（分钟）</span>
+                    <input
+                      v-model.number="draft.warmupMaxMinutes"
+                      type="number"
+                      min="1"
+                      max="60"
+                      class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 font-num text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                    />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs text-[#8f8f8f]">重试间隔（秒）</span>
+                    <input
+                      v-model.number="draft.warmupIntervalSeconds"
+                      type="number"
+                      min="5"
+                      max="300"
+                      class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 font-num text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                    />
+                  </label>
+                </div>
+                <span v-if="draft.warmupEnabled" class="text-xs leading-5 text-[#8f8f8f]">
+                  仅作用于「获取模型」与测速探测，不影响 Cursor 的实际对话请求。
+                </span>
+              </div>
 
               <label class="flex flex-col gap-1">
                 <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">

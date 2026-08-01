@@ -41,12 +41,16 @@ const ACTION_CLONE = "clone";
 const ACTION_IMPORT_ALL = "import-all";
 const ACTION_CLEAR_MODELS = "clear-models";
 const ACTION_RENAME_MODELS = "rename-models";
+const ACTION_DELETE = "delete";
 
+// 删除放在菜单末尾并标记 danger：它原本与「获取模型」同级摆在操作行里，
+// 而克隆/清空这些危险度更低的操作却藏在二级菜单，层级与危险度是倒挂的。
 const ACTION_OPTIONS = [
   { label: "克隆站点", value: ACTION_CLONE, icon: "icon-[mdi--content-duplicate]" },
   { label: "导入全部模型", value: ACTION_IMPORT_ALL, icon: "icon-[mdi--download-multiple]" },
   { label: "按模板重命名模型", value: ACTION_RENAME_MODELS, icon: "icon-[mdi--rename-outline]" },
   { label: "清空该站模型", value: ACTION_CLEAR_MODELS, icon: "icon-[mdi--playlist-remove]" },
+  { label: "删除站点", value: ACTION_DELETE, icon: "icon-[mdi--trash-can-outline]", danger: true },
 ];
 
 // 同时探测多个站点时限制并发：单次探测最坏要串行试 7 个各带 8s 超时的路径，
@@ -505,6 +509,8 @@ function handleProviderAction(provider, action) {
           return result;
         },
       });
+    case ACTION_DELETE:
+      return handleDelete(provider);
     default:
       return undefined;
   }
@@ -634,8 +640,10 @@ function handleDelete(provider) {
       <div v-else class="h-full min-h-0 overflow-y-auto pr-1">
         <!-- items-start 是必须的：grid 默认拉伸同行所有单元格，
              展开的卡片会把邻居一起顶到同样高度，留下大片空白。 -->
+        <!-- 280px 在操作行收成单行后仍偏紧（最窄卡片要放下「获取模型」+3 个 icon 控件），
+             放到 300px 留出余量。 -->
         <div
-          class="grid items-start gap-3 pb-1 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]"
+          class="grid items-start gap-3 pb-1 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]"
         >
           <Card v-for="provider in providers" :key="provider.id">
             <div
@@ -749,20 +757,23 @@ function handleDelete(provider) {
                 </Transition>
               </div>
 
-              <div class="flex flex-col gap-2 border-t border-[#343434] pt-3">
-                <div class="rounded-[8px] bg-[#232323] px-3 py-2">
-                  <Switch
-                    compact
-                    label="启用"
-                    enabled-text="模型已下发给 Cursor"
-                    disabled-text="已停用，配置与模型保留"
-                    :enabled="!provider.disabled"
-                    :busy="provider.toggling"
-                    :disabled="appState.configSaving"
-                    @change="handleToggleDisabled(provider, $event)"
-                  />
-                </div>
-                <div class="center-row flex-wrap justify-end gap-2">
+              <!-- 底部一个区块承载「启用开关 + 操作行」：两者原本各自套一层
+                   rounded bg-[#232323]，与上方状态区的同款底色叠成三层灰块，
+                   把 min-h-[168px] 的内容区挤扁。现在只留一条 border-t 分隔。 -->
+              <div class="flex flex-col gap-2.5 border-t border-[#343434] pt-3">
+                <Switch
+                  compact
+                  label="启用"
+                  enabled-text="模型已下发给 Cursor"
+                  disabled-text="已停用，配置与模型保留"
+                  :enabled="!provider.disabled"
+                  :busy="provider.toggling"
+                  :disabled="appState.configSaving"
+                  @change="handleToggleDisabled(provider, $event)"
+                />
+                <!-- 单行不换行：次要操作收成 icon-only，删除进溢出菜单。
+                     一旦允许 flex-wrap，最后一个控件就会折到第二行右下角。 -->
+                <div class="center-row justify-end gap-2">
                   <Button
                     variant="default"
                     :disabled="provider.probing"
@@ -794,18 +805,23 @@ function handleDelete(provider) {
                       ></span>
                     </Transition>
                   </Button>
-                  <Button variant="default" :disabled="appState.configSaving" @click="openEditor(provider)">编辑</Button>
-                  <div class="w-[104px]">
-                    <Select
-                      :model-value="''"
-                      :options="ACTION_OPTIONS"
-                      placeholder="更多"
-                      :disabled="appState.configSaving"
-                      :aria-label="`${provider.name} 的更多操作`"
-                      @update:model-value="handleProviderAction(provider, $event)"
-                    />
-                  </div>
-                  <Button variant="text" :disabled="appState.configSaving" @click="handleDelete(provider)">删除</Button>
+                  <Button
+                    variant="default"
+                    :disabled="appState.configSaving"
+                    :aria-label="`编辑 ${provider.name}`"
+                    title="编辑"
+                    @click="openEditor(provider)"
+                  >
+                    <span class="icon-[mdi--pencil] text-[14px]"></span>
+                  </Button>
+                  <Select
+                    :model-value="''"
+                    :options="ACTION_OPTIONS"
+                    trigger-icon="icon-[mdi--dots-horizontal]"
+                    :disabled="appState.configSaving"
+                    :aria-label="`${provider.name} 的更多操作`"
+                    @update:model-value="handleProviderAction(provider, $event)"
+                  />
                 </div>
               </div>
             </div>

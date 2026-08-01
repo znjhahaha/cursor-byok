@@ -36,6 +36,14 @@ const normalizedStatus = computed(() => {
   return ["running", "success", "error"].includes(status) ? status : "idle";
 });
 
+// 预热排队是 running 的一个子态：请求已发出但上游让我们等号，
+// 与普通「测试中」区分开，用户才知道这次久等是排队而不是卡死。
+const warmupWaiting = computed(
+  () => normalizedStatus.value === "running" && Boolean(props.result?.warmupWaiting),
+);
+
+const warmupAttempt = computed(() => Math.max(0, Math.round(Number(props.result?.warmupAttempt) || 0)));
+
 const summaryText = computed(() => {
   const text = String(props.result?.summaryText || "").trim();
   if (text) {
@@ -66,7 +74,7 @@ const panelClass = computed(() => {
     return "border-[#6b5b1e] bg-[#2c2612]";
   }
   if (normalizedStatus.value === "running") {
-    return "border-[#164e63] bg-[#0b2530]";
+    return warmupWaiting.value ? "border-[#5a4314] bg-[#2f2612]" : "border-[#164e63] bg-[#0b2530]";
   }
   if (normalizedStatus.value === "error") {
     return "border-[#4b1d1d] bg-[#2a1313]";
@@ -85,7 +93,7 @@ const summaryClass = computed(() => {
     return "text-[#f6d77a]";
   }
   if (normalizedStatus.value === "running") {
-    return "text-[#67e8f9]";
+    return warmupWaiting.value ? "text-[#fcd34d]" : "text-[#67e8f9]";
   }
   if (normalizedStatus.value === "error") {
     return "text-[#fca5a5]";
@@ -111,7 +119,10 @@ const summaryClass = computed(() => {
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5">
-          <Spinner v-if="normalizedStatus === 'running'" class="text-[#67e8f9]" />
+          <Spinner
+            v-if="normalizedStatus === 'running'"
+            :class="warmupWaiting ? 'text-[#fcd34d]' : 'text-[#67e8f9]'"
+          />
           <div
             :class="compact ? 'text-[11px] uppercase tracking-[0.08em] text-[#666]' : 'text-sm font-medium text-white'"
           >
@@ -127,7 +138,13 @@ const summaryClass = computed(() => {
         </div>
       </div>
       <span
-        v-if="stale"
+        v-if="warmupWaiting"
+        class="shrink-0 rounded-[999px] border border-[#8a6d1a] px-2 py-1 text-xs text-[#f6d77a]"
+      >
+        排队预热{{ warmupAttempt > 0 ? ` · 第 ${warmupAttempt} 次` : "" }}
+      </span>
+      <span
+        v-else-if="stale"
         class="shrink-0 rounded-[999px] border border-[#8a6d1a] px-2 py-1 text-xs text-[#f6d77a]"
       >
         需重测
