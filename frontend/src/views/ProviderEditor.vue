@@ -8,6 +8,7 @@ import Tooltip from "@/components/ui/Tooltip.vue";
 import { getProviderEditorContext } from "@/services/clientApi";
 import {
   appState,
+  buildAdapterDisplayName,
   CLIENT_PROFILE_OPTIONS,
   createEmptyProvider,
   fetchProviderModels,
@@ -41,6 +42,7 @@ const fieldTips = {
   headersJSON: "附加请求头 JSON 对象，值必须是字符串。会与模型自身的自定义请求头合并，模型优先。",
   modelsPath: "拉取模型列表的路径。留空时自动探测 /v1/models、/models、/api/v1/models。",
   inferencePath: "最近一次连接探测命中的推理端点，仅用于诊断；真实请求路径由模型协议在请求时派生。",
+  nameTemplate: "该站点下模型的显示名模板，支持 {provider} 与 {model} 两个占位符。留空按「站点名-模型ID」生成。",
   note: "仅本地展示的说明文字。",
 };
 
@@ -89,11 +91,23 @@ const advancedSummary = computed(() => {
   if (draft.headersJSON) {
     configured.push("自定义请求头");
   }
+  if (draft.nameTemplate) {
+    configured.push("显示名模板");
+  }
   if (draft.note) {
     configured.push("备注");
   }
   return configured.length > 0 ? `已配置：${configured.join("、")}` : "未配置额外覆盖";
 });
+
+// 模板预览用真实模型 ID 演示，避免用户靠猜占位符。
+const nameTemplatePreview = computed(() =>
+  buildAdapterDisplayName({
+    providerName: draft.name || "中转站",
+    modelID: draft.type === "anthropic" ? "claude-sonnet-4-5" : "gpt-5.6-sol",
+    template: draft.nameTemplate,
+  }),
+);
 
 const baseURLPlaceholder = computed(() =>
   draft.type === "anthropic" ? "例如：https://api.anthropic.com" : "例如：https://anyrouter.top",
@@ -556,6 +570,23 @@ onMounted(async () => {
                   ]"
                   @input="clearValidationField('headersJSON')"
                 />
+              </label>
+
+              <label class="flex flex-col gap-1">
+                <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                  <Tooltip :content="fieldTips.nameTemplate" />
+                  <span>模型显示名模板</span>
+                </span>
+                <input
+                  v-model="draft.nameTemplate"
+                  type="text"
+                  spellcheck="false"
+                  placeholder="{provider}-{model}"
+                  class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 font-mono text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                />
+                <span class="text-xs leading-5 text-[#8f8f8f]">
+                  预览：{{ nameTemplatePreview }}
+                </span>
               </label>
 
               <label class="flex flex-col gap-1">

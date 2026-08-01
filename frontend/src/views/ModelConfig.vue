@@ -58,6 +58,19 @@ async function handleConfirmDelete({ provider, modelCount, run }) {
   }
 }
 
+// 面板只声明「这个动作需要确认」，弹窗与失败提示统一在这里落地，
+// 避免每个面板各自持有一份弹窗状态。
+async function handleConfirmAction({ title, content, failureTitle, run }) {
+  const confirmed = await showModal({ title, content });
+  if (!confirmed) {
+    return;
+  }
+  const result = await run();
+  if (!result?.ok) {
+    await showModal({ title: failureTitle || title, content: result?.error || "服务错误" });
+  }
+}
+
 // 窗口已打开时，首页入口通过广播直接指定落地 tab（新窗口首次打开仍走上面的 consumeInitialTab）。
 const MODEL_CONFIG_TAB_EVENT = "modelConfig:activateTab";
 let unsubscribeActivateTab = null;
@@ -114,6 +127,7 @@ onBeforeUnmount(() => {
             :key="activeTab"
             @error="handlePanelError"
             @confirm-delete="handleConfirmDelete"
+            @confirm-action="handleConfirmAction"
           />
         </KeepAlive>
       </Transition>

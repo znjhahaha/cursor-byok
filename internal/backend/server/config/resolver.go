@@ -29,8 +29,11 @@ func (manager *Manager) SelectChannelForModel(_ context.Context, modelID string)
 }
 
 func resolveModelAdapterChannel(adapters []ModelAdapterConfig, providers []ProviderConfig, requestedModel string) (*legacyruntime.ResolvedChannel, error) {
+	// 与模型列表下发用同一个谓词过滤：停用站点下的模型必须明确不可用，
+	// 而不是「列表里看不到、旧会话却还在悄悄计费」。
+	active := ActiveModelAdapters(adapters, providers)
 	matchIndex, ok := modelchannel.ResolveAdapterIndex(
-		adapters,
+		active,
 		requestedModel,
 		func(adapter ModelAdapterConfig) string { return adapter.ID },
 		func(adapter ModelAdapterConfig) string { return adapter.ModelID },
@@ -41,7 +44,7 @@ func resolveModelAdapterChannel(adapters []ModelAdapterConfig, providers []Provi
 	if !ok {
 		return nil, legacyruntime.ErrChannelNotAvailable
 	}
-	matched := adapters[matchIndex]
+	matched := active[matchIndex]
 	// 归一化阶段已完成继承物化，这里只需把站点名带出来供运行时日志与统计使用。
 	providerName := ""
 	if provider, ok := FindProvider(providers, matched.ProviderID); ok {

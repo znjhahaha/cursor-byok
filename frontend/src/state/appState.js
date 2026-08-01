@@ -25,6 +25,22 @@ import {
   stopProxyService,
   testModelAdapter,
 } from "@/services/clientApi";
+import {
+  buildAdapterDisplayName,
+  CLIENT_PROFILE_CLAUDE_CODE,
+  CLIENT_PROFILE_CODEX,
+  CLIENT_PROFILE_GENERIC,
+  DISPLAY_NAME_TEMPLATE_DEFAULT,
+  inferModelProtocol,
+  OPENAI_ENDPOINT_CHAT_COMPLETIONS,
+  OPENAI_ENDPOINT_CUSTOM,
+  OPENAI_ENDPOINT_RESPONSES,
+  PROTOCOL_OVERRIDE_ANTHROPIC,
+  PROTOCOL_OVERRIDE_AUTO,
+  PROTOCOL_OVERRIDE_OPENAI_CHAT,
+  PROTOCOL_OVERRIDE_OPENAI_RESPONSES,
+  resolveModelProtocol,
+} from "@/state/modelFamily";
 
 const APP_STATE_STORAGE_KEY = "cursor-client:runtime-state:v2";
 const GENERIC_SERVICE_ERROR = "服务错误";
@@ -32,18 +48,30 @@ const SUPPORTED_MODEL_ADAPTER_TYPES = new Set(["openai", "anthropic"]);
 const SUPPORTED_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 const SUPPORTED_ANTHROPIC_THINKING_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 const SUPPORTED_CLIENT_PROFILES = new Set(["generic", "claude-code", "codex"]);
-export const CLIENT_PROFILE_GENERIC = "generic";
-export const CLIENT_PROFILE_CLAUDE_CODE = "claude-code";
-export const CLIENT_PROFILE_CODEX = "codex";
+// 协议常量与协议决策同源，定义处在 modelFamily.js；这里只转发，
+// 让既有的 `from "@/state/appState"` 导入方无需改动。
+export {
+  CLIENT_PROFILE_CLAUDE_CODE,
+  CLIENT_PROFILE_CODEX,
+  CLIENT_PROFILE_GENERIC,
+  DISPLAY_NAME_TEMPLATE_DEFAULT,
+  OPENAI_ENDPOINT_CHAT_COMPLETIONS,
+  OPENAI_ENDPOINT_CUSTOM,
+  OPENAI_ENDPOINT_RESPONSES,
+  PROTOCOL_OVERRIDE_ANTHROPIC,
+  PROTOCOL_OVERRIDE_AUTO,
+  PROTOCOL_OVERRIDE_OPENAI_CHAT,
+  PROTOCOL_OVERRIDE_OPENAI_RESPONSES,
+  buildAdapterDisplayName,
+  inferModelProtocol,
+  resolveModelProtocol,
+};
 export const CLIENT_PROFILE_OPTIONS = [
   { label: "通用协议", value: CLIENT_PROFILE_GENERIC, icon: "icon-[mdi--web]" },
   { label: "Claude Code", value: CLIENT_PROFILE_CLAUDE_CODE, icon: "icon-[logos--claude-icon]" },
   { label: "Codex", value: CLIENT_PROFILE_CODEX, icon: "icon-[bxl--openai]" },
 ];
 export const ANTHROPIC_THINKING_EFFORT_DEFAULT = "xhigh";
-export const OPENAI_ENDPOINT_RESPONSES = "/v1/responses";
-export const OPENAI_ENDPOINT_CHAT_COMPLETIONS = "/v1/chat/completions";
-export const OPENAI_ENDPOINT_CUSTOM = "/custom";
 export const OPENAI_EXTRA_PARAMS_DEFAULT_JSON = `{
   "service_tier": "priority"
 }`;
@@ -492,8 +520,11 @@ export function createEmptyProvider() {
     headersJSON: "",
     modelsPath: "",
     inferencePath: "",
+    nameTemplate: "",
     note: "",
     builtin: false,
+    disabled: false,
+    pinned: false,
     homeURL: "",
   };
 }
@@ -513,8 +544,13 @@ export function normalizeProvider(source) {
     headersJSON: asString(raw.headersJSON ?? raw.headers_json),
     modelsPath: asString(raw.modelsPath ?? raw.models_path),
     inferencePath: asString(raw.inferencePath ?? raw.inference_path),
+    nameTemplate: asString(raw.nameTemplate ?? raw.name_template),
     note: asString(raw.note),
     builtin: asBoolean(raw.builtin),
+    // 落盘用「停用」这个负向语义：布尔零值必须等于启用，
+    // 否则所有存量配置一加载就变成整站停用。
+    disabled: asBoolean(raw.disabled),
+    pinned: asBoolean(raw.pinned),
     homeURL: asString(raw.homeURL ?? raw.home_url),
   };
 }
@@ -1507,30 +1543,46 @@ export async function deleteModelAdapterAt(index) {
   );
 }
 
+// 去重后缀用 " #2" 而不是 "-2"：显示名现在默认是「站点名-模型ID」，
+// 而模型 ID 里横线加数字很常见（claude-sonnet-4），用横线做后缀无法区分
+// 「原名的一部分」和「第几个副本」，改名时会把模型 ID 的尾号啃掉。
+const DISPLAY_NAME_COPY_PATTERN = /\s*#(\d+)$/;
+
 function splitDisplayNameSeed(value) {
   const text = asString(value);
-  const match = text.match(/^(.*?)(?:\s*[-+](\d+))?$/);
+  const match = text.match(DISPLAY_NAME_COPY_PATTERN);
   if (!match) {
     return { base: text || "模型", number: 0 };
   }
-  const base = asString(match[1]) || "模型";
-  const number = match[2] ? Number(match[2]) : 0;
+  const base = asString(text.slice(0, match.index)) || "模型";
+  const number = Number(match[1]);
   return { base, number: Number.isFinite(number) ? number : 0 };
 }
 
-function buildNextDisplayName(existingAdapters, sourceName) {
+function buildDedupedDisplayName(takenNames, sourceName) {
   const { base } = splitDisplayNameSeed(sourceName);
-  let next = 1;
+  if (!takenNames.has(base)) {
+    return base;
+  }
+  let next = 2;
+  while (takenNames.has(`${base} #${next}`)) {
+    next += 1;
+  }
+  return `${base} #${next}`;
+}
+
+function buildNextDisplayName(existingAdapters, sourceName) {
   const taken = new Set(
     normalizeModelAdapters(existingAdapters)
       .map((adapter) => adapter.displayName)
       .filter(Boolean),
   );
-
-  while (taken.has(`${base}-${next}`)) {
+  const { base } = splitDisplayNameSeed(sourceName);
+  let next = 2;
+  while (taken.has(`${base} #${next}`)) {
     next += 1;
   }
-  return `${base}-${next}`;
+  return `${base} #${next}`;
 }
 
 export async function duplicateModelAdapterAt(index) {
@@ -1640,6 +1692,169 @@ export function countProviderModels(providerID) {
     return 0;
   }
   return normalizeModelAdapters(appState.modelAdapters).filter((item) => item.providerID === id).length;
+}
+
+// patchProvider 是所有「改一个站点的某个字段」的统一落盘路径。
+// 逐个函数各写一遍读改写会让并发编辑互相覆盖，这里收成一处。
+async function patchProvider(providerID, patch) {
+  const id = asString(providerID);
+  if (!id) {
+    return { ok: false, error: "中转站不存在" };
+  }
+  const currentConfig = await loadPersistedUserConfig();
+  const nextProviders = normalizeProviders(currentConfig.providers);
+  const index = nextProviders.findIndex((item) => item.id === id);
+  if (index < 0) {
+    return { ok: false, error: "中转站不存在" };
+  }
+  nextProviders.splice(index, 1, normalizeProvider({ ...nextProviders[index], ...patch }));
+  return persistConfigPayload(
+    {
+      ...currentConfig,
+      providers: nextProviders,
+    },
+    { modelAdaptersOnly: true },
+  );
+}
+
+// 停用只影响下发与解析，配置与模型全部保留，重新启用即恢复。
+export async function setProviderDisabled(providerID, disabled) {
+  return patchProvider(providerID, { disabled: Boolean(disabled) });
+}
+
+export async function setProviderPinned(providerID, pinned) {
+  return patchProvider(providerID, { pinned: Boolean(pinned) });
+}
+
+// cloneProvider 复制一份站点用于多号轮换。
+// 不复制 id：Go 侧按 baseURL + 名称派生，改名后自然是一个新站点；
+// 模型不跟着复制——克隆的目的通常是换密钥，模型可以直接重新导入。
+export async function cloneProvider(providerID, { keepAPIKey = true } = {}) {
+  const id = asString(providerID);
+  const currentConfig = await loadPersistedUserConfig();
+  const nextProviders = normalizeProviders(currentConfig.providers);
+  const source = nextProviders.find((item) => item.id === id);
+  if (!source) {
+    return { ok: false, error: "中转站不存在" };
+  }
+
+  const takenNames = new Set(nextProviders.map((item) => item.name).filter(Boolean));
+  let suffix = 2;
+  let name = `${source.name} #${suffix}`;
+  while (takenNames.has(name)) {
+    suffix += 1;
+    name = `${source.name} #${suffix}`;
+  }
+
+  nextProviders.push(normalizeProvider({
+    ...source,
+    id: "",
+    name,
+    builtin: false,
+    pinned: false,
+    apiKey: keepAPIKey ? source.apiKey : "",
+  }));
+
+  const result = await persistConfigPayload(
+    {
+      ...currentConfig,
+      providers: nextProviders,
+    },
+    { modelAdaptersOnly: true },
+  );
+  if (!result.ok) {
+    return result;
+  }
+  return { ...result, provider: normalizeProviders(appState.providers).find((item) => item.name === name) ?? null };
+}
+
+// deleteProviderModels 只清该站点下的模型，保留站点本身。
+export async function deleteProviderModels(providerID) {
+  const id = asString(providerID);
+  if (!id) {
+    return { ok: false, error: "中转站不存在" };
+  }
+  const currentConfig = await loadPersistedUserConfig();
+  const nextAdapters = normalizeModelAdapters(currentConfig.modelAdapters);
+  const remaining = nextAdapters.filter((item) => item.providerID !== id);
+  const removed = nextAdapters.length - remaining.length;
+  if (removed === 0) {
+    return { ok: true, error: "", removed: 0 };
+  }
+  const result = await persistConfigPayload(
+    {
+      ...currentConfig,
+      modelAdapters: remaining,
+    },
+    { modelAdaptersOnly: true },
+  );
+  return { ...result, removed };
+}
+
+// renameProviderModels 按模板重刷该站点下所有模型的显示名。
+//
+// 显示名参与渠道 ID（Go 侧 BuildChannelID），所以改名等于换渠道：
+// Cursor 里已选中的模型会失效，测速结果与用量归属重新计数。调用方必须先确认。
+export async function renameProviderModels(providerID, { template = "" } = {}) {
+  const id = asString(providerID);
+  if (!id) {
+    return { ok: false, error: "中转站不存在" };
+  }
+  const currentConfig = await loadPersistedUserConfig();
+  const provider = findProviderByID(currentConfig.providers, id);
+  if (!provider) {
+    return { ok: false, error: "中转站不存在" };
+  }
+  const pattern = asString(template) || provider.nameTemplate;
+  const nextAdapters = normalizeModelAdapters(currentConfig.modelAdapters);
+  const takenNames = new Set(
+    nextAdapters.filter((item) => item.providerID !== id).map((item) => item.displayName).filter(Boolean),
+  );
+
+  let renamed = 0;
+  const updated = nextAdapters.map((adapter) => {
+    if (adapter.providerID !== id) {
+      return adapter;
+    }
+    const target = buildDedupedDisplayName(
+      takenNames,
+      buildAdapterDisplayName({
+        providerName: provider.name,
+        modelID: adapter.modelID,
+        template: pattern,
+      }),
+    );
+    takenNames.add(target);
+    if (target === adapter.displayName) {
+      return adapter;
+    }
+    renamed += 1;
+    return { ...adapter, displayName: target };
+  });
+
+  if (renamed === 0) {
+    return { ok: true, error: "", renamed: 0 };
+  }
+  const result = await persistConfigPayload(
+    {
+      ...currentConfig,
+      modelAdapters: updated,
+    },
+    { modelAdaptersOnly: true },
+  );
+  return { ...result, renamed };
+}
+
+// importAllProviderModels 导入该站点当前已拉取到的全部模型。
+// 模型来源是展示镜像（Go 侧缓存的快照），所以必须先成功拉取过一次。
+export async function importAllProviderModels(providerID, options = {}) {
+  const id = asString(providerID);
+  const catalog = id ? appState.providerModelCatalog[id] : null;
+  const modelIDs = asArray(catalog?.models).map((item) => asString(item?.id)).filter(Boolean);
+  if (modelIDs.length === 0) {
+    return { ok: false, error: "请先获取该站点的模型列表" };
+  }
+  return importProviderModels(id, modelIDs, options);
 }
 
 function normalizeProviderModelsResult(source) {
@@ -1793,7 +2008,12 @@ export function formatImportSummary(summary) {
 
 // importProviderModels 批量生成模型配置。
 // 按 providerID + modelID 去重，重复导入不会产生冗余条目。
-export async function importProviderModels(providerID, modelIDs) {
+//
+// 协议不再照抄站点：每个模型的 type / endpoint / clientProfile 由 modelFamily 决定，
+// 于是同一个中转站下 claude-* 走 /v1/messages、gpt-5* 走 /v1/responses。
+// options.protocolOverride 让用户在站点行为异常时强制指定形态；
+// options.template 覆盖显示名模板（留空则用站点自己的 nameTemplate）。
+export async function importProviderModels(providerID, modelIDs, options = {}) {
   const id = asString(providerID);
   if (!id) {
     return { ok: false, error: "请先选择中转站" };
@@ -1808,6 +2028,7 @@ export async function importProviderModels(providerID, modelIDs) {
   const existing = new Set(
     nextAdapters.filter((item) => item.providerID === id).map((item) => item.modelID),
   );
+  const takenNames = new Set(nextAdapters.map((item) => item.displayName).filter(Boolean));
 
   const requestedIDs = asArray(modelIDs).map((item) => asString(item)).filter(Boolean);
   let added = 0;
@@ -1819,19 +2040,10 @@ export async function importProviderModels(providerID, modelIDs) {
     }
     existing.add(modelID);
     added += 1;
-    nextAdapters.push({
-      ...createEmptyModelAdapter(),
-      providerID: id,
-      displayName: modelID,
-      type: provider.type,
-      baseURL: provider.baseURL,
-      apiKey: provider.apiKey,
-      clientProfile: provider.clientProfile,
-      tooltipData: provider.name,
-      modelID,
-      openAIEndpoint: provider.type === "openai" ? OPENAI_ENDPOINT_CHAT_COMPLETIONS : "",
-      anthropicThinkingEffort: provider.type === "anthropic" ? ANTHROPIC_THINKING_EFFORT_DEFAULT : "",
-    });
+    const adapter = buildProviderModelAdapter(provider, modelID, options);
+    const displayName = buildDedupedDisplayName(takenNames, adapter.displayName);
+    takenNames.add(displayName);
+    nextAdapters.push({ ...adapter, displayName });
   }
 
   const requested = requestedIDs.length;
@@ -1847,6 +2059,28 @@ export async function importProviderModels(providerID, modelIDs) {
     { modelAdaptersOnly: true },
   );
   return { ...result, added, skipped, requested };
+}
+
+// buildProviderModelAdapter 把「站点 + 模型 ID + 覆盖意图」折叠成一条完整的模型配置。
+// 导出给界面做导入前预览，保证预览和真正落盘走的是同一个函数。
+export function buildProviderModelAdapter(source, modelID, options = {}) {
+  const provider = normalizeProvider(source);
+  const id = asString(modelID);
+  const protocol = resolveModelProtocol(id, provider, options.protocolOverride ?? PROTOCOL_OVERRIDE_AUTO);
+  const template = asString(options.template) || provider.nameTemplate;
+  return {
+    ...createEmptyModelAdapter(),
+    providerID: provider.id,
+    displayName: buildAdapterDisplayName({ providerName: provider.name, modelID: id, template }),
+    type: protocol.type,
+    baseURL: provider.baseURL,
+    apiKey: provider.apiKey,
+    clientProfile: protocol.clientProfile,
+    tooltipData: provider.name,
+    modelID: id,
+    openAIEndpoint: protocol.type === "openai" ? protocol.openAIEndpoint : "",
+    anthropicThinkingEffort: protocol.type === "anthropic" ? ANTHROPIC_THINKING_EFFORT_DEFAULT : "",
+  };
 }
 
 export async function syncUsageSeries(days = 30) {

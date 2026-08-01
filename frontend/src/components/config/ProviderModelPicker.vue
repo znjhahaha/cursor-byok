@@ -1,6 +1,17 @@
 <script setup>
 import Button from "@/components/ui/Button.vue";
+import Select from "@/components/ui/Select.vue";
 import { appState, importProviderModels, toUserError } from "@/state/appState";
+import {
+  buildAdapterDisplayName,
+  MODEL_TYPE_ANTHROPIC,
+  OPENAI_ENDPOINT_RESPONSES,
+  PROTOCOL_OVERRIDE_ANTHROPIC,
+  PROTOCOL_OVERRIDE_AUTO,
+  PROTOCOL_OVERRIDE_OPENAI_CHAT,
+  PROTOCOL_OVERRIDE_OPENAI_RESPONSES,
+  resolveModelProtocol,
+} from "@/state/modelFamily";
 import { computed, nextTick, ref, watch } from "vue";
 
 // 家族筛选是纯字面量匹配，不查表也不请求：模型 ID 里几乎总能看到厂商前缀，
@@ -12,6 +23,14 @@ const MODEL_FAMILIES = [
   { key: "grok", label: "Grok" },
   { key: "deepseek", label: "DeepSeek" },
   { key: "qwen", label: "Qwen" },
+];
+
+// 协议覆盖只影响本次导入，不落到中转站上：站点仍然只负责连接信息。
+const PROTOCOL_OVERRIDE_OPTIONS = [
+  { label: "按模型名自动匹配协议", value: PROTOCOL_OVERRIDE_AUTO, icon: "icon-[mdi--auto-fix]" },
+  { label: "全部按 Anthropic 导入", value: PROTOCOL_OVERRIDE_ANTHROPIC, icon: "icon-[logos--claude-icon]" },
+  { label: "全部按 OpenAI Responses 导入", value: PROTOCOL_OVERRIDE_OPENAI_RESPONSES, icon: "icon-[bxl--openai]" },
+  { label: "全部按 OpenAI Chat 导入", value: PROTOCOL_OVERRIDE_OPENAI_CHAT, icon: "icon-[mdi--message-text-outline]" },
 ];
 
 const props = defineProps({
@@ -56,6 +75,19 @@ const selected = ref(new Set());
 const importing = ref(false);
 const manualModelID = ref("");
 const listRef = ref(null);
+const protocolOverride = ref(PROTOCOL_OVERRIDE_AUTO);
+
+// 徽章只显示协议形态，不显示客户端指纹：指纹是由协议+端点推导出来的，
+// 单独列出来会让用户以为它是可以独立选择的第三个维度。
+function protocolBadge(protocol) {
+  if (protocol.type === MODEL_TYPE_ANTHROPIC) {
+    return { text: "Anthropic", icon: "icon-[logos--claude-icon]" };
+  }
+  return {
+    text: protocol.openAIEndpoint === OPENAI_ENDPOINT_RESPONSES ? "OpenAI · Responses" : "OpenAI · Chat",
+    icon: "icon-[bxl--openai]",
+  };
+}
 
 // 已导入判定用 providerID + modelID 精确相等；用户手改过 modelID 的条目会被判为未导入，
 // 由 importProviderModels 内部的去重兜底，不会产生重复条目。
@@ -74,10 +106,19 @@ const importedIDs = computed(() => {
 const decorated = computed(() =>
   props.models.map((model) => {
     const id = String(model?.id || "");
+    // 预览与真正落盘走同一组纯函数，避免「预览显示 Anthropic、导进去却是 OpenAI」。
+    const protocol = resolveModelProtocol(id, props.provider, protocolOverride.value);
     return {
       id,
       lower: id.toLowerCase(),
       imported: importedIDs.value.has(id),
+      protocol,
+      badge: protocolBadge(protocol),
+      previewName: buildAdapterDisplayName({
+        providerName: props.provider?.name || "",
+        modelID: id,
+        template: props.provider?.nameTemplate || "",
+      }),
     };
   }),
 );
@@ -122,6 +163,7 @@ watch(
     selected.value = new Set();
     keyword.value = "";
     family.value = "";
+    protocolOverride.value = PROTOCOL_OVERRIDE_AUTO;
   },
 );
 
@@ -157,7 +199,9 @@ async function importModelIDs(modelIDs) {
   const scrollTop = listRef.value?.scrollTop ?? 0;
   importing.value = true;
   try {
-    const result = await importProviderModels(props.provider.id, modelIDs);
+    const result = await importProviderModels(props.provider.id, modelIDs, {
+      protocolOverride: protocolOverride.value,
+    });
     if (!result.ok) {
       emit("error", result.error || "导入失败");
       return;
@@ -251,6 +295,17 @@ function handleManualImport() {
       </button>
     </div>
 
+    <div v-if="models.length > 0" class="flex flex-col gap-1">
+      <Select
+        v-model="protocolOverride"
+        :options="PROTOCOL_OVERRIDE_OPTIONS"
+        aria-label="导入协议"
+      />
+      <span class="text-[11px] leading-4 text-[#737373]">
+        Claude 走 Anthropic 协议，GPT-5 / Codex 走 OpenAI Responses，其余走 OpenAI Chat；客户端模拟随协议一并匹配。
+      </span>
+    </div>
+
     <div v-if="requestURL" class="truncate text-xs text-[#737373]" :title="requestURL">
       {{ requestURL }}
     </div>
@@ -315,18 +370,18 @@ function handleManualImport() {
       v-else
       ref="listRef"
       class="model-picker-scroll min-h-0 overflow-y-auto pr-1"
-      :class="compact ? 'max-h-[200px]' : 'max-h-[240px]'"
+      :class="compact ? 'max-h-[240px]' : 'max-h-[280px]'"
     >
       <div
         class="grid gap-1.5"
         :class="compact
-          ? '[grid-template-columns:repeat(auto-fill,minmax(130px,1fr))]'
-          : '[grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]'"
+          ? '[grid-template-columns:repeat(auto-fill,minmax(170px,1fr))]'
+          : '[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]'"
       >
         <label
           v-for="model in visibleModels"
           :key="model.id"
-          class="center-row justify-start gap-2 rounded-[6px] border px-2.5 py-2 text-sm transition-colors"
+          class="flex flex-col gap-1 rounded-[6px] border px-2.5 py-2 text-sm transition-colors"
           :class="[
             model.imported
               ? 'cursor-default border-[#333] bg-[#1f1f1f] text-[#6f6f6f]'
@@ -338,19 +393,33 @@ function handleManualImport() {
                 : '',
           ]"
         >
-          <input
-            type="checkbox"
-            class="size-4 shrink-0 accent-[#10AD5D]"
-            :checked="model.imported || selected.has(model.id)"
-            :disabled="model.imported"
-            @change="toggleModel(model)"
-          />
-          <span class="truncate" :title="model.id">{{ model.id }}</span>
-          <span
-            v-if="model.imported"
-            class="ml-auto shrink-0 rounded-[4px] bg-[#2f2f2f] px-1.5 py-0.5 text-[10px] text-[#8f8f8f]"
-          >
-            已添加
+          <span class="center-row justify-start gap-2">
+            <input
+              type="checkbox"
+              class="size-4 shrink-0 accent-[#10AD5D]"
+              :checked="model.imported || selected.has(model.id)"
+              :disabled="model.imported"
+              @change="toggleModel(model)"
+            />
+            <span class="truncate" :title="model.id">{{ model.id }}</span>
+            <span
+              v-if="model.imported"
+              class="ml-auto shrink-0 rounded-[4px] bg-[#2f2f2f] px-1.5 py-0.5 text-[10px] text-[#8f8f8f]"
+            >
+              已添加
+            </span>
+          </span>
+          <span class="center-row min-w-0 justify-start gap-1.5 pl-6">
+            <span
+              class="center-row shrink-0 gap-1 rounded-[4px] border border-[#3a3a3a] px-1.5 py-[1px] text-[10px] text-[#a3a3a3]"
+              :class="model.protocol.source === 'provider' ? 'opacity-60' : ''"
+            >
+              <span :class="[model.badge.icon, 'text-[11px]']"></span>
+              <span>{{ model.badge.text }}</span>
+            </span>
+            <span class="truncate text-[11px] text-[#737373]" :title="model.previewName">
+              {{ model.previewName }}
+            </span>
           </span>
         </label>
       </div>

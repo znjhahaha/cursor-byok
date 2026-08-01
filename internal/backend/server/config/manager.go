@@ -145,6 +145,10 @@ func (manager *Manager) LegacyRuntimeSnapshot(_ context.Context) (legacyruntime.
 	cfg := manager.Current()
 	adapters := make([]legacyruntime.ModelAdapterConfig, 0, len(cfg.ModelAdapters))
 	for _, item := range cfg.ModelAdapters {
+		// 停用站点下的模型不下发给 Cursor，但配置原样保留。
+		if !IsAdapterActive(item, cfg.Providers) {
+			continue
+		}
 		providerName := ""
 		if provider, ok := FindProvider(cfg.Providers, item.ProviderID); ok {
 			providerName = provider.Name

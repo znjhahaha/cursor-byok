@@ -7,7 +7,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 475,
+          "line": 489,
           "column": 58
         }
       ]
@@ -19,7 +19,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 39,
+          "line": 70,
           "column": 12
         }
       ]
@@ -43,12 +43,17 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 459,
+          "line": 534,
+          "column": 17
+        },
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 745,
           "column": 33
         },
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 162,
+          "line": 206,
           "column": 37
         }
       ]
@@ -60,7 +65,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1278,
+          "line": 1314,
           "column": 14
         }
       ]
@@ -108,12 +113,12 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 414,
+          "line": 477,
           "column": 21
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 384,
+          "line": 398,
           "column": 23
         }
       ]
@@ -161,7 +166,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 129,
+          "line": 135,
           "column": 10
         }
       ]
@@ -173,7 +178,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 656,
+          "line": 692,
           "column": 14
         }
       ]
@@ -190,8 +195,8 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 498,
-          "column": 107
+          "line": 797,
+          "column": 109
         }
       ]
     },
@@ -202,12 +207,12 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 489,
+          "line": 553,
           "column": 15
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 537,
+          "line": 601,
           "column": 15
         }
       ]
@@ -219,7 +224,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 69,
+          "line": 97,
           "column": 12
         }
       ]
@@ -243,7 +248,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 234,
+          "line": 278,
           "column": 14
         }
       ]
@@ -291,7 +296,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 623,
+          "line": 659,
           "column": 14
         }
       ]
@@ -313,6 +318,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 470,
+          "column": 17
+        },
         {
           "file": "src/layouts/MainLayout.vue",
           "line": 124,
@@ -337,6 +347,18 @@
         }
       ]
     },
+    "0d9876e816b26638": {
+      "source": "克隆失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 516,
+          "column": 17
+        }
+      ]
+    },
     "0dae682eddacfae3": {
       "source": "添加中...",
       "kind": "text",
@@ -344,7 +366,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 281,
+          "line": 336,
           "column": 14
         }
       ]
@@ -356,8 +378,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 482,
-          "column": 27
+          "line": 781,
+          "column": 29
         }
       ]
     },
@@ -370,6 +392,18 @@
           "file": "src/layouts/MainLayout.vue",
           "line": 147,
           "column": 27
+        }
+      ]
+    },
+    "0ffcd290714860ad": {
+      "source": "取消置顶 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 653,
+          "column": 38
         }
       ]
     },
@@ -392,7 +426,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 77,
+          "line": 79,
           "column": 82
         }
       ]
@@ -486,7 +520,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 181,
+          "line": 187,
           "column": 24
         }
       ]
@@ -498,8 +532,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 452,
+          "line": 738,
           "column": 38
+        }
+      ]
+    },
+    "1668d6534b7ef49b": {
+      "source": "已重命名 {0} 个模型",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 490,
+          "column": 35
         }
       ]
     },
@@ -510,8 +556,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 281,
+          "line": 336,
           "column": 14
+        }
+      ]
+    },
+    "16d7db3fbeb2248c": {
+      "source": "中转站排序",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 621,
+          "column": 61
         }
       ]
     },
@@ -522,7 +580,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 215,
+          "line": 259,
           "column": 13
         }
       ]
@@ -549,6 +607,18 @@
         }
       ]
     },
+    "173f88d28ebfb1e6": {
+      "source": "置顶",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 654,
+          "column": 33
+        }
+      ]
+    },
     "185aebe19c77425d": {
       "source": "{0}必须是 JSON 对象",
       "kind": "template",
@@ -556,7 +626,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 364,
+          "line": 392,
           "column": 14
         }
       ]
@@ -568,7 +638,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 322,
+          "line": 336,
           "column": 1
         }
       ]
@@ -580,7 +650,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1255,
+          "line": 1291,
           "column": 47
         }
       ]
@@ -638,7 +708,19 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 682,
+          "line": 718,
+          "column": 12
+        }
+      ]
+    },
+    "1b11cca22bb3cbde": {
+      "source": "导入全部模型",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 47,
           "column": 12
         }
       ]
@@ -662,7 +744,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 148,
+          "line": 154,
           "column": 67
         }
       ]
@@ -768,12 +850,12 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 390,
+          "line": 418,
           "column": 36
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 558,
+          "line": 623,
           "column": 21
         }
       ]
@@ -785,12 +867,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 353,
-          "column": 89
+          "line": 589,
+          "column": 93
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 77,
+          "line": 79,
           "column": 72
         }
       ]
@@ -814,7 +896,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 88,
+          "line": 164,
           "column": 12
         }
       ]
@@ -831,7 +913,7 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 108,
+          "line": 184,
           "column": 17
         },
         {
@@ -882,8 +964,20 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 38,
+          "line": 39,
           "column": 11
+        }
+      ]
+    },
+    "269fcc045baef929": {
+      "source": "按最近获取",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 37,
+          "column": 12
         }
       ]
     },
@@ -894,7 +988,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1246,
+          "line": 1282,
           "column": 12
         }
       ]
@@ -906,7 +1000,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 452,
+          "line": 738,
           "column": 38
         }
       ]
@@ -918,12 +1012,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 289,
+          "line": 344,
           "column": 1
         },
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 303,
+          "line": 358,
           "column": 1
         }
       ]
@@ -935,7 +1029,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 39,
+          "line": 40,
           "column": 18
         }
       ]
@@ -947,7 +1041,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 665,
+          "line": 701,
           "column": 14
         }
       ]
@@ -983,7 +1077,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 37,
+          "line": 38,
           "column": 12
         }
       ]
@@ -1032,17 +1126,17 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1320,
+          "line": 1356,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 338,
+          "line": 395,
           "column": 57
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 265,
+          "line": 279,
           "column": 57
         }
       ]
@@ -1090,8 +1184,20 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 330,
+          "line": 344,
           "column": 58
+        }
+      ]
+    },
+    "2f441474c31463af": {
+      "source": "导入协议",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderModelPicker.vue",
+          "line": 302,
+          "column": 9
         }
       ]
     },
@@ -1107,8 +1213,8 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 499,
-          "column": 106
+          "line": 808,
+          "column": 108
         }
       ]
     },
@@ -1131,7 +1237,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 634,
+          "line": 699,
           "column": 13
         }
       ]
@@ -1155,22 +1261,22 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 567,
+          "line": 603,
           "column": 56
         },
         {
           "file": "src/state/appState.js",
-          "line": 637,
+          "line": 673,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 643,
+          "line": 679,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 649,
+          "line": 685,
           "column": 16
         }
       ]
@@ -1216,7 +1322,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 603,
+          "line": 639,
           "column": 14
         }
       ]
@@ -1230,6 +1336,23 @@
           "file": "src/components/ui/MultiSelect.vue",
           "line": 256,
           "column": 93
+        }
+      ]
+    },
+    "337886e1e840345d": {
+      "source": "清空该站模型",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 49,
+          "column": 12
+        },
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 497,
+          "column": 16
         }
       ]
     },
@@ -1252,7 +1375,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1609,
+          "line": 1661,
           "column": 32
         }
       ]
@@ -1329,6 +1452,18 @@
         }
       ]
     },
+    "35a7c57246065cca": {
+      "source": "已停用，配置与模型保留",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 758,
+          "column": 21
+        }
+      ]
+    },
     "35f826ce7f203daa": {
       "source": "自定义 {0} 天",
       "kind": "template",
@@ -1348,12 +1483,12 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 488,
+          "line": 502,
           "column": 26
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 498,
+          "line": 512,
           "column": 1
         }
       ]
@@ -1370,7 +1505,7 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 514,
+          "line": 578,
           "column": 21
         }
       ]
@@ -1394,12 +1529,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 534,
+          "line": 570,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 538,
+          "line": 574,
           "column": 12
         }
       ]
@@ -1411,7 +1546,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 247,
+          "line": 261,
           "column": 9
         }
       ]
@@ -1423,8 +1558,32 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1312,
+          "line": 1348,
           "column": 14
+        }
+      ]
+    },
+    "38844b135cf70dfc": {
+      "source": "更多",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 802,
+          "column": 23
+        }
+      ]
+    },
+    "38ad616b5d1eee3e": {
+      "source": "请先获取该站点的模型列表",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/state/appState.js",
+          "line": 1855,
+          "column": 32
         }
       ]
     },
@@ -1445,12 +1604,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 45,
+          "line": 47,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 53,
+          "line": 55,
           "column": 12
         }
       ]
@@ -1464,6 +1623,18 @@
           "file": "src/components/charts/CacheHitRateChart.vue",
           "line": 76,
           "column": 12
+        }
+      ]
+    },
+    "3968ee93ea039f04": {
+      "source": "将删除「{0}」下的 {1} 个模型配置，中转站本身保留。",
+      "kind": "template",
+      "placeholders": 2,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 498,
+          "column": 18
         }
       ]
     },
@@ -1498,7 +1669,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 112,
+          "line": 126,
           "column": 27
         }
       ]
@@ -1510,7 +1681,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 226,
+          "line": 270,
           "column": 14
         },
         {
@@ -1539,7 +1710,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 68,
+          "line": 96,
           "column": 12
         }
       ]
@@ -1551,12 +1722,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 551,
+          "line": 587,
           "column": 47
         },
         {
           "file": "src/state/appState.js",
-          "line": 611,
+          "line": 647,
           "column": 14
         }
       ]
@@ -1568,7 +1739,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 85,
+          "line": 161,
           "column": 12
         }
       ]
@@ -1580,7 +1751,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 510,
+          "line": 524,
           "column": 66
         }
       ]
@@ -1614,7 +1785,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1276,
+          "line": 1312,
           "column": 5
         }
       ]
@@ -1662,7 +1833,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 572,
+          "line": 608,
           "column": 47
         }
       ]
@@ -1674,7 +1845,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 372,
+          "line": 386,
           "column": 17
         }
       ]
@@ -1734,7 +1905,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 433,
+          "line": 447,
           "column": 54
         }
       ]
@@ -1830,7 +2001,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 90,
+          "line": 166,
           "column": 36
         }
       ]
@@ -1842,7 +2013,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 86,
+          "line": 92,
           "column": 65
         }
       ]
@@ -1878,7 +2049,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 312,
+          "line": 326,
           "column": 64
         }
       ]
@@ -1890,7 +2061,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 626,
+          "line": 662,
           "column": 14
         }
       ]
@@ -2031,7 +2202,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 366,
+          "line": 380,
           "column": 23
         }
       ]
@@ -2055,8 +2226,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 311,
+          "line": 366,
           "column": 10
+        }
+      ]
+    },
+    "4b89d6d4ea897f78": {
+      "source": "已克隆为「{0}」",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 519,
+          "column": 25
         }
       ]
     },
@@ -2096,6 +2279,18 @@
         }
       ]
     },
+    "4d478fbedc3c051c": {
+      "source": "已删除 {0} 个模型",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 503,
+          "column": 35
+        }
+      ]
+    },
     "4d8c1c5b42830791": {
       "source": "未知",
       "kind": "text",
@@ -2108,7 +2303,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 137,
+          "line": 165,
           "column": 12
         }
       ]
@@ -2156,8 +2351,20 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 188,
+          "line": 194,
           "column": 23
+        }
+      ]
+    },
+    "5257a27f83856dcc": {
+      "source": "没有匹配的中转站。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 631,
+          "column": 12
         }
       ]
     },
@@ -2173,12 +2380,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 434,
+          "line": 497,
           "column": 21
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 416,
+          "line": 430,
           "column": 23
         }
       ]
@@ -2190,7 +2397,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 95,
+          "line": 100,
           "column": 34
         }
       ]
@@ -2202,7 +2409,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 440,
+          "line": 454,
           "column": 1
         }
       ]
@@ -2214,7 +2421,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 569,
+          "line": 600,
           "column": 19
         }
       ]
@@ -2226,12 +2433,12 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 483,
+          "line": 547,
           "column": 21
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 531,
+          "line": 595,
           "column": 21
         }
       ]
@@ -2289,7 +2496,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 351,
+          "line": 578,
           "column": 1
         }
       ]
@@ -2301,7 +2508,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 367,
+          "line": 395,
           "column": 12
         }
       ]
@@ -2325,7 +2532,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 118,
+          "line": 132,
           "column": 26
         }
       ]
@@ -2337,8 +2544,20 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 183,
+          "line": 189,
           "column": 24
+        }
+      ]
+    },
+    "5c12effbdc30b28b": {
+      "source": "搜索名称或地址",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 616,
+          "column": 13
         }
       ]
     },
@@ -2368,6 +2587,11 @@
           "file": "src/components/config/ModelListPanel.vue",
           "line": 72,
           "column": 12
+        },
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 114,
+          "column": 12
         }
       ]
     },
@@ -2390,7 +2614,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 432,
+          "line": 446,
           "column": 58
         }
       ]
@@ -2443,6 +2667,18 @@
         }
       ]
     },
+    "60a59b88527c218b": {
+      "source": "{0} 个站点不可用：{1}",
+      "kind": "template",
+      "placeholders": 2,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 451,
+          "column": 28
+        }
+      ]
+    },
     "6106f0a12583a334": {
       "source": "刷新失败",
       "kind": "text",
@@ -2462,7 +2698,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 264,
+          "line": 319,
           "column": 15
         }
       ]
@@ -2496,7 +2732,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 416,
+          "line": 702,
           "column": 87
         }
       ]
@@ -2508,7 +2744,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 599,
+          "line": 635,
           "column": 20
         }
       ]
@@ -2522,6 +2758,18 @@
           "file": "src/components/config/ModelListPanel.vue",
           "line": 428,
           "column": 155
+        }
+      ]
+    },
+    "644c12039860d152": {
+      "source": "克隆站点",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 46,
+          "column": 12
         }
       ]
     },
@@ -2544,7 +2792,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 383,
+          "line": 411,
           "column": 14
         }
       ]
@@ -2597,7 +2845,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 460,
+          "line": 474,
           "column": 23
         }
       ]
@@ -2609,8 +2857,20 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1244,
+          "line": 1280,
           "column": 14
+        }
+      ]
+    },
+    "660fb1b057cd346f": {
+      "source": "清空失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 499,
+          "column": 23
         }
       ]
     },
@@ -2621,7 +2881,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 620,
+          "line": 656,
           "column": 14
         }
       ]
@@ -2650,7 +2910,7 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 145,
+          "line": 151,
           "column": 54
         }
       ]
@@ -2662,7 +2922,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 271,
+          "line": 326,
           "column": 11
         }
       ]
@@ -2698,12 +2958,12 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 406,
+          "line": 469,
           "column": 15
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 408,
+          "line": 422,
           "column": 17
         }
       ]
@@ -2742,17 +3002,17 @@
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 101,
+          "line": 177,
           "column": 51
         },
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 101,
+          "line": 177,
           "column": 69
         },
         {
           "file": "src/state/appState.js",
-          "line": 30,
+          "line": 46,
           "column": 31
         },
         {
@@ -2774,6 +3034,23 @@
           "file": "src/views/Home.vue",
           "line": 89,
           "column": 48
+        },
+        {
+          "file": "src/views/ModelConfig.vue",
+          "line": 70,
+          "column": 79
+        }
+      ]
+    },
+    "6bf590556d77e02c": {
+      "source": "全部按 OpenAI Chat 导入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderModelPicker.vue",
+          "line": 33,
+          "column": 12
         }
       ]
     },
@@ -2784,7 +3061,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 99,
+          "line": 113,
           "column": 65
         }
       ]
@@ -2796,7 +3073,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1789,
+          "line": 2004,
           "column": 26
         }
       ]
@@ -2880,7 +3157,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 30,
+          "line": 31,
           "column": 12
         }
       ]
@@ -2928,7 +3205,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 452,
+          "line": 466,
           "column": 17
         }
       ]
@@ -2952,7 +3229,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 42,
+          "line": 43,
           "column": 15
         }
       ]
@@ -2965,6 +3242,11 @@
         {
           "file": "src/components/config/ModelListPanel.vue",
           "line": 77,
+          "column": 10
+        },
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 119,
           "column": 10
         }
       ]
@@ -3005,7 +3287,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 128,
+          "line": 142,
           "column": 25
         }
       ]
@@ -3022,13 +3304,25 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 640,
+          "line": 705,
           "column": 20
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 640,
+          "line": 705,
           "column": 20
+        }
+      ]
+    },
+    "79464200f2c30c4d": {
+      "source": "按名称",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 35,
+          "column": 12
         }
       ]
     },
@@ -3039,7 +3333,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 175,
+          "line": 181,
           "column": 16
         }
       ]
@@ -3078,7 +3372,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 221,
+          "line": 265,
           "column": 17
         }
       ]
@@ -3100,12 +3394,12 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 260,
+          "line": 288,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 340,
+          "line": 397,
           "column": 14
         }
       ]
@@ -3165,7 +3459,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 523,
+          "line": 587,
           "column": 1
         }
       ]
@@ -3177,7 +3471,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 316,
+          "line": 330,
           "column": 17
         }
       ]
@@ -3189,7 +3483,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 529,
+          "line": 565,
           "column": 12
         }
       ]
@@ -3206,7 +3500,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1297,
+          "line": 1333,
           "column": 16
         }
       ]
@@ -3218,8 +3512,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 482,
-          "column": 27
+          "line": 781,
+          "column": 29
+        }
+      ]
+    },
+    "7fe3f2bfbf2d57bd": {
+      "source": "按模型名自动匹配协议",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderModelPicker.vue",
+          "line": 30,
+          "column": 12
         }
       ]
     },
@@ -3254,7 +3560,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 57,
+          "line": 133,
           "column": 12
         }
       ]
@@ -3266,12 +3572,12 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 400,
+          "line": 463,
           "column": 21
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 402,
+          "line": 416,
           "column": 23
         }
       ]
@@ -3283,7 +3589,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 186,
+          "line": 192,
           "column": 18
         }
       ]
@@ -3307,8 +3613,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 472,
-          "column": 22
+          "line": 771,
+          "column": 24
+        }
+      ]
+    },
+    "8415c90bc9c4adcb": {
+      "source": "协议、接口端点与客户端模式会按模型标识自动匹配，手动调整后不再自动变更。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ModelEditor.vue",
+          "line": 297,
+          "column": 10
         }
       ]
     },
@@ -3319,7 +3637,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 317,
+          "line": 331,
           "column": 17
         }
       ]
@@ -3331,7 +3649,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1799,
+          "line": 2019,
           "column": 32
         }
       ]
@@ -3372,7 +3690,7 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 46,
+          "line": 48,
           "column": 12
         }
       ]
@@ -3384,8 +3702,20 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1241,
+          "line": 1277,
           "column": 14
+        }
+      ]
+    },
+    "86f5a3e6da582903": {
+      "source": "默认顺序",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 34,
+          "column": 12
         }
       ]
     },
@@ -3396,7 +3726,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 68,
+          "line": 70,
           "column": 12
         }
       ]
@@ -3413,6 +3743,18 @@
         }
       ]
     },
+    "87f0f85c7693a238": {
+      "source": "全部按 OpenAI Responses 导入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderModelPicker.vue",
+          "line": 32,
+          "column": 12
+        }
+      ]
+    },
     "889839915c3f4b8d": {
       "source": "已添加",
       "kind": "text",
@@ -3420,8 +3762,20 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 353,
+          "line": 409,
           "column": 1
+        }
+      ]
+    },
+    "89990d3845c2955c": {
+      "source": "例如：炸弹-gpt-5.6-sol",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ModelEditor.vue",
+          "line": 441,
+          "column": 15
         }
       ]
     },
@@ -3444,12 +3798,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 561,
+          "line": 597,
           "column": 18
         },
         {
           "file": "src/state/appState.js",
-          "line": 614,
+          "line": 650,
           "column": 14
         }
       ]
@@ -3473,7 +3827,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 79,
+          "line": 155,
           "column": 68
         }
       ]
@@ -3563,18 +3917,6 @@
         }
       ]
     },
-    "8e2dc7b0d2e8f6f8": {
-      "source": "例如：OpenAI - GPT-4.1",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/views/ModelEditor.vue",
-          "line": 379,
-          "column": 15
-        }
-      ]
-    },
     "8f6d5fbb801e69f7": {
       "source": "还没有可用的中转站。",
       "kind": "text",
@@ -3582,8 +3924,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 361,
-          "column": 1
+          "line": 631,
+          "column": 12
         }
       ]
     },
@@ -3630,7 +3972,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 632,
+          "line": 668,
           "column": 14
         }
       ]
@@ -3659,12 +4001,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 343,
+          "line": 400,
           "column": 14
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 275,
+          "line": 289,
           "column": 14
         }
       ]
@@ -3677,6 +4019,11 @@
         {
           "file": "src/components/config/ModelListPanel.vue",
           "line": 75,
+          "column": 12
+        },
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 117,
           "column": 12
         }
       ]
@@ -3700,7 +4047,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 176,
+          "line": 182,
           "column": 12
         }
       ]
@@ -3712,7 +4059,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 40,
+          "line": 41,
           "column": 14
         }
       ]
@@ -3724,8 +4071,20 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 387,
+          "line": 450,
           "column": 21
+        }
+      ]
+    },
+    "93f137f76d47014c": {
+      "source": "测试全部中转站",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 451,
+          "column": 17
         }
       ]
     },
@@ -3748,7 +4107,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 122,
+          "line": 128,
           "column": 9
         }
       ]
@@ -3772,7 +4131,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 381,
+          "line": 667,
           "column": 1
         }
       ]
@@ -3842,7 +4201,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 33,
+          "line": 52,
           "column": 14
         }
       ]
@@ -3866,12 +4225,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1907,
+          "line": 2141,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1928,
+          "line": 2162,
           "column": 32
         }
       ]
@@ -3883,7 +4242,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 177,
+          "line": 183,
           "column": 12
         }
       ]
@@ -3907,7 +4266,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 546,
+          "line": 582,
           "column": 20
         }
       ]
@@ -3931,7 +4290,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 83,
+          "line": 85,
           "column": 101
         }
       ]
@@ -3945,6 +4304,35 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 173,
           "column": 5
+        }
+      ]
+    },
+    "9b36c2e92bfe6a16": {
+      "source": "模型显示名模板",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 578,
+          "column": 25
+        }
+      ]
+    },
+    "9b43161f25416f9e": {
+      "source": "按模板重命名模型",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 48,
+          "column": 12
+        },
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 484,
+          "column": 16
         }
       ]
     },
@@ -3991,7 +4379,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 476,
+          "line": 490,
           "column": 54
         }
       ]
@@ -4003,7 +4391,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 497,
+          "line": 561,
           "column": 21
         }
       ]
@@ -4015,7 +4403,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 402,
+          "line": 688,
           "column": 86
         }
       ]
@@ -4027,7 +4415,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1318,
+          "line": 1354,
           "column": 14
         }
       ]
@@ -4063,7 +4451,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 673,
+          "line": 709,
           "column": 14
         }
       ]
@@ -4087,7 +4475,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 127,
+          "line": 133,
           "column": 9
         }
       ]
@@ -4099,7 +4487,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 653,
+          "line": 689,
           "column": 14
         }
       ]
@@ -4111,13 +4499,25 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1264,
+          "line": 1300,
           "column": 12
         },
         {
           "file": "src/state/appState.js",
-          "line": 1307,
+          "line": 1343,
           "column": 87
+        }
+      ]
+    },
+    "a2ec36ee157672a4": {
+      "source": "按模型数",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 36,
+          "column": 12
         }
       ]
     },
@@ -4133,12 +4533,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 343,
+          "line": 400,
           "column": 14
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 275,
+          "line": 289,
           "column": 14
         }
       ]
@@ -4155,7 +4555,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1543,
+          "line": 1595,
           "column": 14
         }
       ]
@@ -4203,7 +4603,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 187,
+          "line": 193,
           "column": 25
         }
       ]
@@ -4237,12 +4637,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 43,
+          "line": 45,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 51,
+          "line": 53,
           "column": 12
         }
       ]
@@ -4254,7 +4654,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 178,
+          "line": 184,
           "column": 11
         }
       ]
@@ -4266,7 +4666,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 340,
+          "line": 397,
           "column": 14
         }
       ]
@@ -4278,7 +4678,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 41,
+          "line": 42,
           "column": 16
         }
       ]
@@ -4290,8 +4690,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 472,
-          "column": 22
+          "line": 771,
+          "column": 24
         }
       ]
     },
@@ -4331,7 +4731,7 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 374,
+          "line": 436,
           "column": 21
         }
       ]
@@ -4353,12 +4753,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 42,
+          "line": 44,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 50,
+          "line": 52,
           "column": 12
         }
       ]
@@ -4392,7 +4792,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 180,
+          "line": 186,
           "column": 23
         }
       ]
@@ -4416,7 +4816,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 44,
+          "line": 46,
           "column": 9
         }
       ]
@@ -4428,7 +4828,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1293,
+          "line": 1329,
           "column": 16
         }
       ]
@@ -4488,7 +4888,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 311,
+          "line": 366,
           "column": 10
         }
       ]
@@ -4529,8 +4929,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 479,
-          "column": 32
+          "line": 778,
+          "column": 34
         }
       ]
     },
@@ -4553,8 +4953,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 472,
-          "column": 22
+          "line": 771,
+          "column": 24
         }
       ]
     },
@@ -4582,6 +4982,18 @@
         }
       ]
     },
+    "b1905d927f1bd9d0": {
+      "source": "全部按 Anthropic 导入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderModelPicker.vue",
+          "line": 31,
+          "column": 12
+        }
+      ]
+    },
     "b1c27820fec23edb": {
       "source": "高",
       "kind": "text",
@@ -4599,12 +5011,12 @@
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 44,
+          "line": 46,
           "column": 12
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 52,
+          "line": 54,
           "column": 12
         }
       ]
@@ -4616,7 +5028,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 126,
+          "line": 132,
           "column": 9
         }
       ]
@@ -4640,7 +5052,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 129,
+          "line": 205,
           "column": 44
         }
       ]
@@ -4664,7 +5076,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 60,
+          "line": 62,
           "column": 12
         }
       ]
@@ -4681,6 +5093,18 @@
         }
       ]
     },
+    "b6408836dfb8e638": {
+      "source": "置顶 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 653,
+          "column": 38
+        }
+      ]
+    },
     "b765005f69fa971f": {
       "source": "例如：gpt-4.1",
       "kind": "text",
@@ -4688,7 +5112,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 392,
+          "line": 455,
           "column": 15
         }
       ]
@@ -4700,7 +5124,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 184,
+          "line": 190,
           "column": 19
         }
       ]
@@ -4724,7 +5148,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 545,
+          "line": 609,
           "column": 21
         }
       ]
@@ -4753,7 +5177,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 272,
+          "line": 286,
           "column": 14
         }
       ]
@@ -4777,7 +5201,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 79,
+          "line": 155,
           "column": 35
         }
       ]
@@ -4789,7 +5213,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 555,
+          "line": 591,
           "column": 50
         }
       ]
@@ -4825,7 +5249,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 455,
+          "line": 519,
           "column": 21
         }
       ]
@@ -4890,7 +5314,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 548,
+          "line": 584,
           "column": 47
         }
       ]
@@ -4914,7 +5338,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 241,
+          "line": 255,
           "column": 44
         }
       ]
@@ -4977,7 +5401,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 269,
+          "line": 297,
           "column": 12
         }
       ]
@@ -5008,6 +5432,11 @@
           "file": "src/views/ModelConfig.vue",
           "line": 12,
           "column": 12
+        },
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 106,
+          "column": 33
         }
       ]
     },
@@ -5018,8 +5447,20 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 179,
+          "line": 185,
           "column": 18
+        }
+      ]
+    },
+    "c5a845b025f2bfde": {
+      "source": "模型已下发给 Cursor",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 757,
+          "column": 21
         }
       ]
     },
@@ -5030,7 +5471,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 189,
+          "line": 195,
           "column": 28
         }
       ]
@@ -5066,7 +5507,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1791,
+          "line": 2006,
           "column": 24
         }
       ]
@@ -5090,7 +5531,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 115,
+          "line": 191,
           "column": 66
         }
       ]
@@ -5102,7 +5543,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 234,
+          "line": 278,
           "column": 14
         }
       ]
@@ -5114,8 +5555,20 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 472,
+          "line": 536,
           "column": 21
+        }
+      ]
+    },
+    "c92179b74af61689": {
+      "source": "取消置顶",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 654,
+          "column": 33
         }
       ]
     },
@@ -5126,17 +5579,17 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1514,
+          "line": 1555,
           "column": 28
         },
         {
           "file": "src/state/appState.js",
-          "line": 1516,
-          "column": 38
+          "line": 1557,
+          "column": 56
         },
         {
           "file": "src/state/appState.js",
-          "line": 1551,
+          "line": 1603,
           "column": 93
         }
       ]
@@ -5148,7 +5601,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 82,
+          "line": 158,
           "column": 12
         }
       ]
@@ -5184,7 +5637,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1253,
+          "line": 1289,
           "column": 51
         }
       ]
@@ -5232,7 +5685,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 359,
+          "line": 387,
           "column": 12
         }
       ]
@@ -5279,6 +5732,11 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 460,
+          "column": 19
+        },
+        {
           "file": "src/views/Home.vue",
           "line": 158,
           "column": 27
@@ -5292,7 +5750,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 35,
+          "line": 36,
           "column": 9
         }
       ]
@@ -5316,7 +5774,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 608,
+          "line": 644,
           "column": 14
         }
       ]
@@ -5328,7 +5786,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 148,
+          "line": 154,
           "column": 56
         }
       ]
@@ -5345,7 +5803,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1495,
+          "line": 1531,
           "column": 14
         }
       ]
@@ -5369,7 +5827,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 95,
+          "line": 100,
           "column": 66
         }
       ]
@@ -5381,13 +5839,25 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 263,
+          "line": 291,
           "column": 38
         },
         {
           "file": "src/state/appState.js",
-          "line": 299,
+          "line": 327,
           "column": 50
+        }
+      ]
+    },
+    "d44bea7eb6b9005e": {
+      "source": "显示名模板",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 95,
+          "column": 21
         }
       ]
     },
@@ -5398,8 +5868,13 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 292,
+          "line": 368,
           "column": 17
+        },
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 528,
+          "column": 19
         }
       ]
     },
@@ -5410,7 +5885,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 43,
+          "line": 44,
           "column": 18
         }
       ]
@@ -5422,17 +5897,17 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 373,
+          "line": 401,
           "column": 49
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 606,
+          "line": 671,
           "column": 21
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 545,
+          "line": 559,
           "column": 25
         }
       ]
@@ -5456,12 +5931,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 394,
+          "line": 422,
           "column": 36
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 582,
+          "line": 647,
           "column": 21
         }
       ]
@@ -5473,7 +5948,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1619,
+          "line": 1671,
           "column": 32
         }
       ]
@@ -5497,7 +5972,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 461,
+          "line": 525,
           "column": 15
         }
       ]
@@ -5555,6 +6030,18 @@
         }
       ]
     },
+    "dabc7d2a5c7c8b98": {
+      "source": "将按站点模板重刷「{0}」下 {1} 个模型的显示名。显示名参与渠道标识，改名后 Cursor 里已选中的这些模型需要重新选择，测速与用量统计也会重新计数。",
+      "kind": "template",
+      "placeholders": 2,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 485,
+          "column": 18
+        }
+      ]
+    },
     "daede9881787abe7": {
       "source": "备注",
       "kind": "text",
@@ -5562,22 +6049,22 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 321,
+          "line": 349,
           "column": 18
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 629,
+          "line": 694,
           "column": 19
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 93,
+          "line": 98,
           "column": 21
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 564,
+          "line": 595,
           "column": 25
         }
       ]
@@ -5589,7 +6076,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 331,
+          "line": 345,
           "column": 54
         }
       ]
@@ -5601,7 +6088,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1791,
+          "line": 2006,
           "column": 63
         }
       ]
@@ -5625,7 +6112,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 629,
+          "line": 665,
           "column": 14
         }
       ]
@@ -5637,7 +6124,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 617,
+          "line": 653,
           "column": 14
         }
       ]
@@ -5649,7 +6136,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 338,
+          "line": 352,
           "column": 1
         }
       ]
@@ -5661,7 +6148,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1275,
+          "line": 1311,
           "column": 5
         }
       ]
@@ -5750,7 +6237,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 185,
+          "line": 191,
           "column": 22
         }
       ]
@@ -5762,7 +6249,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 530,
+          "line": 544,
           "column": 21
         }
       ]
@@ -5786,8 +6273,8 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 479,
-          "column": 32
+          "line": 778,
+          "column": 34
         }
       ]
     },
@@ -5800,6 +6287,18 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 393,
           "column": 81
+        }
+      ]
+    },
+    "e367f53aeadf33cb": {
+      "source": "重命名失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 486,
+          "column": 23
         }
       ]
     },
@@ -5822,7 +6321,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1403,
+          "line": 1439,
           "column": 23
         }
       ]
@@ -5834,7 +6333,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 121,
+          "line": 127,
           "column": 9
         }
       ]
@@ -5865,6 +6364,18 @@
           "file": "src/components/config/ModelListPanel.vue",
           "line": 295,
           "column": 109
+        }
+      ]
+    },
+    "e628f1c80e489262": {
+      "source": "预览：",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 588,
+          "column": 1
         }
       ]
     },
@@ -5928,12 +6439,12 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 289,
+          "line": 344,
           "column": 35
         },
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 303,
+          "line": 358,
           "column": 35
         }
       ]
@@ -5945,12 +6456,12 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 86,
+          "line": 92,
           "column": 32
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 99,
+          "line": 113,
           "column": 32
         }
       ]
@@ -5974,8 +6485,20 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 272,
+          "line": 300,
           "column": 10
+        }
+      ]
+    },
+    "ec6c862df1eb821d": {
+      "source": "Claude 走 Anthropic 协议，GPT-5 / Codex 走 OpenAI Responses，其余走 OpenAI Chat；客户端模拟随协议一并匹配。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderModelPicker.vue",
+          "line": 305,
+          "column": 1
         }
       ]
     },
@@ -5986,7 +6509,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1295,
+          "line": 1331,
           "column": 16
         }
       ]
@@ -5998,7 +6521,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 272,
+          "line": 286,
           "column": 14
         }
       ]
@@ -6039,6 +6562,18 @@
         }
       ]
     },
+    "f0c1d64a76803cda": {
+      "source": "{0} 的更多操作",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 804,
+          "column": 36
+        }
+      ]
+    },
     "f136a95883f8b64b": {
       "source": "模型列表路径",
       "kind": "text",
@@ -6046,8 +6581,20 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 447,
+          "line": 461,
           "column": 23
+        }
+      ]
+    },
+    "f1d70cb75b8edd5c": {
+      "source": "该站点下模型的显示名模板，支持 {provider} 与 {model} 两个占位符。留空按「站点名-模型ID」生成。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 45,
+          "column": 17
         }
       ]
     },
@@ -6058,7 +6605,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 536,
+          "line": 550,
           "column": 21
         }
       ]
@@ -6070,7 +6617,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 190,
+          "line": 196,
           "column": 16
         }
       ]
@@ -6106,7 +6653,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 182,
+          "line": 188,
           "column": 20
         }
       ]
@@ -6130,7 +6677,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 90,
+          "line": 92,
           "column": 21
         }
       ]
@@ -6142,7 +6689,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 380,
+          "line": 408,
           "column": 14
         }
       ]
@@ -6154,7 +6701,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1255,
+          "line": 1291,
           "column": 38
         }
       ]
@@ -6166,7 +6713,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderModelPicker.vue",
-          "line": 226,
+          "line": 270,
           "column": 14
         }
       ]
@@ -6177,23 +6724,28 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/config/ProviderListPanel.vue",
+          "line": 756,
+          "column": 21
+        },
+        {
           "file": "src/components/ModelAdapterModal.vue",
           "line": 261,
           "column": 27
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 566,
+          "line": 631,
           "column": 21
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 590,
+          "line": 655,
           "column": 21
         },
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 614,
+          "line": 679,
           "column": 21
         }
       ]
@@ -6259,7 +6811,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 246,
+          "line": 260,
           "column": 9
         }
       ]
@@ -6271,12 +6823,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 659,
+          "line": 695,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 662,
+          "line": 698,
           "column": 14
         }
       ]
@@ -6300,7 +6852,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 404,
+          "line": 690,
           "column": 26
         }
       ]
@@ -6324,7 +6876,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1789,
+          "line": 2004,
           "column": 56
         }
       ]
@@ -6361,7 +6913,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1314,
+          "line": 1350,
           "column": 12
         }
       ]
@@ -6373,7 +6925,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 144,
+          "line": 158,
           "column": 25
         }
       ]
@@ -6397,7 +6949,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1253,
+          "line": 1289,
           "column": 40
         }
       ]
@@ -6421,7 +6973,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 36,
+          "line": 37,
           "column": 9
         }
       ]
@@ -6433,7 +6985,7 @@
       "refs": [
         {
           "file": "src/components/config/ProviderListPanel.vue",
-          "line": 185,
+          "line": 261,
           "column": 17
         }
       ]
@@ -6445,7 +6997,37 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1804,
+          "line": 1702,
+          "column": 32
+        },
+        {
+          "file": "src/state/appState.js",
+          "line": 1708,
+          "column": 32
+        },
+        {
+          "file": "src/state/appState.js",
+          "line": 1738,
+          "column": 32
+        },
+        {
+          "file": "src/state/appState.js",
+          "line": 1775,
+          "column": 32
+        },
+        {
+          "file": "src/state/appState.js",
+          "line": 1801,
+          "column": 32
+        },
+        {
+          "file": "src/state/appState.js",
+          "line": 1806,
+          "column": 32
+        },
+        {
+          "file": "src/state/appState.js",
+          "line": 2024,
           "column": 32
         }
       ]
@@ -6457,7 +7039,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 110,
+          "line": 116,
           "column": 25
         }
       ]
@@ -6469,7 +7051,7 @@
       "refs": [
         {
           "file": "src/views/ModelEditor.vue",
-          "line": 115,
+          "line": 121,
           "column": 7
         }
       ]
@@ -6505,7 +7087,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 81,
+          "line": 83,
           "column": 39
         }
       ]

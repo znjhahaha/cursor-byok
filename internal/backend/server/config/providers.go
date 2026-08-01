@@ -26,9 +26,15 @@ type ProviderConfig struct {
 	HeadersJSON   string `json:"headersJSON" yaml:"headersJSON"`
 	ModelsPath    string `json:"modelsPath" yaml:"modelsPath"`
 	InferencePath string `json:"inferencePath" yaml:"inferencePath"`
-	Note          string `json:"note" yaml:"note"`
-	Builtin       bool   `json:"builtin" yaml:"builtin"`
-	HomeURL       string `json:"homeURL" yaml:"homeURL"`
+	// NameTemplate 是该站点下模型显示名的模板，支持 {provider} 与 {model}，留空用默认。
+	NameTemplate string `json:"nameTemplate,omitempty" yaml:"nameTemplate,omitempty"`
+	Note         string `json:"note" yaml:"note"`
+	Builtin      bool   `json:"builtin" yaml:"builtin"`
+	// Disabled 用负向语义：布尔零值必须等于「启用」，
+	// 否则所有存量配置文件一加载就会变成整站停用。
+	Disabled bool   `json:"disabled,omitempty" yaml:"disabled,omitempty"`
+	Pinned   bool   `json:"pinned,omitempty" yaml:"pinned,omitempty"`
+	HomeURL  string `json:"homeURL" yaml:"homeURL"`
 }
 
 const providerIDHexLength = 12
@@ -87,8 +93,11 @@ func NormalizeProviderConfig(item ProviderConfig) (ProviderConfig, error) {
 		HeadersJSON:   strings.TrimSpace(item.HeadersJSON),
 		ModelsPath:    normalizeProviderPath(item.ModelsPath),
 		InferencePath: normalizeProviderPath(item.InferencePath),
+		NameTemplate:  strings.TrimSpace(item.NameTemplate),
 		Note:          strings.TrimSpace(item.Note),
 		Builtin:       item.Builtin,
+		Disabled:      item.Disabled,
+		Pinned:        item.Pinned,
 		HomeURL:       strings.TrimSpace(item.HomeURL),
 	}
 	if next.Name == "" {
@@ -146,6 +155,37 @@ func FindProvider(providers []ProviderConfig, id string) (ProviderConfig, bool) 
 		return ProviderConfig{}, false
 	}
 	return providers[index], true
+}
+
+// IsAdapterActive 判断一个模型适配器当前是否参与下发与解析。
+//
+// 判定收在这一个函数里：模型列表（Manager.LegacyRuntimeSnapshot）与渠道解析
+// （resolveModelAdapterChannel）必须用同一个谓词，否则会出现「列表里已经没有、
+// 旧会话却还能继续打到该站点」的分叉状态。
+//
+// 未归属站点的模型永远是启用的；引用了不存在站点的模型交给
+// ValidateProviderReferences 报错，这里不重复判定。
+func IsAdapterActive(adapter ModelAdapterConfig, providers []ProviderConfig) bool {
+	providerID := strings.TrimSpace(adapter.ProviderID)
+	if providerID == "" {
+		return true
+	}
+	provider, ok := FindProvider(providers, providerID)
+	if !ok {
+		return true
+	}
+	return !provider.Disabled
+}
+
+// ActiveModelAdapters 过滤出参与下发的模型适配器。
+func ActiveModelAdapters(adapters []ModelAdapterConfig, providers []ProviderConfig) []ModelAdapterConfig {
+	active := make([]ModelAdapterConfig, 0, len(adapters))
+	for _, adapter := range adapters {
+		if IsAdapterActive(adapter, providers) {
+			active = append(active, adapter)
+		}
+	}
+	return active
 }
 
 func normalizeProviderPath(value string) string {

@@ -9,6 +9,7 @@ import { getModelEditorContext } from "@/services/clientApi";
 import {
   ANTHROPIC_THINKING_EFFORT_DEFAULT,
   appState,
+  buildAdapterDisplayName,
   buildModelAdapterTestRequestHash,
   CLIENT_PROFILE_CLAUDE_CODE,
   CLIENT_PROFILE_CODEX,
@@ -19,6 +20,7 @@ import {
   EXTRA_PARAMS_DEFAULT_JSON,
   getModelAdapterTestResult,
   getModelAdapterTestResultByID,
+  inferModelProtocol,
   isModelAdapterTestResultStale,
   normalizeModelAdapter,
   OPENAI_ENDPOINT_CHAT_COMPLETIONS,
@@ -66,6 +68,10 @@ const errorMessage = ref("");
 const loading = ref(true);
 const lastTestAdapterID = ref("");
 const localTestFailure = ref("");
+// 新建模型时，协议与显示名跟着模型标识自动推断；用户一旦手动改过对应字段，
+// 就停止自动跟随——否则用户的选择会被下一次输入静默覆盖。
+const protocolTouched = ref(false);
+const displayNameTouched = ref(false);
 
 function createOptionalPositiveIntegerModel(key) {
   return computed({
@@ -199,6 +205,9 @@ async function loadContext() {
     if (!draft.type) {
       draft.type = "openai";
     }
+    // 已经带着名字或模型标识进来的草稿，视为用户已有意图，不再自动改写。
+    displayNameTouched.value = Boolean(draft.displayName);
+    protocolTouched.value = Boolean(draft.modelID);
   } catch (_error) {
     Object.assign(draft, createEmptyModelAdapter());
     draft.type = "openai";
@@ -251,6 +260,7 @@ async function handleCancel() {
 }
 
 function handleModelTypeChange(type) {
+  protocolTouched.value = true;
   draft.type = type;
   if (type === "openai" && !draft.openAIEndpoint) {
     draft.openAIEndpoint = OPENAI_ENDPOINT_RESPONSES;
@@ -258,6 +268,53 @@ function handleModelTypeChange(type) {
     ensureAnthropicThinkingEffort();
   }
 }
+
+// applyInferredProtocol 把「模型标识 → 协议/端点/客户端模拟」的推断落到草稿上。
+// 三者必须一起写：claude-code 只在 Anthropic 生效，codex 只在 OpenAI Responses 生效，
+// 单独改一项会得到一个运行期被静默降级的组合。
+//
+// 只在真的认出模型家族时才动手：认不出来时保持用户/默认值不变，
+// 否则输入一个冷门模型 ID 会把已有的端点选择悄悄改掉。
+function applyInferredProtocol(modelID) {
+  const protocol = inferModelProtocol(modelID, boundProvider.value);
+  if (protocol.source !== "inferred") {
+    return;
+  }
+  draft.type = protocol.type;
+  draft.clientProfile = protocol.clientProfile;
+  if (protocol.type === "openai") {
+    draft.openAIEndpoint = protocol.openAIEndpoint;
+    return;
+  }
+  draft.openAIEndpoint = "";
+  ensureAnthropicThinkingEffort();
+}
+
+const autoProtocolHint = computed(() => {
+  if (editorIndex.value >= 0 || protocolTouched.value) {
+    return "";
+  }
+  return "协议、接口端点与客户端模式会按模型标识自动匹配，手动调整后不再自动变更。";
+});
+
+watch(
+  () => draft.modelID,
+  (modelID) => {
+    if (loading.value || editorIndex.value >= 0) {
+      return;
+    }
+    if (!protocolTouched.value) {
+      applyInferredProtocol(modelID);
+    }
+    if (!displayNameTouched.value) {
+      draft.displayName = buildAdapterDisplayName({
+        providerName: boundProvider.value?.name || "",
+        modelID,
+        template: boundProvider.value?.nameTemplate || "",
+      });
+    }
+  },
+);
 
 async function handleTest() {
   localTestFailure.value = "";
@@ -351,20 +408,25 @@ onMounted(async () => {
 
     <div v-else class="flex-1 overflow-y-auto min-h-0 px-4 pb-4">
       <div class="flex flex-col gap-4">
-        <div class="center-row gap-2">
-          <button
-            v-for="tab in modelTypeTabs"
-            :key="tab.value"
-            type="button"
-            class="center-row gap-2 rounded-[8px] border px-3 py-2 text-sm transition-colors duration-150"
-            :class="draft.type === tab.value
-              ? 'border-[#1ca35a] bg-[#123322] text-white'
-              : 'border-[#343434] bg-[#252525] text-[#a3a3a3] hover:border-[#4a4a4a] hover:text-[#e5e5e5]'"
-            @click="handleModelTypeChange(tab.value)"
-          >
-            <span :class="[tab.icon, 'text-[16px]']"></span>
-            <span>{{ tab.label }}</span>
-          </button>
+        <div class="flex flex-col gap-2">
+          <div class="center-row gap-2">
+            <button
+              v-for="tab in modelTypeTabs"
+              :key="tab.value"
+              type="button"
+              class="center-row gap-2 rounded-[8px] border px-3 py-2 text-sm transition-colors duration-150"
+              :class="draft.type === tab.value
+                ? 'border-[#1ca35a] bg-[#123322] text-white'
+                : 'border-[#343434] bg-[#252525] text-[#a3a3a3] hover:border-[#4a4a4a] hover:text-[#e5e5e5]'"
+              @click="handleModelTypeChange(tab.value)"
+            >
+              <span :class="[tab.icon, 'text-[16px]']"></span>
+              <span>{{ tab.label }}</span>
+            </button>
+          </div>
+          <span v-if="autoProtocolHint" class="text-xs leading-5 text-[#8f8f8f]">
+            {{ autoProtocolHint }}
+          </span>
         </div>
 
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -376,8 +438,9 @@ onMounted(async () => {
             <input
               v-model="draft.displayName"
               type="text"
-              placeholder="例如：OpenAI - GPT-4.1"
+              placeholder="例如：炸弹-gpt-5.6-sol"
               class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+              @input="displayNameTouched = true"
             />
           </label>
 
@@ -436,6 +499,7 @@ onMounted(async () => {
             <Select
               v-model="draft.clientProfile"
               :options="CLIENT_PROFILE_OPTIONS"
+              @update:model-value="protocolTouched = true"
             />
             <span
               class="text-xs leading-5"
@@ -547,6 +611,7 @@ onMounted(async () => {
             <Select
               v-model="draft.openAIEndpoint"
               :options="openAIEndpointOptions"
+              @update:model-value="protocolTouched = true"
             />
           </label>
         </div>
