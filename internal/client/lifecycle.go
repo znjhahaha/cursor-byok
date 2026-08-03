@@ -128,6 +128,7 @@ func (s *ProxyService) StartProxy() (ProxyState, error) {
 // StopProxy 用于处理与 StopProxy 相关的逻辑。
 func (s *ProxyService) StopProxy() (ProxyState, error) {
 	logger.Infof("stop service requested")
+	s.cancelAllWarmups()
 	fail := func(step string, err error) (ProxyState, error) {
 		logger.Errorf("stop service failed step=%s err=%v", step, err)
 		s.setLastError(err)

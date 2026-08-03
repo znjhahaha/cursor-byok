@@ -1,10 +1,18 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	modeladapter "cursor/internal/backend/agent/model"
 	serverconfig "cursor/internal/backend/server/config"
 )
 
@@ -16,6 +24,113 @@ func TestIsQueueRejectionErrorMatchesRealPayload(t *testing.T) {
 	err := fmt.Errorf("openai adapter status=%d body=%s", 500, realAnyRouterQueueBody)
 	if !isQueueRejectionError(err) {
 		t.Fatalf("真实排队报文必须被识别为排队：%v", err)
+	}
+}
+
+func TestWarmupRetryDelayUsesHalfSecondBackoffJitterAndRetryAfter(t *testing.T) {
+	previous := warmupJitter
+	warmupJitter = func() float64 { return 1 }
+	defer func() { warmupJitter = previous }()
+	wants := []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second, 5 * time.Second, 5 * time.Second}
+	for index, want := range wants {
+		if got := warmupRetryDelay(index+1, errors.New("status=429")); got != want {
+			t.Fatalf("attempt %d delay = %s, want %s", index+1, got, want)
+		}
+	}
+	if got := warmupRetryDelay(1, errors.New("status=429 retry_after=3")); got != 3*time.Second {
+		t.Fatalf("Retry-After delay = %s", got)
+	}
+	if got := warmupRetryDelay(1, errors.New("status=429 retry_after=750ms")); got != 750*time.Millisecond {
+		t.Fatalf("duration Retry-After delay = %s", got)
+	}
+}
+
+func TestWarmupQueueThenFirstTextSuccessUsesRealWireBuilder(t *testing.T) {
+	previous := warmupJitter
+	warmupJitter = func() float64 { return 0 }
+	defer func() { warmupJitter = previous }()
+	var attempts atomic.Int32
+	var capturedModel atomic.Value
+	var capturedUA atomic.Value
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		attempt := attempts.Add(1)
+		capturedUA.Store(request.Header.Get("User-Agent"))
+		body, _ := io.ReadAll(request.Body)
+		text := string(body)
+		if index := strings.Index(text, `"model":"`); index >= 0 {
+			rest := text[index+len(`"model":"`):]
+			if end := strings.Index(rest, `"`); end >= 0 {
+				capturedModel.Store(rest[:end])
+			}
+		}
+		if attempt <= 2 {
+			writer.Header().Set("Retry-After", "0")
+			http.Error(writer, `{"error":{"code":"get_channel_failed","message":"no available channel"}}`, http.StatusTooManyRequests)
+			return
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(writer, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"OK\"}}\n\n")
+	}))
+	defer server.Close()
+
+	service := &ProxyService{modelTestResults: make(map[string]ModelAdapterTestResult), warmupCancels: make(map[string]context.CancelFunc)}
+	result, err := service.warmupModelAdapter(context.Background(), serverconfig.ModelAdapterConfig{
+		ID: "anyrouter-model", Type: "anthropic", BaseURL: server.URL, APIKey: "secret", ModelID: "claude-opus-5[1m]",
+		ClientProfile: "claude-code", Anthropic1MContextEnabled: true,
+	}, "hash")
+	if err != nil {
+		t.Fatalf("warmup error = %v", err)
+	}
+	if result.Status != string(ModelAdapterTestStatusSuccess) || result.WarmupAttempt != 3 || result.FirstTextTokenMS < 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	if got, _ := capturedModel.Load().(string); got != "claude-opus-5" {
+		t.Fatalf("wire model = %q", got)
+	}
+	if got, _ := capturedUA.Load().(string); !strings.Contains(got, "claude-cli/") {
+		t.Fatalf("User-Agent = %q", got)
+	}
+}
+
+func TestWarmupCanBeCanceledAndDuplicateTaskIsRejected(t *testing.T) {
+	previous := warmupJitter
+	warmupJitter = func() float64 { return 0 }
+	defer func() { warmupJitter = previous }()
+	started := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		http.Error(writer, `{"error":{"message":"busy"}}`, http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	service := &ProxyService{modelTestResults: make(map[string]ModelAdapterTestResult), warmupCancels: make(map[string]context.CancelFunc)}
+	adapter := serverconfig.ModelAdapterConfig{ID: "queued-model", Type: "anthropic", BaseURL: server.URL, APIKey: "secret", ModelID: "claude-test"}
+	done := make(chan ModelAdapterTestResult, 1)
+	go func() {
+		result, _ := service.warmupModelAdapter(context.Background(), adapter, "hash")
+		done <- result
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("warmup did not start")
+	}
+	if _, err := service.warmupModelAdapter(context.Background(), adapter, "hash"); !errors.Is(err, errWarmupBusy) {
+		t.Fatalf("duplicate error = %v", err)
+	}
+	if _, err := service.CancelModelAdapterTest(adapter.ID); err != nil {
+		t.Fatalf("cancel error = %v", err)
+	}
+	select {
+	case result := <-done:
+		if result.Status != string(ModelAdapterTestStatusCanceled) || result.WarmupCancelable {
+			t.Fatalf("canceled result = %+v", result)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("warmup did not stop")
 	}
 }
 
@@ -42,9 +157,27 @@ func TestIsQueueRejectionErrorRejectsGenuineFailures(t *testing.T) {
 	}
 }
 
+func TestWarmupFailureClassificationStopsAuthAndRefusalButRetries503(t *testing.T) {
+	for _, err := range []error{
+		errors.New("anthropic adapter status=401 body=unauthorized"),
+		errors.New("anthropic adapter status=403 body=forbidden"),
+		&modeladapter.ProviderRefusalError{Provider: "anthropic", StopDetails: `{"type":"safety"}`},
+	} {
+		if isQueueRejectionError(err) || isTransientWarmupError(err) {
+			t.Fatalf("terminal error was classified as retryable: %v", err)
+		}
+	}
+	if !isTransientWarmupError(errors.New("anthropic adapter status=503 body=unavailable")) {
+		t.Fatal("503 should receive limited transient retries")
+	}
+	if !isTransientWarmupError(&modeladapter.IncompleteStreamError{Provider: "anthropic"}) {
+		t.Fatal("incomplete stream should receive limited transient retries")
+	}
+}
+
 func TestIsQueueRejectionErrorMatchesOtherPanelWordings(t *testing.T) {
 	cases := []string{
-		`openai adapter status=503 body={"error":{"code":"get_channel_failed"}}`,
+		`openai adapter status=500 body={"error":{"code":"get_channel_failed"}}`,
 		`openai adapter status=429 body={"message":"当前分组上游负载已饱和"}`,
 		`openai adapter status=500 body={"error":{"message":"no available channel"}}`,
 		// 带 retry summary 的变体：buildHTTPStatusError 会在 status 与 body 之间插入摘要。
@@ -133,26 +266,31 @@ func TestNormalizeProviderConfigDropsWarmupBudgetWhenDisabled(t *testing.T) {
 }
 
 func TestAcquireWarmupSlotLimitsConcurrency(t *testing.T) {
-	service := &ProxyService{}
-	releases := make([]func(), 0, maxConcurrentWarmups)
+	service := &ProxyService{warmupCancels: make(map[string]context.CancelFunc)}
+	type slot struct {
+		id     string
+		cancel context.CancelFunc
+	}
+	releases := make([]slot, 0, maxConcurrentWarmups)
 	for i := 0; i < maxConcurrentWarmups; i++ {
-		release, ok := service.acquireWarmupSlot()
+		id := fmt.Sprintf("adapter-%d", i)
+		_, cancel, ok := service.beginWarmup(id)
 		if !ok {
 			t.Fatalf("第 %d 个槽位应可用", i+1)
 		}
-		releases = append(releases, release)
+		releases = append(releases, slot{id: id, cancel: cancel})
 	}
-	if _, ok := service.acquireWarmupSlot(); ok {
+	if _, _, ok := service.beginWarmup("overflow"); ok {
 		t.Fatal("超出上限的预热请求应被拒绝")
 	}
-	releases[0]()
-	release, ok := service.acquireWarmupSlot()
+	service.finishWarmup(releases[0].id, releases[0].cancel)
+	_, cancel, ok := service.beginWarmup("replacement")
 	if !ok {
 		t.Fatal("释放后应重新拿到槽位")
 	}
-	release()
+	service.finishWarmup("replacement", cancel)
 	for _, fn := range releases[1:] {
-		fn()
+		service.finishWarmup(fn.id, fn.cancel)
 	}
 	if service.warmupActive != 0 {
 		t.Fatalf("全部释放后计数应归零，实际 %d", service.warmupActive)

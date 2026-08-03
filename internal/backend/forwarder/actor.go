@@ -723,7 +723,11 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 	usage := stream.ProviderUsage
 	estimatedInputTokens := stream.ProviderEstimatedInputTokens
 	hadToolInvocation := stream.ToolInvocationCount > 0
+	hadPartialToolCall := len(stream.PartialToolCallIDs) > 0
 	terminalToolInvocation := stream.ProviderTerminalToolInvocation
+	streamRecoveryAttempts := stream.ProviderStreamRecoveryAttempts
+	shortStopRecoveryAttempts := stream.ProviderShortStopRecoveryAttempts
+	mode := stream.Mode
 	existingCompletion := stream.PendingProviderCompletion
 	stream.ProviderActive = false
 	stream.ProviderCancel = nil
@@ -758,6 +762,35 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		return nil
 	}
 	if payload.Err != nil {
+		var refusalErr *modeladapter.ProviderRefusalError
+		if errors.As(payload.Err, &refusalErr) {
+			service.setTurnPhase(stream, TurnPhaseFailed)
+			return service.closeStreamWithProviderError(stream, conversationID, turnSeq, requestID, accumulatedText, accumulatedReasoning, accumulatedReasoningSignature, accumulatedReasoningSignatureSource, accumulatedReasoningItemID, accumulatedReasoningStatus, accumulatedReasoningSummary, usage, providerTerminalError{cause: refusalErr}, !hadToolInvocation)
+		}
+		if incompleteErr, recoverable := shouldRecoverIncompleteProviderStream(payload.Err, hadToolInvocation, hadPartialToolCall, streamRecoveryAttempts); recoverable {
+			if err := service.flushAssistantText(stream, conversationID, turnSeq, requestID, accumulatedText, accumulatedReasoning, accumulatedReasoningSignature, accumulatedReasoningSignatureSource, accumulatedReasoningItemID, accumulatedReasoningStatus, accumulatedReasoningSummary, true); err != nil {
+				return service.failStreamIfNonTerminal(stream, "unknown", err)
+			}
+			if err := service.recordTurnUsageSnapshot(stream, conversationID, turnSeq, requestID, modelCallID, "interrupted", usage, incompleteErr.Error(), false); err != nil {
+				return service.failStreamIfNonTerminal(stream, "usage_persistence_error", err)
+			}
+			stream.mu.Lock()
+			stream.ProviderStreamRecoveryAttempts++
+			if strings.TrimSpace(accumulatedText) == "" {
+				stream.ProviderRecoveryDirective = "The previous provider stream ended before a completion event and produced no visible text. Retry the current task from the latest stable conversation state."
+			} else {
+				stream.ProviderRecoveryDirective = "The previous provider stream ended before its completion event. Continue exactly from the partial assistant response already present. Do not repeat completed text, do not claim work was done unless it was actually completed, and preserve the user's original intent."
+			}
+			stream.UpdatedAt = time.Now().UTC()
+			stream.mu.Unlock()
+			if err := service.publishCheckpoint(requestID, conversationID); err != nil {
+				return service.failStreamIfNonTerminal(stream, "unknown", err)
+			}
+			if err := service.requestProviderAction(stream, providerActionResume); err != nil {
+				return service.failStreamIfNonTerminal(stream, "unknown", err)
+			}
+			return nil
+		}
 		var providerErr providerTerminalError
 		if errors.As(payload.Err, &providerErr) {
 			service.setTurnPhase(stream, TurnPhaseFailed)
@@ -838,6 +871,25 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		return nil
 	}
 
+	if mode == agentv1.AgentMode_AGENT_MODE_AGENT &&
+		!hadToolInvocation && !hadPartialToolCall && !terminalToolInvocation &&
+		shortStopRecoveryAttempts < 1 &&
+		isNormalShortStopFinishReason(finishReason) &&
+		isActionCommitmentShortStop(accumulatedText) {
+		stream.mu.Lock()
+		stream.ProviderShortStopRecoveryAttempts++
+		stream.ProviderRecoveryDirective = "Continue now and perform the concrete next action you just committed to. Do not merely restate the plan or promise another next step."
+		stream.UpdatedAt = time.Now().UTC()
+		stream.mu.Unlock()
+		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
+			return service.failStreamIfNonTerminal(stream, "unknown", err)
+		}
+		if err := service.requestProviderAction(stream, providerActionResume); err != nil {
+			return service.failStreamIfNonTerminal(stream, "unknown", err)
+		}
+		return nil
+	}
+
 	if (hadToolInvocation || shouldResumeAfterToolResults(finishReason)) && !terminalToolInvocation {
 		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
 			return service.failStreamIfNonTerminal(stream, "unknown", err)
@@ -860,6 +912,45 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		return service.failStreamIfNonTerminal(stream, "unknown", err)
 	}
 	return nil
+}
+
+func shouldRecoverIncompleteProviderStream(err error, hadToolInvocation bool, hadPartialToolCall bool, attempts int) (*modeladapter.IncompleteStreamError, bool) {
+	var incomplete *modeladapter.IncompleteStreamError
+	if !errors.As(err, &incomplete) || incomplete == nil {
+		return nil, false
+	}
+	if hadToolInvocation || hadPartialToolCall || incomplete.HasToolActivity || attempts >= 2 {
+		return incomplete, false
+	}
+	return incomplete, true
+}
+
+func isNormalShortStopFinishReason(reason string) bool {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "stop", "end_turn", "completed", "message_stop":
+		return true
+	default:
+		return false
+	}
+}
+
+func isActionCommitmentShortStop(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" || len([]rune(trimmed)) > 600 {
+		return false
+	}
+	lowered := strings.ToLower(trimmed)
+	for _, marker := range []string{
+		"i'll now ", "i will now ", "let me now ", "next, i'll ", "next i'll ",
+		"starting now", "i'll proceed to ", "i will proceed to ",
+		"现在开始", "接下来我会", "接下来我将", "下一步我会", "下一步我将",
+		"我现在来", "我马上开始", "下面我会", "下面我将",
+	} {
+		if strings.Contains(lowered, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 const subagentEmptyStopErrorText = "subagent returned empty response after tool result"

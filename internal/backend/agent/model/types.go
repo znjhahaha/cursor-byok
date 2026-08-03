@@ -4,6 +4,7 @@ package modeladapter
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"cursor/gen/agentv1"
@@ -138,6 +139,53 @@ type StreamRequest struct {
 	RequestBodyOverride map[string]any
 	// ProviderStreamIdleTimeout 表示 provider 流式响应无有效内容时的空闲超时。
 	ProviderStreamIdleTimeout time.Duration
+	// ProviderRequestMaxAttempts 覆盖建立 HTTP 响应前的最大请求次数；零值保持默认重试策略。
+	ProviderRequestMaxAttempts int
+}
+
+// IncompleteStreamError 表示上游连接在协议终止事件到达前关闭。
+type IncompleteStreamError struct {
+	Provider        string
+	HasText         bool
+	HasToolActivity bool
+	Cause           error
+}
+
+func (err *IncompleteStreamError) Error() string {
+	provider := strings.TrimSpace(err.Provider)
+	if provider == "" {
+		provider = "provider"
+	}
+	message := provider + " stream closed before completion"
+	if err.Cause != nil && strings.TrimSpace(err.Cause.Error()) != "" {
+		message += ": " + strings.TrimSpace(err.Cause.Error())
+	}
+	return message
+}
+
+func (err *IncompleteStreamError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Cause
+}
+
+// ProviderRefusalError 表示 provider 以成功 HTTP 响应返回了安全拒绝终止原因。
+type ProviderRefusalError struct {
+	Provider    string
+	StopDetails string
+}
+
+func (err *ProviderRefusalError) Error() string {
+	provider := strings.TrimSpace(err.Provider)
+	if provider == "" {
+		provider = "provider"
+	}
+	detail := strings.TrimSpace(err.StopDetails)
+	if detail == "" {
+		return provider + " refused the request"
+	}
+	return provider + " refused the request: " + detail
 }
 
 // LLMArtifactPaths 表示一次模型调用相关工件路径。

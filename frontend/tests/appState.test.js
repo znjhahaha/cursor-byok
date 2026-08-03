@@ -8,6 +8,7 @@ vi.mock("@/services/clientApi", () => {
   const stub = vi.fn();
   return {
     checkForUpdates: stub,
+    cancelModelAdapterTest: vi.fn(),
     getAppVersion: stub,
     getDetailedLoggingState: vi.fn(),
     getHomeMetricsSummary: stub,
@@ -34,6 +35,7 @@ vi.mock("@/services/clientApi", () => {
 
 import {
   appState,
+  cancelModelAdapterTest,
   createEmptyModelAdapter,
   formatImportSummary,
   formatModelAdapterTestSummary,
@@ -42,6 +44,7 @@ import {
   repairModelAdapterProviderReferences,
   refreshDetailedLoggingState,
   saveDetailedLogging,
+  startModelAdapterTest,
   validateModelAdapters,
   validateProviderDetails,
 } from "@/state/appState";
@@ -177,6 +180,42 @@ describe("详细日志开关", () => {
     expect(appState.log).toBe(true);
     expect(appState.detailedLoggingEffective).toBe(true);
     expect(appState.detailedLoggingStateKnown).toBe(true);
+  });
+
+  it("实时排队状态包含次数、已等待时间和倒计时", () => {
+    expect(formatModelAdapterTestSummary({
+      status: "running",
+      warmupWaiting: true,
+      warmupAttempt: 3,
+      warmupElapsedMS: 5200,
+      warmupNextRetryMS: 750,
+    })).toBe("排队中（第 3 次） | 已等待 5.2 s | 下次 750 ms");
+  });
+
+  it("排队测试结果保留可取消字段，取消后同步 canceled 状态", async () => {
+    vi.mocked(clientApi.testModelAdapter).mockResolvedValue({
+      adapterID: "adapter-warmup",
+      requestHash: "hash",
+      status: "running",
+      warmupWaiting: true,
+      warmupAttempt: 2,
+      warmupElapsedMS: 1000,
+      warmupNextRetryMS: 500,
+      warmupCancelable: true,
+      testKind: "connectivity",
+    });
+    vi.mocked(clientApi.cancelModelAdapterTest).mockResolvedValue({
+      adapterID: "adapter-warmup",
+      requestHash: "hash",
+      status: "canceled",
+      summaryText: "排队检测已取消",
+    });
+
+    const running = await startModelAdapterTest({ ...adapterFixture(), id: "adapter-warmup" });
+    expect(running).toMatchObject({ warmupCancelable: true, warmupNextRetryMS: 500, testKind: "connectivity" });
+    const canceled = await cancelModelAdapterTest("adapter-warmup");
+    expect(canceled).toMatchObject({ status: "canceled", summaryText: "排队检测已取消" });
+    expect(appState.modelAdapterTestResults["adapter-warmup"].status).toBe("canceled");
   });
 });
 

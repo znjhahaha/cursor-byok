@@ -35,7 +35,7 @@ func DoProviderRequestWithRetry(
 	modelCallID string,
 	buildRequest func(context.Context) (*http.Request, error),
 ) (*http.Response, error) {
-	return doProviderRequestWithRetry(ctx, client, provider, requestID, modelCallID, buildRequest)
+	return doProviderRequestWithRetry(ctx, client, provider, requestID, modelCallID, providerRetryMaxAttempts, buildRequest)
 }
 
 func doProviderRequestWithRetry(
@@ -44,13 +44,17 @@ func doProviderRequestWithRetry(
 	provider string,
 	requestID string,
 	modelCallID string,
+	maxAttempts int,
 	buildRequest func(context.Context) (*http.Request, error),
 ) (*http.Response, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	statuses := make([]string, 0, providerRetryMaxAttempts)
-	for attempt := 0; attempt < providerRetryMaxAttempts; attempt++ {
+	if maxAttempts <= 0 {
+		maxAttempts = providerRetryMaxAttempts
+	}
+	statuses := make([]string, 0, maxAttempts)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		httpReq, err := buildRequest(ctx)
 		if err != nil {
 			return nil, err
@@ -61,7 +65,7 @@ func doProviderRequestWithRetry(
 				_ = resp.Body.Close()
 			}
 			statuses = append(statuses, "transport")
-			if attempt == providerRetryMaxAttempts-1 || !isRetryableProviderTransportError(err) {
+			if attempt == maxAttempts-1 || !isRetryableProviderTransportError(err) {
 				if len(statuses) > 1 {
 					return nil, fmt.Errorf("provider request failed after attempts=%d statuses=%s: %w", len(statuses), strings.Join(statuses, ","), err)
 				}
@@ -73,7 +77,7 @@ func doProviderRequestWithRetry(
 			continue
 		}
 		statuses = append(statuses, strconv.Itoa(resp.StatusCode))
-		if !isRetryableProviderStatus(resp.StatusCode) || attempt == providerRetryMaxAttempts-1 {
+		if !isRetryableProviderStatus(resp.StatusCode) || attempt == maxAttempts-1 {
 			if len(statuses) > 1 {
 				resp.Header.Set(providerRetrySummaryHeader, fmt.Sprintf("attempts=%d statuses=%s", len(statuses), strings.Join(statuses, ",")))
 			}

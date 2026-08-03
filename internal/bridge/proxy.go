@@ -116,6 +116,11 @@ func (s *ProxyService) TestModelAdapter(adapter ModelAdapterConfig) (ModelAdapte
 	return s.core.TestModelAdapter(adapter)
 }
 
+// CancelModelAdapterTest 取消指定模型当前正在运行的手动排队检测。
+func (s *ProxyService) CancelModelAdapterTest(adapterID string) (ModelAdapterTestResult, error) {
+	return s.core.CancelModelAdapterTest(adapterID)
+}
+
 // GetModelAdapterTestResults 用于处理与 GetModelAdapterTestResults 相关的逻辑。
 func (s *ProxyService) GetModelAdapterTestResults() []ModelAdapterTestResult {
 	return s.core.GetModelAdapterTestResults()

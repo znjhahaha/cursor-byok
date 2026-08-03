@@ -73,8 +73,9 @@ type ProxyService struct {
 	// providerModels 保存中转站模型列表缓存，跨窗口共享并落盘。
 	providerModels *providerModelsCache
 	// warmupMu 与 warmupActive 限制并发运行的排队预热循环数。
-	warmupMu     sync.Mutex
-	warmupActive int
+	warmupMu      sync.Mutex
+	warmupActive  int
+	warmupCancels map[string]context.CancelFunc
 }
 
 // NewProxyService 用于处理与 NewProxyService 相关的逻辑。
@@ -93,6 +94,7 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 		caCertPEM:             copiedCert,
 		publicClient:          netproxy.NewHTTPClient(publicAPITimeout),
 		modelTestResults:      make(map[string]ModelAdapterTestResult),
+		warmupCancels:         make(map[string]context.CancelFunc),
 		providerModels:        newProviderModelsCache(appdata.ProviderModelsCachePath()),
 		setFileLoggingEnabled: logger.SetFileLoggingEnabled,
 		fileLoggingEnabled:    logger.FileLoggingEnabled,

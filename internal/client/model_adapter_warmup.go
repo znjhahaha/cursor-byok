@@ -1,49 +1,36 @@
-// model_adapter_warmup.go 实现中转站的「排队预热」：探测撞上上游的排队/满载响应时，
-// 按站点配置的预算低频重试，直到排上队或预算耗尽。
-//
-// 只作用于探测路径。真实转发不走这里——转发端的重试策略在
-// internal/backend/agent/model/retry.go，那份策略与 Cursor 的实时对话共用，
-// 把它改成分钟级长重试会让真实会话直接卡死。
 package client
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
+	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	modeladapter "cursor/internal/backend/agent/model"
 	serverconfig "cursor/internal/backend/server/config"
+	"cursor/internal/logger"
 )
 
-// maxConcurrentWarmups 限制同时运行的预热循环数。
-//
-// 预热是分钟级长驻循环，而前端「测试全部」的并发是 4；没有这道闸，
-// 用户点几轮就会攒出一堆互相看不见的循环持续打同一个上游。
-const maxConcurrentWarmups = 2
+const (
+	maxConcurrentWarmups       = 2
+	warmupMaxTransientFailures = 5
+	warmupBaseDelay            = 500 * time.Millisecond
+	warmupMaxDelay             = 5 * time.Second
+	warmupProgressInterval     = 250 * time.Millisecond
+)
 
-// errWarmupBusy 表示预热槽位已满。
-var errWarmupBusy = errors.New("正在预热的模型过多，请等待其中一个结束")
+var (
+	errWarmupBusy       = errors.New("正在排队检测的模型过多，请等待其中一个结束")
+	warmupStatusPattern = regexp.MustCompile(`status=(\d{3})`)
+	warmupRetryPattern  = regexp.MustCompile(`retry_after=([^\s]+)`)
+	warmupJitter        = func() float64 { return 0.9 + rand.Float64()*0.2 }
+)
 
-// warmupStatusPattern 从错误串里取状态码。
-// 格式由 modeladapter.buildHTTPStatusError 固定为 "%s status=%d ... body=%s"。
-var warmupStatusPattern = regexp.MustCompile(`status=(\d{3})`)
-
-// queueRejectionStatuses 是可能承载排队语义的状态码。
-//
-// 500 是这里的关键：New API 面板在没有可用渠道时回的就是 500，而通用重试策略
-// 只认 429/502/503/504，所以排队错误在预热之前是直接失败的。
-var queueRejectionStatuses = map[string]struct{}{
-	"429": {},
-	"500": {},
-	"503": {},
-}
-
-// queueRejectionMarkers 是排队/满载响应体里的特征串。
-//
-// 这些是 New API / one-api 面板的通用格式，不是某一家中转站独有的，
-// 所以识别只看报文、不看域名；是否启用由每站开关决定。
 var queueRejectionMarkers = []string{
 	"get_channel_failed",
 	"new_api_error",
@@ -54,29 +41,27 @@ var queueRejectionMarkers = []string{
 	"当前分组负载已饱和",
 }
 
-// warmupBudget 描述一次预热的时间预算。
-type warmupBudget struct {
-	total    time.Duration
-	interval time.Duration
+func warmupHTTPStatus(err error) int {
+	if err == nil {
+		return 0
+	}
+	match := warmupStatusPattern.FindStringSubmatch(err.Error())
+	if len(match) != 2 {
+		return 0
+	}
+	status, _ := strconv.Atoi(match[1])
+	return status
 }
 
-// isQueueRejectionError 判断错误是否为「排队中/暂无可用渠道」。
-//
-// 必须同时满足状态码与报文特征：只看报文会把上游透传的其它 5xx 也吞掉，
-// 只看状态码则会把真实的 500 故障拖进无限重试。
 func isQueueRejectionError(err error) bool {
-	if err == nil {
+	status := warmupHTTPStatus(err)
+	if status == http.StatusTooManyRequests {
+		return true
+	}
+	if status != http.StatusInternalServerError {
 		return false
 	}
-	message := err.Error()
-	match := warmupStatusPattern.FindStringSubmatch(message)
-	if match == nil {
-		return false
-	}
-	if _, ok := queueRejectionStatuses[match[1]]; !ok {
-		return false
-	}
-	lowered := strings.ToLower(message)
+	lowered := strings.ToLower(err.Error())
 	for _, marker := range queueRejectionMarkers {
 		if strings.Contains(lowered, strings.ToLower(marker)) {
 			return true
@@ -85,137 +70,337 @@ func isQueueRejectionError(err error) bool {
 	return false
 }
 
-// resolveWarmupBudget 查出该模型所属站点的预热配置。
-// 站点不存在、未归属站点或未开启预热时返回 false。
-func (s *ProxyService) resolveWarmupBudget(adapter serverconfig.ModelAdapterConfig) (warmupBudget, bool) {
-	if s == nil {
-		return warmupBudget{}, false
+func isTransientWarmupError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
 	}
-	providerID := strings.TrimSpace(adapter.ProviderID)
-	if providerID == "" {
-		return warmupBudget{}, false
+	var incomplete *modeladapter.IncompleteStreamError
+	if errors.As(err, &incomplete) {
+		return true
+	}
+	switch warmupHTTPStatus(err) {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	text := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"unexpected eof", "connection reset", "connection refused",
+		"server closed idle connection", "use of closed network connection",
+		"tls handshake timeout", "i/o timeout", "provider stream idle timeout",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *ProxyService) shouldWarmupModelAdapter(adapter serverconfig.ModelAdapterConfig) bool {
+	if s == nil || strings.TrimSpace(adapter.ProviderID) == "" {
+		return false
 	}
 	cfg, err := s.LoadUserConfig()
 	if err != nil {
-		return warmupBudget{}, false
+		return false
 	}
-	provider, ok := serverconfig.FindProvider(cfg.Providers, providerID)
-	if !ok || !provider.WarmupEnabled {
-		return warmupBudget{}, false
-	}
-	// 走一遍归一化拿到钳制后的预算：配置文件可能是手写的，绕过了保存路径。
-	normalized, normalizeErr := serverconfig.NormalizeProviderConfig(provider)
-	if normalizeErr != nil {
-		return warmupBudget{}, false
-	}
-	return warmupBudget{
-		total:    time.Duration(normalized.WarmupMaxMinutes) * time.Minute,
-		interval: time.Duration(normalized.WarmupIntervalSeconds) * time.Second,
-	}, true
+	provider, ok := serverconfig.FindProvider(cfg.Providers, adapter.ProviderID)
+	return ok && provider.WarmupEnabled
 }
 
-// acquireWarmupSlot 尝试占用一个预热槽位，返回释放函数。
-func (s *ProxyService) acquireWarmupSlot() (func(), bool) {
+func (s *ProxyService) beginWarmup(adapterID string) (context.Context, context.CancelFunc, bool) {
 	s.warmupMu.Lock()
 	defer s.warmupMu.Unlock()
-	if s.warmupActive >= maxConcurrentWarmups {
-		return nil, false
+	if s.warmupCancels == nil {
+		s.warmupCancels = make(map[string]context.CancelFunc)
 	}
+	if _, exists := s.warmupCancels[adapterID]; exists || s.warmupActive >= maxConcurrentWarmups {
+		return nil, nil, false
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.warmupCancels[adapterID] = cancel
 	s.warmupActive++
-	return func() {
-		s.warmupMu.Lock()
-		defer s.warmupMu.Unlock()
-		if s.warmupActive > 0 {
-			s.warmupActive--
-		}
-	}, true
+	return ctx, cancel, true
 }
 
-// warmupModelAdapter 反复探测直到排上队、预算耗尽或被取消。
-//
-// 循环体直接复用 runModelAdapterTest——它本身就是一次完整且无副作用的探测。
-// 非排队错误立即终止：预热的意义是等队列，不是掩盖真实故障。
+func (s *ProxyService) finishWarmup(adapterID string, cancel context.CancelFunc) {
+	if cancel != nil {
+		cancel()
+	}
+	s.warmupMu.Lock()
+	defer s.warmupMu.Unlock()
+	delete(s.warmupCancels, adapterID)
+	if s.warmupActive > 0 {
+		s.warmupActive--
+	}
+}
+
+func (s *ProxyService) cancelAllWarmups() {
+	if s == nil {
+		return
+	}
+	s.warmupMu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(s.warmupCancels))
+	for _, cancel := range s.warmupCancels {
+		cancels = append(cancels, cancel)
+	}
+	s.warmupMu.Unlock()
+	for _, cancel := range cancels {
+		if cancel != nil {
+			cancel()
+		}
+	}
+}
+
+// CancelModelAdapterTest reliably stops a manual queue/connectivity task.
+func (s *ProxyService) CancelModelAdapterTest(adapterID string) (ModelAdapterTestResult, error) {
+	id := strings.TrimSpace(adapterID)
+	s.warmupMu.Lock()
+	cancel := s.warmupCancels[id]
+	s.warmupMu.Unlock()
+	if cancel == nil {
+		return ModelAdapterTestResult{}, errors.New("该模型当前没有可取消的排队检测")
+	}
+	cancel()
+	if result, ok := s.getModelAdapterTestResult(id); ok {
+		result.Status = string(ModelAdapterTestStatusCanceled)
+		result.SummaryText = "排队检测已取消"
+		result.Error = ""
+		result.WarmupCancelable = false
+		result.WarmupWaiting = false
+		result.WarmupNextRetryMS = 0
+		s.storeAndEmitModelAdapterTestResult(result)
+		return result, nil
+	}
+	return ModelAdapterTestResult{AdapterID: id, Status: string(ModelAdapterTestStatusCanceled)}, nil
+}
+
+func (s *ProxyService) getModelAdapterTestResult(adapterID string) (ModelAdapterTestResult, bool) {
+	s.modelTestMu.RLock()
+	defer s.modelTestMu.RUnlock()
+	result, ok := s.modelTestResults[strings.TrimSpace(adapterID)]
+	return result, ok
+}
+
 func (s *ProxyService) warmupModelAdapter(
-	ctx context.Context,
+	parent context.Context,
 	adapter serverconfig.ModelAdapterConfig,
 	requestHash string,
-	budget warmupBudget,
 ) (ModelAdapterTestResult, error) {
-	release, ok := s.acquireWarmupSlot()
+	warmupCtx, cancel, ok := s.beginWarmup(adapter.ID)
 	if !ok {
 		result := buildErroredModelAdapterTestResult(adapter.ID, requestHash, errWarmupBusy)
+		result.TestKind = "connectivity"
 		return result, errWarmupBusy
 	}
-	defer release()
+	defer s.finishWarmup(adapter.ID, cancel)
 
-	deadlineCtx, cancel := context.WithTimeout(ctx, budget.total)
-	defer cancel()
-
+	ctx, stop := mergeWarmupContexts(parent, warmupCtx)
+	defer stop()
+	startedAt := time.Now().UTC()
+	transientFailures := 0
 	var lastResult ModelAdapterTestResult
 	var lastErr error
+	s.storeAndEmitModelAdapterTestResult(ModelAdapterTestResult{
+		AdapterID:        strings.TrimSpace(adapter.ID),
+		RequestHash:      strings.TrimSpace(requestHash),
+		Status:           string(ModelAdapterTestStatusRunning),
+		SummaryText:      "连通性检测中...",
+		TestedAt:         startedAt.Format(time.RFC3339Nano),
+		WarmupAttempt:    1,
+		WarmupCancelable: true,
+		TestKind:         "connectivity",
+	})
+
 	for attempt := 1; ; attempt++ {
-		// 每次尝试仍受 modelAdapterTestTimeout 约束，总预算由 deadlineCtx 兜住。
-		result, err := s.runModelAdapterTest(deadlineCtx, adapter, requestHash)
+		result, err := s.runModelAdapterConnectivityTest(ctx, adapter, requestHash, startedAt)
+		result.WarmupAttempt = attempt
+		result.WarmupElapsedMS = maxDurationMS(time.Since(startedAt))
+		result.TestKind = "connectivity"
 		if err == nil {
-			if attempt > 1 {
-				result.WarmupAttempt = attempt
-				result.Warning = strings.TrimSpace(fmt.Sprintf("%s 排队 %d 次后接通", result.Warning, attempt-1))
-			}
+			result.WarmupCancelable = false
+			result.WarmupWaiting = false
+			result.SummaryText = fmt.Sprintf("可用 | 排队 %d 次 | 首字 %s", attempt-1, formatModelAdapterTestDuration(result.FirstTextTokenMS))
+			s.logWarmupDiagnostic(adapter, attempt, result, 0, "first_text")
 			return result, nil
 		}
 		lastResult, lastErr = result, err
-
-		if !isQueueRejectionError(err) {
-			return lastResult, lastErr
-		}
-		// 预算已经耗尽时，deadlineCtx 会让下一次尝试立刻失败，
-		// 那条错误没有诊断价值，所以在等待前先判定。
-		if deadlineCtx.Err() != nil {
-			break
+		if errors.Is(ctx.Err(), context.Canceled) {
+			canceled := buildCanceledWarmupResult(adapter.ID, requestHash, attempt, startedAt)
+			s.storeAndEmitModelAdapterTestResult(canceled)
+			return canceled, context.Canceled
 		}
 
+		queueWait := isQueueRejectionError(err)
+		statusCode := warmupHTTPStatus(err)
+		if !queueWait {
+			if !isTransientWarmupError(err) {
+				s.logWarmupDiagnostic(adapter, attempt, lastResult, statusCode, "terminal_error")
+				return lastResult, lastErr
+			}
+			transientFailures++
+			if transientFailures >= warmupMaxTransientFailures {
+				lastResult.SummaryText = fmt.Sprintf("连续 %d 次临时故障，已停止排队检测", transientFailures)
+				lastResult.Error = lastResult.SummaryText
+				s.logWarmupDiagnostic(adapter, attempt, lastResult, statusCode, "transient_limit")
+				return lastResult, lastErr
+			}
+		}
+
+		delay := warmupRetryDelay(attempt, err)
 		waiting := lastResult
 		waiting.Status = string(ModelAdapterTestStatusRunning)
+		waiting.Availability = "unavailable"
 		waiting.WarmupAttempt = attempt
 		waiting.WarmupWaiting = true
+		waiting.WarmupCancelable = true
+		waiting.WarmupElapsedMS = maxDurationMS(time.Since(startedAt))
+		waiting.WarmupNextRetryMS = maxDurationMS(delay)
+		waiting.TestKind = "connectivity"
 		waiting.Error = ""
-		waiting.SummaryText = fmt.Sprintf("排队中（第 %d 次）...", attempt)
+		waiting.SummaryText = fmt.Sprintf("排队中（第 %d 次）…", attempt)
 		s.storeAndEmitModelAdapterTestResult(waiting)
-
-		select {
-		case <-deadlineCtx.Done():
-			// 区分「总预算到点」与「用户主动取消」：后者不该报成预热超时。
-			if ctx.Err() != nil {
-				return lastResult, ctx.Err()
-			}
-			return buildWarmupExhaustedResult(lastResult, attempt, budget), lastErr
-		case <-time.After(budget.interval):
+		if err := s.waitWarmupRetry(ctx, waiting, startedAt, delay); err != nil {
+			canceled := buildCanceledWarmupResult(adapter.ID, requestHash, attempt, startedAt)
+			s.storeAndEmitModelAdapterTestResult(canceled)
+			return canceled, err
 		}
 	}
-	return buildWarmupExhaustedResult(lastResult, 0, budget), lastErr
 }
 
-// buildWarmupExhaustedResult 把最后一次排队失败标注成「预热用尽」。
-// 保留原始报文，用户仍需要看到上游到底回了什么。
-func buildWarmupExhaustedResult(last ModelAdapterTestResult, attempts int, budget warmupBudget) ModelAdapterTestResult {
-	result := last
-	result.Status = string(ModelAdapterTestStatusError)
-	result.Availability = "unavailable"
-	result.WarmupWaiting = false
-	if attempts > 0 {
-		result.WarmupAttempt = attempts
+func (s *ProxyService) logWarmupDiagnostic(adapter serverconfig.ModelAdapterConfig, attempt int, result ModelAdapterTestResult, statusCode int, outcome string) {
+	if s == nil || !s.isDetailedFileLoggingEnabled() {
+		return
 	}
-	result.SummaryText = fmt.Sprintf("预热 %s 仍未排到队，已放弃", formatWarmupDuration(budget.total))
-	if strings.TrimSpace(result.Error) == "" {
-		result.Error = result.SummaryText
-	}
-	return result
+	logger.Infof(
+		"model connectivity adapter_id=%s provider_id=%s client_profile=%s wire_model=%s attempt=%d elapsed_ms=%d first_text_ms=%d http_status=%d outcome=%s",
+		strings.TrimSpace(adapter.ID), strings.TrimSpace(adapter.ProviderID), strings.TrimSpace(adapter.ClientProfile),
+		strings.TrimSuffix(strings.TrimSpace(adapter.ModelID), "[1m]"), attempt, result.WarmupElapsedMS,
+		result.FirstTextTokenMS, statusCode, strings.TrimSpace(outcome),
+	)
 }
 
-func formatWarmupDuration(value time.Duration) string {
-	minutes := int(value.Minutes())
-	if minutes <= 0 {
-		return fmt.Sprintf("%d 秒", int(value.Seconds()))
+func mergeWarmupContexts(parent context.Context, task context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(task)
+	if parent == nil {
+		return ctx, cancel
 	}
-	return fmt.Sprintf("%d 分钟", minutes)
+	stop := context.AfterFunc(parent, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
+	}
+}
+
+func (s *ProxyService) runModelAdapterConnectivityTest(
+	parent context.Context,
+	adapter serverconfig.ModelAdapterConfig,
+	requestHash string,
+	_ time.Time,
+) (ModelAdapterTestResult, error) {
+	ctx, cancel := context.WithTimeout(parent, modelAdapterTestTimeout)
+	defer cancel()
+	attemptStartedAt := time.Now().UTC()
+	metrics, err := s.executeModelAdapterNonStreamingTest(ctx, adapter, modelAdapterTestOptions{
+		prompt:             modelAdapterConnectivityPrompt,
+		maxTokens:          modelAdapterConnectivityMaxTokens,
+		stopAtFirstText:    true,
+		requestMaxAttempts: 1,
+	})
+	if err != nil {
+		return buildErroredModelAdapterTestResult(adapter.ID, requestHash, err), err
+	}
+	if metrics == nil || metrics.firstTextTokenAt.IsZero() || strings.TrimSpace(metrics.text.String()) == "" {
+		emptyErr := errors.New(modelAdapterTestEmptyTextError)
+		return buildErroredModelAdapterTestResult(adapter.ID, requestHash, emptyErr), emptyErr
+	}
+	result := buildSuccessfulModelAdapterTestResult(adapter.ID, requestHash, attemptStartedAt, metrics, false, "连通性检测收到有效文本后已停止")
+	result.TestKind = "connectivity"
+	return result, nil
+}
+
+func (s *ProxyService) waitWarmupRetry(ctx context.Context, waiting ModelAdapterTestResult, startedAt time.Time, delay time.Duration) error {
+	deadline := time.Now().Add(delay)
+	timer := time.NewTimer(delay)
+	ticker := time.NewTicker(warmupProgressInterval)
+	defer timer.Stop()
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		case <-ticker.C:
+			waiting.WarmupElapsedMS = maxDurationMS(time.Since(startedAt))
+			waiting.WarmupNextRetryMS = maxDurationMS(time.Until(deadline))
+			s.storeAndEmitModelAdapterTestResult(waiting)
+		}
+	}
+}
+
+func warmupRetryDelay(attempt int, err error) time.Duration {
+	delay := warmupBaseDelay
+	for index := 1; index < attempt && delay < warmupMaxDelay; index++ {
+		delay *= 2
+		if delay > warmupMaxDelay {
+			delay = warmupMaxDelay
+		}
+	}
+	delay = time.Duration(float64(delay) * warmupJitter())
+	if retryAfter := warmupRetryAfter(err); retryAfter > delay {
+		delay = retryAfter
+	}
+	return delay
+}
+
+func warmupRetryAfter(err error) time.Duration {
+	if err == nil {
+		return 0
+	}
+	match := warmupRetryPattern.FindStringSubmatch(err.Error())
+	if len(match) != 2 {
+		return 0
+	}
+	value := strings.Trim(strings.TrimSpace(match[1]), `"`)
+	if seconds, parseErr := strconv.Atoi(value); parseErr == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if duration, parseErr := time.ParseDuration(value); parseErr == nil && duration >= 0 {
+		return duration
+	}
+	if retryAt, parseErr := http.ParseTime(value); parseErr == nil {
+		return maxDuration(time.Until(retryAt), 0)
+	}
+	return 0
+}
+
+func buildCanceledWarmupResult(adapterID string, requestHash string, attempts int, startedAt time.Time) ModelAdapterTestResult {
+	return ModelAdapterTestResult{
+		AdapterID:         strings.TrimSpace(adapterID),
+		RequestHash:       strings.TrimSpace(requestHash),
+		Status:            string(ModelAdapterTestStatusCanceled),
+		Availability:      "unavailable",
+		SummaryText:       "排队检测已取消",
+		TestedAt:          time.Now().UTC().Format(time.RFC3339Nano),
+		WarmupAttempt:     attempts,
+		WarmupElapsedMS:   maxDurationMS(time.Since(startedAt)),
+		WarmupCancelable:  false,
+		WarmupWaiting:     false,
+		WarmupNextRetryMS: 0,
+		TestKind:          "connectivity",
+	}
+}
+
+func maxDurationMS(value time.Duration) int64 {
+	if value < 0 {
+		return 0
+	}
+	return value.Milliseconds()
+}
+
+func maxDuration(value time.Duration, floor time.Duration) time.Duration {
+	if value < floor {
+		return floor
+	}
+	return value
 }

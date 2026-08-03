@@ -368,7 +368,7 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		return httpReq, nil
 	}
 
-	resp, err := doProviderRequestWithRetry(streamCtx, adapter.client, "anthropic", req.RequestID, req.ModelCallID, buildHTTPRequest)
+	resp, err := doProviderRequestWithRetry(streamCtx, adapter.client, "anthropic", req.RequestID, req.ModelCallID, req.ProviderRequestMaxAttempts, buildHTTPRequest)
 	if err != nil {
 		if idleErr := streamIdle.Err(); idleErr != nil {
 			err = idleErr
@@ -407,19 +407,22 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		Index        int          `json:"index"`
 		ContentBlock contentBlock `json:"content_block"`
 		Message      struct {
-			Model string         `json:"model"`
-			Usage anthropicUsage `json:"usage"`
+			Model       string          `json:"model"`
+			Usage       anthropicUsage  `json:"usage"`
+			StopDetails json.RawMessage `json:"stop_details,omitempty"`
 		} `json:"message"`
 		Usage anthropicUsage `json:"usage"`
 		Delta struct {
-			Type        string `json:"type"`
-			Text        string `json:"text"`
-			Thinking    string `json:"thinking"`
-			PartialJSON string `json:"partial_json"`
-			Signature   string `json:"signature"`
-			StopReason  string `json:"stop_reason"`
+			Type        string          `json:"type"`
+			Text        string          `json:"text"`
+			Thinking    string          `json:"thinking"`
+			PartialJSON string          `json:"partial_json"`
+			Signature   string          `json:"signature"`
+			StopReason  string          `json:"stop_reason"`
+			StopDetails json.RawMessage `json:"stop_details,omitempty"`
 		} `json:"delta"`
-		Error *struct {
+		StopDetails json.RawMessage `json:"stop_details,omitempty"`
+		Error       *struct {
 			Type    string `json:"type"`
 			Code    string `json:"code"`
 			Message string `json:"message"`
@@ -439,6 +442,10 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 	cacheReadPresent := false
 	cacheWritePresent := false
 	finishReason := "message_stop"
+	messageStopSeen := false
+	emittedText := false
+	hadToolActivity := false
+	stopDetails := ""
 	firstEventAt := time.Time{}
 	fail := func(streamErr error) error {
 		finishedAt = time.Now().UTC()
@@ -478,6 +485,7 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 			return nil
 		}
 		streamIdle.MarkEffectiveContent()
+		emittedText = true
 		if err := flushThinkingCompleted(); err != nil {
 			return err
 		}
@@ -609,8 +617,12 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 				currentModel = strings.TrimSpace(event.Message.Model)
 			}
 			applyUsage(event.Message.Usage)
+			if len(event.Message.StopDetails) > 0 && string(event.Message.StopDetails) != "null" {
+				stopDetails = strings.TrimSpace(string(event.Message.StopDetails))
+			}
 		case "content_block_start":
 			if strings.TrimSpace(event.ContentBlock.Type) == "tool_use" {
+				hadToolActivity = true
 				if err := flushTaggedTextTail(); err != nil {
 					return err
 				}
@@ -695,14 +707,23 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 			if strings.TrimSpace(event.Delta.StopReason) != "" {
 				finishReason = strings.TrimSpace(event.Delta.StopReason)
 			}
+			if len(event.StopDetails) > 0 && string(event.StopDetails) != "null" {
+				stopDetails = strings.TrimSpace(string(event.StopDetails))
+			} else if len(event.Delta.StopDetails) > 0 && string(event.Delta.StopDetails) != "null" {
+				stopDetails = strings.TrimSpace(string(event.Delta.StopDetails))
+			}
 			// 当前 MVP 阶段只在 message_stop 时统一收口，不在这里重复发 turn finished。
 			return nil
 		case "message_stop":
+			messageStopSeen = true
 			if err := flushTaggedTextTail(); err != nil {
 				return err
 			}
 			if err := flushThinkingCompleted(); err != nil {
 				return err
+			}
+			if strings.EqualFold(strings.TrimSpace(finishReason), "refusal") {
+				return &ProviderRefusalError{Provider: "anthropic", StopDetails: stopDetails}
 			}
 			if err := sink(ModelEvent{
 				Kind:              ModelEventKindTurnFinished,
@@ -750,16 +771,32 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		return fail(err)
 	}
 	if err := scanner.Err(); err != nil {
-		if idleErr := streamIdle.Err(); idleErr != nil {
-			return fail(idleErr)
+		if strings.EqualFold(strings.TrimSpace(finishReason), "refusal") {
+			return fail(&ProviderRefusalError{Provider: "anthropic", StopDetails: stopDetails})
 		}
-		return fail(err)
+		if messageStopSeen {
+			err = nil
+		} else if idleErr := streamIdle.Err(); idleErr != nil {
+			return fail(&IncompleteStreamError{Provider: "anthropic", HasText: emittedText, HasToolActivity: hadToolActivity || len(toolBlocks) > 0, Cause: idleErr})
+		} else {
+			return fail(&IncompleteStreamError{Provider: "anthropic", HasText: emittedText, HasToolActivity: hadToolActivity || len(toolBlocks) > 0, Cause: err})
+		}
 	}
 	if err := flushTaggedTextTail(); err != nil {
 		return fail(err)
 	}
 	if err := flushThinkingCompleted(); err != nil {
 		return fail(err)
+	}
+	if strings.EqualFold(strings.TrimSpace(finishReason), "refusal") {
+		return fail(&ProviderRefusalError{Provider: "anthropic", StopDetails: stopDetails})
+	}
+	if !messageStopSeen {
+		return fail(&IncompleteStreamError{
+			Provider:        "anthropic",
+			HasText:         emittedText,
+			HasToolActivity: hadToolActivity || len(toolBlocks) > 0,
+		})
 	}
 	finishedAt = time.Now().UTC()
 	recordLLMSummaryArtifact(req, buildLLMSummaryPayload(req, "anthropic", currentModel, startedAt, firstEventAt, finishedAt, finishReason, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, nil))

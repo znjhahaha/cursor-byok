@@ -13,6 +13,7 @@ var BuiltinProviders = []ProviderConfig{
 		ClientProfile: "claude-code",
 		HomeURL:       "https://anyrouter.top",
 		Note:          "Claude Code 中转，兼容 Anthropic 协议",
+		WarmupEnabled: true,
 		Builtin:       true,
 	},
 	{

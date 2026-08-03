@@ -43,12 +43,19 @@ func (broker *StreamBroker) OpenStream(requestID string, conversationID string, 
 	defer broker.mu.Unlock()
 	if existing, ok := broker.streams[normalizedRequestID]; ok {
 		existing.mu.Lock()
+		newTurn := turnSeq != 0 && turnSeq != existing.TurnSeq
 		existing.ConversationID = strings.TrimSpace(conversationID)
 		existing.TurnSeq = turnSeq
 		existing.ModelID = strings.TrimSpace(modelID)
 		existing.ModelName = strings.TrimSpace(modelName)
 		existing.Mode = normalizedMode
 		existing.LatestUserText = strings.TrimSpace(latestUserText)
+		if newTurn {
+			existing.ProviderStreamRecoveryAttempts = 0
+			existing.ProviderShortStopRecoveryAttempts = 0
+			existing.ProviderRecoveryDirective = ""
+			existing.PartialToolCallIDs = make(map[string]struct{})
+		}
 		if existing.Status == "" {
 			existing.Status = StreamStatusCreated
 		}

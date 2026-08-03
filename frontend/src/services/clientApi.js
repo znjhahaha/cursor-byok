@@ -1,4 +1,5 @@
 import {
+  CancelModelAdapterTest,
   GetModelAdapterTestResults,
   GetDiagnosticLogs,
   GetDetailedLoggingState,
@@ -181,6 +182,10 @@ export function testModelAdapter(adapter) {
 
 export function getModelAdapterTestResults() {
   return withApiLogging("GetModelAdapterTestResults", undefined, () => GetModelAdapterTestResults());
+}
+
+export function cancelModelAdapterTest(adapterID) {
+  return withApiLogging("CancelModelAdapterTest", { adapterID }, () => CancelModelAdapterTest(adapterID));
 }
 
 export function getDiagnosticLogs(query) {

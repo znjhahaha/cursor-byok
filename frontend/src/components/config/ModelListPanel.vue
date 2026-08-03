@@ -4,6 +4,7 @@ import Card from "@/components/ui/Card.vue";
 import ModelAdapterTestCard from "@/components/ModelAdapterTestCard.vue";
 import {
   appState,
+  cancelModelAdapterTest,
   createEmptyModelAdapter,
   deleteModelAdapterAt,
   duplicateModelAdapterAt,
@@ -184,6 +185,18 @@ function isAdapterTesting(adapter) {
   return getAdapterTestResult(adapter)?.status === "running";
 }
 
+function isWarmupAdapter(adapter) {
+  return Boolean(findProviderByID(appState.providers, adapter?.providerID)?.warmupEnabled);
+}
+
+async function handleCancelModelAdapter(adapter) {
+  try {
+    await cancelModelAdapterTest(adapter);
+  } catch (error) {
+    reportError("取消失败", toUserError(error));
+  }
+}
+
 async function handleTestModelAdapter(adapter) {
   try {
     await runModelAdapterTest(adapter);
@@ -203,8 +216,12 @@ async function stopBatchTesting() {
   batchStopRequested = true;
   batchStopping.value = true;
   const activeCalls = Array.from(batchActiveCalls);
+  const activeAdapters = filteredAdapters.value.filter((adapter) => isAdapterTesting(adapter) && isWarmupAdapter(adapter));
   await Promise.allSettled(
-    activeCalls.map((call) => (typeof call?.cancel === "function" ? call.cancel("batch-stop") : undefined)),
+    [
+      ...activeCalls.map((call) => (typeof call?.cancel === "function" ? call.cancel("batch-stop") : undefined)),
+      ...activeAdapters.map((adapter) => cancelModelAdapterTest(adapter)),
+    ],
   );
 }
 
@@ -224,7 +241,8 @@ async function handleTestAllModelAdapters() {
   batchCompleted.value = 0;
   let nextIndex = 0;
   try {
-    const workers = Array.from({ length: Math.min(BATCH_TEST_CONCURRENCY, adapters.length) }, async () => {
+    const concurrency = adapters.some((adapter) => isWarmupAdapter(adapter)) ? 2 : BATCH_TEST_CONCURRENCY;
+    const workers = Array.from({ length: Math.min(concurrency, adapters.length) }, async () => {
       while (!batchStopRequested) {
         const currentIndex = nextIndex;
         nextIndex += 1;
@@ -412,17 +430,22 @@ onDeactivated(() => {
                   title="测试"
                   empty-text="未测试"
                   :result="getAdapterTestResult(adapter)"
+                  @cancel="handleCancelModelAdapter(adapter)"
                 />
               </div>
 
               <div class="center-row flex-wrap justify-end gap-2 border-t border-[#343434] pt-3">
                 <Button
                   variant="default"
-                  :disabled="appState.configSaving || batchTesting || isAdapterTesting(adapter)"
-                  :loading="isAdapterTesting(adapter)"
-                  @click="handleTestModelAdapter(adapter)"
+                  :disabled="appState.configSaving || batchTesting"
+                  :loading="isAdapterTesting(adapter) && !getAdapterTestResult(adapter)?.warmupCancelable"
+                  @click="isAdapterTesting(adapter) && getAdapterTestResult(adapter)?.warmupCancelable
+                    ? handleCancelModelAdapter(adapter)
+                    : handleTestModelAdapter(adapter)"
                 >
-                  {{ isAdapterTesting(adapter) ? "测试中..." : "测试" }}
+                  {{ isAdapterTesting(adapter)
+                    ? (getAdapterTestResult(adapter)?.warmupCancelable ? "取消排队" : "测试中...")
+                    : (isWarmupAdapter(adapter) ? "排队检测" : "测试") }}
                 </Button>
                 <Button variant="default" :disabled="appState.configSaving" @click="openEditor(appState.modelAdapters.indexOf(adapter))">编辑</Button>
                 <Button variant="default" :disabled="appState.configSaving" @click="handleDuplicateModelAdapter(appState.modelAdapters.indexOf(adapter))">复制</Button>

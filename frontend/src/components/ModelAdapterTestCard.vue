@@ -31,9 +31,11 @@ const props = defineProps({
   },
 });
 
+const emit = defineEmits(["cancel"]);
+
 const normalizedStatus = computed(() => {
   const status = String(props.result?.status || "").trim().toLowerCase();
-  return ["running", "success", "error"].includes(status) ? status : "idle";
+  return ["running", "success", "error", "canceled"].includes(status) ? status : "idle";
 });
 
 // 预热排队是 running 的一个子态：请求已发出但上游让我们等号，
@@ -43,6 +45,8 @@ const warmupWaiting = computed(
 );
 
 const warmupAttempt = computed(() => Math.max(0, Math.round(Number(props.result?.warmupAttempt) || 0)));
+const warmupElapsed = computed(() => formatDuration(props.result?.warmupElapsedMS));
+const warmupNextRetry = computed(() => formatDuration(props.result?.warmupNextRetryMS));
 
 const summaryText = computed(() => {
   const text = String(props.result?.summaryText || "").trim();
@@ -55,6 +59,9 @@ const summaryText = computed(() => {
   if (normalizedStatus.value === "error") {
     return "测试失败";
   }
+  if (normalizedStatus.value === "canceled") {
+    return "排队检测已取消";
+  }
   return props.emptyText;
 });
 
@@ -63,7 +70,7 @@ const rawResponseText = computed(() => {
   if (raw) {
     return raw;
   }
-  if (normalizedStatus.value === "error") {
+  if (normalizedStatus.value === "error" || normalizedStatus.value === "canceled") {
     return String(props.result?.error || "").trim();
   }
   return "";
@@ -76,7 +83,7 @@ const panelClass = computed(() => {
   if (normalizedStatus.value === "running") {
     return warmupWaiting.value ? "border-[#5a4314] bg-[#2f2612]" : "border-[#164e63] bg-[#0b2530]";
   }
-  if (normalizedStatus.value === "error") {
+  if (normalizedStatus.value === "error" || normalizedStatus.value === "canceled") {
     return "border-[#4b1d1d] bg-[#2a1313]";
   }
   if (normalizedStatus.value === "success" && (!props.result?.benchmarkComplete || props.result?.tokensEstimated)) {
@@ -149,6 +156,18 @@ const summaryClass = computed(() => {
       >
         需重测
       </span>
+    </div>
+
+    <div v-if="warmupWaiting" class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#d6b65f]">
+      <span>已等待 {{ warmupElapsed }} · 下次尝试 {{ warmupNextRetry }}</span>
+      <button
+        v-if="result?.warmupCancelable"
+        type="button"
+        class="rounded-[6px] border border-[#8a6d1a] px-2 py-1 text-[#f6d77a] transition-colors hover:bg-[#3a2d12]"
+        @click="emit('cancel')"
+      >
+        取消排队
+      </button>
     </div>
 
     <div v-if="stale" class="mt-2 text-xs text-[#f6d77a]">

@@ -144,6 +144,29 @@ func TestBuiltinClientProfileMigrationPreservesCustomUserAgent(t *testing.T) {
 	}
 }
 
+func TestAnyRouterWarmupDefaultOnlyAppliesToNewPreset(t *testing.T) {
+	fresh, err := NormalizeProviderConfigs(nil)
+	if err != nil {
+		t.Fatalf("normalize fresh providers: %v", err)
+	}
+	anyRouter, ok := FindProvider(fresh, "builtin-anyrouter")
+	if !ok || !anyRouter.WarmupEnabled {
+		t.Fatalf("fresh AnyRouter preset = %+v", anyRouter)
+	}
+
+	existing, err := NormalizeProviderConfigs([]ProviderConfig{{
+		ID: "builtin-anyrouter", Name: "AnyRouter", Type: "anthropic", BaseURL: "https://anyrouter.top",
+		ClientProfile: "claude-code", WarmupEnabled: false,
+	}})
+	if err != nil {
+		t.Fatalf("normalize existing providers: %v", err)
+	}
+	anyRouter, ok = FindProvider(existing, "builtin-anyrouter")
+	if !ok || anyRouter.WarmupEnabled {
+		t.Fatalf("existing explicit setting was overwritten: %+v", anyRouter)
+	}
+}
+
 func TestRepairProviderReferencesRebindsOrDetachesCompleteAdapters(t *testing.T) {
 	provider := ProviderConfig{
 		ID:      "provider-current",

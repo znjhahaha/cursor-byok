@@ -1301,6 +1301,8 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 	thinkingEffort := stream.ThinkingEffort
 	mode := stream.Mode
 	latestUserText := stream.LatestUserText
+	recoveryDirective := strings.TrimSpace(stream.ProviderRecoveryDirective)
+	stream.ProviderRecoveryDirective = ""
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
 	log.Printf("forwarder provider pass started request_id=%s model_call_id=%s provider_pass=%d", strings.TrimSpace(requestID), strings.TrimSpace(modelCallID), currentPass)
@@ -1325,6 +1327,7 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 		service.setTurnPhase(stream, TurnPhaseFailed)
 		return service.failStream(stream, "unknown", err)
 	}
+	compiled = appendTransientProviderRecoveryDirective(compiled, recoveryDirective)
 	compiled = guardCompiledConversationForProvider(compiled)
 	if compacted, compactErr := service.maybeCompactBeforeProvider(stream, conversation, compiled); compactErr != nil {
 		service.setTurnPhase(stream, TurnPhaseFailed)
@@ -1403,6 +1406,13 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 	})
 	go service.runProviderStream(stream, currentToken, ctx, providerRequest)
 	return nil
+}
+
+func appendTransientProviderRecoveryDirective(compiled CompiledConversation, directive string) CompiledConversation {
+	if trimmed := strings.TrimSpace(directive); trimmed != "" {
+		compiled.Messages = append(compiled.Messages, modeladapter.Message{Role: "user", Content: trimmed})
+	}
+	return compiled
 }
 
 func (service *Service) resolveProviderOutputBudget(modelID string, conversation *ConversationFile, compiled CompiledConversation) (int, map[string]any) {

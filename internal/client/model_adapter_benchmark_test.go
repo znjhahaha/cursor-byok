@@ -32,7 +32,7 @@ func TestAnthropicBenchmarkAcceptsDataOnlySSEAndDoesNotForceThinking(t *testing.
 		BaseURL: server.URL,
 		APIKey:  "test-key",
 		ModelID: "claude-test",
-	})
+	}, modelAdapterTestOptions{})
 	if err != nil {
 		t.Fatalf("executeAnthropicStreamingTest() error = %v", err)
 	}
@@ -63,7 +63,7 @@ func TestAnthropicBenchmarkStopsAfterEnoughStreamingText(t *testing.T) {
 		BaseURL: server.URL,
 		APIKey:  "test-key",
 		ModelID: "claude-test",
-	})
+	}, modelAdapterTestOptions{})
 	if err != nil {
 		t.Fatalf("executeAnthropicStreamingTest() error = %v", err)
 	}

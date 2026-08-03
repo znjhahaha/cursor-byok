@@ -88,15 +88,16 @@ func TestAnyRouterConfiguredStreamingSmoke(t *testing.T) {
 		ResolvedChannelName:         selected.DisplayName,
 		ThinkingEffort:              "disabled",
 		AnthropicThinkingEffort:     "disabled",
-		AnthropicMaxTokens:          1024,
+		AnthropicMaxTokens:          8,
 		CustomHeadersEnabled:        selected.CustomHeadersEnabled,
 		CustomHeadersJSON:           selected.CustomHeadersJSON,
 		AnthropicExtraParamsEnabled: false,
 		Messages:                    []Message{{Role: "user", Content: "Reply with OK only."}},
-		MaxTokens:                   1024,
+		MaxTokens:                   8,
 		Stream:                      true,
-		RequestKnobs:                map[string]any{"stream": true, "max_tokens": 1024},
+		RequestKnobs:                map[string]any{"stream": true, "max_tokens": 8},
 		ProviderStreamIdleTimeout:   30 * time.Second,
+		ProviderRequestMaxAttempts:  1,
 	}, func(event ModelEvent) error {
 		if event.Kind == ModelEventKindTextDelta && strings.TrimSpace(event.Text) != "" {
 			gotText = true

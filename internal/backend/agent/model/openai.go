@@ -513,7 +513,7 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 		return httpReq, nil
 	}
 
-	resp, err := doProviderRequestWithRetry(streamCtx, adapter.client, "openai", req.RequestID, req.ModelCallID, buildHTTPRequest)
+	resp, err := doProviderRequestWithRetry(streamCtx, adapter.client, "openai", req.RequestID, req.ModelCallID, req.ProviderRequestMaxAttempts, buildHTTPRequest)
 	if err != nil {
 		if idleErr := streamIdle.Err(); idleErr != nil {
 			err = idleErr
@@ -992,7 +992,7 @@ func (adapter *OpenAIAdapter) streamResponses(ctx context.Context, req StreamReq
 		return httpReq, nil
 	}
 
-	resp, err := doProviderRequestWithRetry(streamCtx, adapter.client, "openai", req.RequestID, req.ModelCallID, buildHTTPRequest)
+	resp, err := doProviderRequestWithRetry(streamCtx, adapter.client, "openai", req.RequestID, req.ModelCallID, req.ProviderRequestMaxAttempts, buildHTTPRequest)
 	if err != nil {
 		if idleErr := streamIdle.Err(); idleErr != nil {
 			err = idleErr
@@ -1082,6 +1082,7 @@ func (adapter *OpenAIAdapter) streamResponses(ctx context.Context, req StreamReq
 	firstEventAt := time.Time{}
 	finishReason := ""
 	turnFinishedPending := false
+	terminalSeen := false
 	emittedToolInvocation := false
 	emittedText := false
 	thinkingStarted := time.Time{}
@@ -1570,6 +1571,7 @@ func (adapter *OpenAIAdapter) streamResponses(ctx context.Context, req StreamReq
 				return fail(err)
 			}
 		case "response.completed", "response.incomplete":
+			terminalSeen = true
 			if event.Response != nil && !emittedText {
 				if strings.TrimSpace(event.Response.OutputText) != "" {
 					if err := emitTaggedContentParts(thinkParser.Consume(event.Response.OutputText)); err != nil {
@@ -1610,6 +1612,22 @@ func (adapter *OpenAIAdapter) streamResponses(ctx context.Context, req StreamReq
 			return fail(errorFromEvent(event))
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		if terminalSeen {
+			err = nil
+		} else if idleErr := streamIdle.Err(); idleErr != nil {
+			return fail(&IncompleteStreamError{Provider: "openai", HasText: emittedText, HasToolActivity: emittedToolInvocation || len(tools) > 0 || len(imageGenerations) > 0, Cause: idleErr})
+		} else {
+			return fail(&IncompleteStreamError{Provider: "openai", HasText: emittedText, HasToolActivity: emittedToolInvocation || len(tools) > 0 || len(imageGenerations) > 0, Cause: err})
+		}
+	}
+	if !terminalSeen {
+		return fail(&IncompleteStreamError{
+			Provider:        "openai",
+			HasText:         emittedText,
+			HasToolActivity: emittedToolInvocation || len(tools) > 0 || len(imageGenerations) > 0,
+		})
+	}
 	for key, accumulator := range tools {
 		if err := completeTool(key, accumulator); err != nil {
 			return fail(err)
@@ -1619,12 +1637,6 @@ func (adapter *OpenAIAdapter) streamResponses(ctx context.Context, req StreamReq
 		if err := completeImageGeneration(key, accumulator); err != nil {
 			return fail(err)
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		if idleErr := streamIdle.Err(); idleErr != nil {
-			return fail(idleErr)
-		}
-		return fail(err)
 	}
 	if err := flushTaggedContentTail(); err != nil {
 		return fail(err)

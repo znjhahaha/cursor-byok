@@ -32,17 +32,27 @@ const (
 	modelAdapterTestTargetOutputTokens = 12
 	modelAdapterTestEmptyTextError     = "未收到文本输出，无法计算测速结果"
 	modelAdapterTestMaxErrorBodyBytes  = 8192
+	modelAdapterConnectivityPrompt     = "Reply with OK only."
+	modelAdapterConnectivityMaxTokens  = 8
 )
 
 var errModelAdapterBenchmarkComplete = errors.New("model adapter benchmark target reached")
 
+type modelAdapterTestOptions struct {
+	prompt             string
+	maxTokens          int
+	stopAtFirstText    bool
+	requestMaxAttempts int
+}
+
 type ModelAdapterTestStatus string
 
 const (
-	ModelAdapterTestStatusIdle    ModelAdapterTestStatus = "idle"
-	ModelAdapterTestStatusRunning ModelAdapterTestStatus = "running"
-	ModelAdapterTestStatusSuccess ModelAdapterTestStatus = "success"
-	ModelAdapterTestStatusError   ModelAdapterTestStatus = "error"
+	ModelAdapterTestStatusIdle     ModelAdapterTestStatus = "idle"
+	ModelAdapterTestStatusRunning  ModelAdapterTestStatus = "running"
+	ModelAdapterTestStatusSuccess  ModelAdapterTestStatus = "success"
+	ModelAdapterTestStatusError    ModelAdapterTestStatus = "error"
+	ModelAdapterTestStatusCanceled ModelAdapterTestStatus = "canceled"
 )
 
 // ModelAdapterTestResult 表示一次模型测速结果。
@@ -64,8 +74,12 @@ type ModelAdapterTestResult struct {
 	TestedAt          string  `json:"testedAt"`
 	// WarmupAttempt 是当前已进行的预热尝试次数，WarmupWaiting 表示正卡在排队等待中。
 	// 两者复用现成的 model-adapter-test:updated 全量快照事件下发，前端不需要新协议。
-	WarmupAttempt int  `json:"warmupAttempt,omitempty"`
-	WarmupWaiting bool `json:"warmupWaiting,omitempty"`
+	WarmupAttempt     int    `json:"warmupAttempt,omitempty"`
+	WarmupWaiting     bool   `json:"warmupWaiting,omitempty"`
+	WarmupElapsedMS   int64  `json:"warmupElapsedMS,omitempty"`
+	WarmupNextRetryMS int64  `json:"warmupNextRetryMS,omitempty"`
+	WarmupCancelable  bool   `json:"warmupCancelable,omitempty"`
+	TestKind          string `json:"testKind,omitempty"`
 }
 
 // ModelAdapterTestResultsPayload 用于向前端广播当前测速结果快照。
@@ -149,19 +163,21 @@ func (s *ProxyService) TestModelAdapter(adapter serverconfig.ModelAdapterConfig)
 		Status:      string(ModelAdapterTestStatusRunning),
 		SummaryText: "测试中...",
 		TestedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+		TestKind:    "benchmark",
 	}
 	s.storeAndEmitModelAdapterTestResult(running)
 
 	// 站点开了排队预热就走长循环，否则保持原来的单次探测。
 	// 分流放在这里而不是 runModelAdapterTest 内部：后者是「一次探测」这个语义单元，
 	// 预热循环要复用它。
-	if budget, ok := s.resolveWarmupBudget(normalized); ok {
-		result, warmupErr := s.warmupModelAdapter(context.Background(), normalized, requestHash, budget)
+	if s.shouldWarmupModelAdapter(normalized) {
+		result, warmupErr := s.warmupModelAdapter(context.Background(), normalized, requestHash)
 		s.storeAndEmitModelAdapterTestResult(result)
 		return result, warmupErr
 	}
 
 	result, testErr := s.runModelAdapterTest(context.Background(), normalized, requestHash)
+	result.TestKind = "benchmark"
 	s.storeAndEmitModelAdapterTestResult(result)
 	if testErr != nil {
 		return result, testErr
@@ -185,7 +201,9 @@ func (s *ProxyService) runModelAdapterTest(parent context.Context, adapter serve
 	defer cancel()
 
 	startedAt := time.Now().UTC()
-	metrics, requestErr := s.executeModelAdapterNonStreamingTest(ctx, adapter)
+	metrics, requestErr := s.executeModelAdapterNonStreamingTest(ctx, adapter, modelAdapterTestOptions{
+		prompt: modelAdapterTestPrompt,
+	})
 	if requestErr != nil {
 		if metrics != nil &&
 			shouldCompleteModelAdapterTestEarly(adapter, metrics.rawResponse) &&
@@ -262,22 +280,29 @@ func buildSuccessfulModelAdapterTestResult(adapterID string, requestHash string,
 	return result
 }
 
-func (s *ProxyService) executeModelAdapterNonStreamingTest(ctx context.Context, adapter serverconfig.ModelAdapterConfig) (*modelAdapterTestMetrics, error) {
+func (s *ProxyService) executeModelAdapterNonStreamingTest(ctx context.Context, adapter serverconfig.ModelAdapterConfig, options modelAdapterTestOptions) (*modelAdapterTestMetrics, error) {
 	switch strings.TrimSpace(adapter.Type) {
 	case "openai":
-		return s.executeOpenAIStreamingTest(ctx, adapter)
+		return s.executeOpenAIStreamingTest(ctx, adapter, options)
 	case "anthropic":
-		return s.executeAnthropicStreamingTest(ctx, adapter)
+		return s.executeAnthropicStreamingTest(ctx, adapter, options)
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", strings.TrimSpace(adapter.Type))
 	}
 }
 
-func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter serverconfig.ModelAdapterConfig) (*modelAdapterTestMetrics, error) {
+func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter serverconfig.ModelAdapterConfig, options modelAdapterTestOptions) (*modelAdapterTestMetrics, error) {
 	_ = s
 	metrics := &modelAdapterTestMetrics{}
 	observer := &modelAdapterTestArtifactObserver{}
 	maxTokens := modelAdapterTestConfiguredOpenAIMaxTokens(adapter)
+	if options.maxTokens > 0 {
+		maxTokens = options.maxTokens
+	}
+	prompt := strings.TrimSpace(options.prompt)
+	if prompt == "" {
+		prompt = modelAdapterTestPrompt
+	}
 	extraParamsEnabled, extraParamsJSON := modelAdapterTestExtraParams(
 		adapter.OpenAIExtraParamsEnabled,
 		adapter.OpenAIExtraParamsJSON,
@@ -307,12 +332,13 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 		OpenAIExtraParamsJSON:       extraParamsJSON,
 		CustomHeadersEnabled:        adapter.CustomHeadersEnabled,
 		CustomHeadersJSON:           strings.TrimSpace(adapter.CustomHeadersJSON),
-		Messages:                    []modeladapter.Message{{Role: "user", Content: modelAdapterTestPrompt}},
+		Messages:                    []modeladapter.Message{{Role: "user", Content: prompt}},
 		MaxTokens:                   maxTokens,
 		Stream:                      true,
 		RequestKnobs:                map[string]any{"stream": true, "max_tokens": maxTokens},
 		Observer:                    observer,
 		ProviderStreamIdleTimeout:   modelAdapterTestTimeout,
+		ProviderRequestMaxAttempts:  options.requestMaxAttempts,
 	}
 	err := modeladapter.NewOpenAIAdapter().Stream(ctx, req, func(event modeladapter.ModelEvent) error {
 		now := time.Now().UTC()
@@ -322,6 +348,10 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 				metrics.firstTextTokenAt = now
 			}
 			_, _ = metrics.text.WriteString(event.Text)
+			if options.stopAtFirstText && strings.TrimSpace(metrics.text.String()) != "" {
+				metrics.finishedAt = now
+				return errModelAdapterBenchmarkComplete
+			}
 			if shouldCompleteModelAdapterTestEarly(adapter, observer.RawResponse()) &&
 				estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
 				metrics.finishedAt = now
@@ -346,11 +376,12 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 		metrics.finishedAt = time.Now().UTC()
 		metrics.rawResponse = observer.RawResponse()
 		if errors.Is(err, errModelAdapterBenchmarkComplete) {
+			metrics.benchmarkComplete = !options.stopAtFirstText
 			return metrics, nil
 		}
 		return metrics, err
 	}
-	metrics.benchmarkComplete = true
+	metrics.benchmarkComplete = !options.stopAtFirstText
 	if metrics.finishedAt.IsZero() {
 		metrics.finishedAt = time.Now().UTC()
 	}
@@ -361,11 +392,18 @@ func (s *ProxyService) executeOpenAIStreamingTest(ctx context.Context, adapter s
 	return metrics, nil
 }
 
-func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapter serverconfig.ModelAdapterConfig) (*modelAdapterTestMetrics, error) {
+func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapter serverconfig.ModelAdapterConfig, options modelAdapterTestOptions) (*modelAdapterTestMetrics, error) {
 	_ = s
 	metrics := &modelAdapterTestMetrics{}
 	observer := &modelAdapterTestArtifactObserver{}
 	maxTokens := modelAdapterTestConfiguredAnthropicMaxTokens(adapter)
+	if options.maxTokens > 0 {
+		maxTokens = options.maxTokens
+	}
+	prompt := strings.TrimSpace(options.prompt)
+	if prompt == "" {
+		prompt = modelAdapterTestPrompt
+	}
 	// A connectivity benchmark should not force adaptive thinking. Some Claude
 	// compatible relays spend the entire short benchmark budget in a thinking
 	// block even though normal Agent requests work correctly. Leaving both
@@ -401,12 +439,13 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 		AnthropicExtraParamsEnabled: extraParamsEnabled,
 		AnthropicExtraParamsJSON:    extraParamsJSON,
 		ThinkingBudgetTokens:        adapter.ThinkingBudgetTokens,
-		Messages:                    []modeladapter.Message{{Role: "user", Content: modelAdapterTestPrompt}},
+		Messages:                    []modeladapter.Message{{Role: "user", Content: prompt}},
 		MaxTokens:                   maxTokens,
 		Stream:                      true,
 		RequestKnobs:                map[string]any{"stream": true, "anthropic_max_tokens": maxTokens, "max_tokens": maxTokens},
 		Observer:                    observer,
 		ProviderStreamIdleTimeout:   modelAdapterTestTimeout,
+		ProviderRequestMaxAttempts:  options.requestMaxAttempts,
 	}
 	err := modeladapter.NewAnthropicAdapter().Stream(ctx, req, func(event modeladapter.ModelEvent) error {
 		now := time.Now().UTC()
@@ -416,6 +455,10 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 				metrics.firstTextTokenAt = now
 			}
 			_, _ = metrics.text.WriteString(event.Text)
+			if options.stopAtFirstText && strings.TrimSpace(metrics.text.String()) != "" {
+				metrics.finishedAt = now
+				return errModelAdapterBenchmarkComplete
+			}
 			if shouldCompleteModelAdapterTestEarly(adapter, observer.RawResponse()) &&
 				estimateBenchmarkTextTokens(metrics.text.String()) >= modelAdapterTestTargetOutputTokens {
 				metrics.finishedAt = now
@@ -440,11 +483,12 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 		metrics.finishedAt = time.Now().UTC()
 		metrics.rawResponse = observer.RawResponse()
 		if errors.Is(err, errModelAdapterBenchmarkComplete) {
+			metrics.benchmarkComplete = !options.stopAtFirstText
 			return metrics, nil
 		}
 		return metrics, err
 	}
-	metrics.benchmarkComplete = true
+	metrics.benchmarkComplete = !options.stopAtFirstText
 	if metrics.finishedAt.IsZero() {
 		metrics.finishedAt = time.Now().UTC()
 	}

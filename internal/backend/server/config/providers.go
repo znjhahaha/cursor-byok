@@ -35,16 +35,15 @@ type ProviderConfig struct {
 	Disabled bool   `json:"disabled,omitempty" yaml:"disabled,omitempty"`
 	Pinned   bool   `json:"pinned,omitempty" yaml:"pinned,omitempty"`
 	HomeURL  string `json:"homeURL" yaml:"homeURL"`
-	// WarmupEnabled 开启后，探测遇到中转站的「排队/负载已满」响应时会按下面的预算持续重试，
-	// 直到排上队或预算耗尽。极性与 Disabled 相反：这是实验性功能，零值必须等于关闭。
+	// WarmupEnabled 开启后，用户主动发起的模型检测会用小型流式请求持续处理排队响应，
+	// 直到收到首字、明确失败或用户取消。它不介入真实 Agent 请求。
 	//
 	// 之所以做成每站开关而不是按站点名匹配：排队响应用的是 New API / one-api 面板的
 	// 通用错误格式（new_api_error / get_channel_failed），同一份报文可能来自任意一家
 	// 基于该面板搭建的站点，域名与厂商名都不构成可靠特征。
 	WarmupEnabled bool `json:"warmupEnabled,omitempty" yaml:"warmupEnabled,omitempty"`
-	// WarmupMaxMinutes 是单次预热的总时长上限，WarmupIntervalSeconds 是两次尝试的间隔。
-	// 两者为零时按默认值回填，并在 NormalizeProviderConfig 里钳制到安全区间——
-	// 间隔太短会把预热变成对上游的压测。
+	// WarmupMaxMinutes 与 WarmupIntervalSeconds 仅为旧配置兼容字段。新版手动排队检测
+	// 使用可取消的指数退避，不再读取这两个预算值。
 	WarmupMaxMinutes      int `json:"warmupMaxMinutes,omitempty" yaml:"warmupMaxMinutes,omitempty"`
 	WarmupIntervalSeconds int `json:"warmupIntervalSeconds,omitempty" yaml:"warmupIntervalSeconds,omitempty"`
 }

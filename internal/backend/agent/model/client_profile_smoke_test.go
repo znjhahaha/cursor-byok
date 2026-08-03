@@ -129,7 +129,7 @@ func claudeCodeSmokeRequest(target serverconfig.ModelAdapterConfig, label string
 	if effort == "" {
 		effort = "high"
 	}
-	requestLabel := "smoke-" + strings.NewReplacer(".", "-", ":", "-", "/", "-").Replace(label) + "-0.0.45"
+	requestLabel := "smoke-" + strings.NewReplacer(".", "-", ":", "-", "/", "-").Replace(label) + "-0.0.47"
 	return StreamRequest{
 		RequestID:                 requestLabel,
 		RunID:                     requestLabel,

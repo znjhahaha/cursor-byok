@@ -2,6 +2,7 @@ import { computed, reactive, watchSyncEffect } from "vue";
 import { Events } from "@wailsio/runtime";
 import dayjs from "dayjs";
 import {
+  cancelModelAdapterTest as cancelModelAdapterTestAPI,
   checkForUpdates,
   getAppVersion,
   getHomeMetricsSummary,
@@ -89,7 +90,7 @@ const UPDATE_READY_EVENT = "update:ready";
 const UPDATE_ERROR_EVENT = "update:error";
 const MODEL_ADAPTER_TEST_UPDATED_EVENT = "model-adapter-test:updated";
 const PROVIDER_MODELS_UPDATED_EVENT = "provider-models:updated";
-const SUPPORTED_MODEL_ADAPTER_TEST_STATUSES = new Set(["idle", "running", "success", "error"]);
+const SUPPORTED_MODEL_ADAPTER_TEST_STATUSES = new Set(["idle", "running", "success", "error", "canceled"]);
 const HOME_METRICS_MIN_LOADING_MS = 600;
 
 export const ROUTE_MODE_OPTIONS = [
@@ -285,10 +286,17 @@ export function formatModelAdapterTestSummary(source) {
   const result = source && typeof source === "object" ? source : {};
   const status = normalizeModelAdapterTestStatus(result.status);
   if (status === "running") {
+    if (asBoolean(result.warmupWaiting)) {
+      const attempt = Math.max(0, Math.round(asNumber(result.warmupAttempt)));
+      return `排队中${attempt > 0 ? `（第 ${attempt} 次）` : ""} | 已等待 ${formatDuration(result.warmupElapsedMS)} | 下次 ${formatDuration(result.warmupNextRetryMS)}`;
+    }
     return "测试中...";
   }
   if (status === "error") {
     return asString(result.error) || "模型测试失败";
+  }
+  if (status === "canceled") {
+    return asString(result.summaryText) || "排队检测已取消";
   }
   if (status !== "success") {
     return "";
@@ -321,6 +329,10 @@ function normalizeModelAdapterTestResult(source) {
     testedAt: asString(raw.testedAt),
     warmupAttempt: Math.max(0, Math.round(asNumber(raw.warmupAttempt))),
     warmupWaiting: asBoolean(raw.warmupWaiting),
+    warmupElapsedMS: Math.max(0, Math.round(asNumber(raw.warmupElapsedMS))),
+    warmupNextRetryMS: Math.max(0, Math.round(asNumber(raw.warmupNextRetryMS))),
+    warmupCancelable: asBoolean(raw.warmupCancelable),
+    testKind: asString(raw.testKind),
   };
   if (!normalized.summaryText) {
     normalized.summaryText = formatModelAdapterTestSummary(normalized);
@@ -1419,6 +1431,22 @@ export function startModelAdapterTest(adapter) {
 
 export async function runModelAdapterTest(adapter) {
   return startModelAdapterTest(adapter);
+}
+
+export async function cancelModelAdapterTest(adapter) {
+  const adapterID = asString(typeof adapter === "string" ? adapter : adapter?.id);
+  if (!adapterID) {
+    throw new Error("模型标识不能为空");
+  }
+  const rawResult = await cancelModelAdapterTestAPI(adapterID);
+  const result = normalizeModelAdapterTestResult(rawResult);
+  if (result.adapterID) {
+    appState.modelAdapterTestResults = {
+      ...appState.modelAdapterTestResults,
+      [result.adapterID]: result,
+    };
+  }
+  return result;
 }
 
 export async function persistUserConfig() {

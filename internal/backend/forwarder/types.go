@@ -156,6 +156,9 @@ type ActiveStream struct {
 	ProviderUsage                               turnUsageSnapshot
 	ProviderEstimatedInputTokens                int64
 	ProviderTerminalToolInvocation              bool
+	ProviderStreamRecoveryAttempts              int
+	ProviderShortStopRecoveryAttempts           int
+	ProviderRecoveryDirective                   string
 	PendingCompaction                           *PendingCompaction
 
 	Backlog                     []StreamEvent
