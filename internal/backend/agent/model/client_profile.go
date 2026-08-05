@@ -2,6 +2,7 @@ package modeladapter
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -27,7 +28,7 @@ const (
 	ClaudeCodeStainlessPackage     = "0.94.0"
 	ClaudeCodeRuntimeVersion       = "v26.3.0"
 	ClaudeCodeStainlessTimeout     = "600"
-	CodexClientVersion             = "0.146.0-alpha.9.2"
+	CodexClientVersion             = "0.146.0-alpha.3"
 	CodexClientOriginator          = "codex_cli_rs"
 	CodexClientTerminal            = "unknown"
 	CodexWindowsVersion            = "10.0.26200"
@@ -94,9 +95,7 @@ func applyOpenAIRequestProfileHeaders(httpReq *http.Request, req StreamRequest) 
 		ApplyClientProfileHeaders(httpReq, profile)
 		return
 	}
-	sessionSource := firstNonEmptyString(req.ConversationID, req.RunID, req.RequestID, req.ModelCallID)
-	threadSource := firstNonEmptyString(req.ConversationID, req.RequestID, req.RunID, req.ModelCallID)
-	applyCodexRequestHeaders(httpReq, sessionSource, threadSource)
+	applyCodexRequestIdentityHeaders(httpReq, codexIdentityForRequest(req))
 }
 
 func applyClaudeCodeHeaders(httpReq *http.Request) {
@@ -185,15 +184,91 @@ func applyCodexHeaders(httpReq *http.Request) {
 	// the same value in User-Agent, while some Codex-only relays still inspect it.
 	httpReq.Header.Set("Version", CodexClientVersion)
 	httpReq.Header.Set("User-Agent", codexUserAgent(runtime.GOOS, runtime.GOARCH))
+	httpReq.Header.Set("Accept", "text/event-stream")
 }
 
 func applyCodexRequestHeaders(httpReq *http.Request, sessionSource string, threadSource string) {
 	if httpReq == nil {
 		return
 	}
+	applyCodexRequestIdentityHeaders(httpReq, codexRequestIdentity{
+		SessionID:      deterministicCodexUUID("session", sessionSource),
+		ThreadID:       deterministicCodexUUID("thread", threadSource),
+		InstallationID: deterministicCodexUUID("installation", sessionSource),
+		WindowID:       deterministicCodexUUID("window", threadSource),
+		TurnID:         deterministicCodexUUID("turn", firstNonEmptyString(threadSource, sessionSource)),
+	})
+}
+
+type codexRequestIdentity struct {
+	SessionID      string
+	ThreadID       string
+	InstallationID string
+	WindowID       string
+	TurnID         string
+}
+
+func codexIdentityForRequest(req StreamRequest) codexRequestIdentity {
+	sessionSource := firstNonEmptyString(req.ConversationID, req.RunID, req.RequestID, req.ModelCallID)
+	threadSource := firstNonEmptyString(req.ConversationID, req.RequestID, req.RunID, req.ModelCallID)
+	turnSource := firstNonEmptyString(req.ModelCallID, req.RequestID, req.RunID, req.ConversationID)
+	installationSource := strings.TrimSpace(req.BaseURL) + "\x00" + strings.TrimSpace(req.APIKey)
+	if strings.Trim(installationSource, "\x00") == "" {
+		installationSource = firstNonEmptyString(req.ResolvedChannelID, req.ResolvedChannelName, threadSource)
+	}
+	return codexRequestIdentity{
+		SessionID:      deterministicCodexUUID("session", sessionSource),
+		ThreadID:       deterministicCodexUUID("thread", threadSource),
+		InstallationID: deterministicCodexUUID("installation", installationSource),
+		WindowID:       deterministicCodexUUID("window", threadSource),
+		TurnID:         deterministicCodexUUID("turn", turnSource),
+	}
+}
+
+func applyCodexRequestIdentityHeaders(httpReq *http.Request, identity codexRequestIdentity) {
+	if httpReq == nil {
+		return
+	}
 	applyCodexHeaders(httpReq)
-	httpReq.Header.Set("session-id", deterministicCodexUUID("session", sessionSource))
-	httpReq.Header.Set("thread-id", deterministicCodexUUID("thread", threadSource))
+	httpReq.Header.Set("session-id", identity.SessionID)
+	httpReq.Header.Set("thread-id", identity.ThreadID)
+	httpReq.Header.Set("x-client-request-id", identity.ThreadID)
+	httpReq.Header.Set("x-codex-window-id", identity.WindowID)
+	if turnMetadata := codexTurnMetadata(identity); turnMetadata != "" {
+		httpReq.Header.Set("x-codex-turn-metadata", turnMetadata)
+	}
+}
+
+func applyCodexRequestBodyMetadata(body map[string]any, req StreamRequest) {
+	if body == nil || openAIClientProfile(req.ClientProfile, req.OpenAIEndpoint) != ClientProfileCodex {
+		return
+	}
+	if _, exists := body["client_metadata"]; exists {
+		return
+	}
+	identity := codexIdentityForRequest(req)
+	body["client_metadata"] = map[string]string{
+		"x-codex-installation-id": identity.InstallationID,
+		"session_id":              identity.SessionID,
+		"thread_id":               identity.ThreadID,
+		"x-codex-window-id":       identity.WindowID,
+		"x-codex-turn-metadata":   codexTurnMetadata(identity),
+	}
+}
+
+func codexTurnMetadata(identity codexRequestIdentity) string {
+	payload, err := json.Marshal(map[string]string{
+		"installation_id": identity.InstallationID,
+		"session_id":      identity.SessionID,
+		"thread_id":       identity.ThreadID,
+		"turn_id":         identity.TurnID,
+		"window_id":       identity.WindowID,
+		"request_kind":    "turn",
+	})
+	if err != nil {
+		return ""
+	}
+	return string(payload)
 }
 
 func deterministicCodexUUID(kind string, source string) string {
