@@ -44,6 +44,12 @@ type ProviderModelsResult = client.ProviderModelsResult
 // ProviderModelsCachePayload 定义模型列表缓存快照事件载荷。
 type ProviderModelsCachePayload = client.ProviderModelsCachePayload
 
+// ModelAdapterModelsRequest 定义模型编辑器获取模型下拉候选的请求结构。
+type ModelAdapterModelsRequest = client.ModelAdapterModelsRequest
+
+// ModelAdapterModelsResult 定义模型编辑器获取到的模型候选列表。
+type ModelAdapterModelsResult = client.ModelAdapterModelsResult
+
 // LicenseActionRequest 定义了当前模块中的 LicenseActionRequest 类型。
 type LicenseActionRequest = client.LicenseActionRequest
 
@@ -155,6 +161,11 @@ func (s *ProxyService) RefreshProviderModels(provider ProviderConfig) (ProviderM
 // GetProviderModelsCache 返回当前配置命中的模型列表缓存，不发起网络请求。
 func (s *ProxyService) GetProviderModelsCache() (ProviderModelsCachePayload, error) {
 	return s.core.GetProviderModelsCache()
+}
+
+// FetchModelAdapterModels 为模型编辑器提供模型下拉候选，绑定中转站时复用站点缓存。
+func (s *ProxyService) FetchModelAdapterModels(input ModelAdapterModelsRequest) (ModelAdapterModelsResult, error) {
+	return s.core.FetchModelAdapterModels(input)
 }
 
 // GetDeviceID 用于处理与 GetDeviceID 相关的逻辑。

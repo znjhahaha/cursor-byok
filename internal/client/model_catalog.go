@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,9 @@ const (
 	providerModelsTimeout       = 8 * time.Second
 	providerModelsMaxBodyBytes  = 1 << 20
 	providerModelsAnthropicVers = "2023-06-01"
+	// Anthropic /v1/models 单页上限 1000，最多翻 50 页足以覆盖任何真实站点。
+	providerModelsPageSize = 1000
+	providerModelsMaxPages = 50
 )
 
 var providerModelsPathCandidates = []string{
@@ -330,7 +334,61 @@ func probeProviderInferenceURL(requestURL string, provider serverconfig.Provider
 	return resp.StatusCode, nil
 }
 
+// fetchProviderModels 拉取一个候选地址上的完整模型列表。
+//
+// Anthropic 的 /v1/models 是分页接口：单页最多 1000 条，靠 has_more + last_id
+// 往后翻。只读第一页会静默丢模型，所以这里按游标续拉直到 has_more 为 false。
+// OpenAI 兼容站点一次返回全量，只请求一次。
 func fetchProviderModels(requestURL string, provider serverconfig.ProviderConfig) ([]ProviderModel, error) {
+	paginated := provider.Type == "anthropic"
+	collected := make([]ProviderModel, 0, 64)
+	seen := make(map[string]struct{}, 64)
+	cursor := ""
+
+	for page := 0; page < providerModelsMaxPages; page++ {
+		pageURL := requestURL
+		if paginated {
+			pageURL = appendProviderModelsCursor(requestURL, cursor)
+		}
+		body, err := requestProviderModelsBody(pageURL, provider)
+		if err != nil {
+			// 首页失败才是真失败；后续页失败则保留已拿到的部分，避免整次探测白费。
+			if page == 0 {
+				return nil, err
+			}
+			break
+		}
+		models, parseErr := parseProviderModelsBody(body)
+		if parseErr != nil {
+			if page == 0 {
+				return nil, parseErr
+			}
+			break
+		}
+		for _, model := range models {
+			if _, exists := seen[model.ID]; exists {
+				continue
+			}
+			seen[model.ID] = struct{}{}
+			collected = append(collected, model)
+		}
+		if !paginated {
+			break
+		}
+		cursor = nextProviderModelsCursor(body)
+		if cursor == "" {
+			break
+		}
+	}
+
+	if len(collected) == 0 {
+		return nil, errors.New("模型列表为空，请确认密钥与站点地址")
+	}
+	sort.Slice(collected, func(i int, j int) bool { return collected[i].ID < collected[j].ID })
+	return collected, nil
+}
+
+func requestProviderModelsBody(requestURL string, provider serverconfig.ProviderConfig) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), providerModelsTimeout)
 	defer cancel()
 
@@ -359,7 +417,37 @@ func fetchProviderModels(requestURL string, provider serverconfig.ProviderConfig
 	if bodyErr := buildModelAdapterProviderBodyError("模型列表", body); bodyErr != nil {
 		return nil, bodyErr
 	}
-	return parseProviderModelsBody(body)
+	return body, nil
+}
+
+// appendProviderModelsCursor 拼接分页参数，保留候选地址上可能已存在的 query。
+func appendProviderModelsCursor(requestURL string, cursor string) string {
+	parsed, err := url.Parse(requestURL)
+	if err != nil {
+		return requestURL
+	}
+	query := parsed.Query()
+	query.Set("limit", strconv.Itoa(providerModelsPageSize))
+	if cursor != "" {
+		query.Set("after_id", cursor)
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+// nextProviderModelsCursor 读取下一页游标；has_more 为假或缺失即视为结束。
+func nextProviderModelsCursor(body []byte) string {
+	var payload struct {
+		HasMore bool   `json:"has_more"`
+		LastID  string `json:"last_id"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	if !payload.HasMore {
+		return ""
+	}
+	return strings.TrimSpace(payload.LastID)
 }
 
 // applyProviderModelsHeaders 按协议装配认证头，再依次叠加站点 UA 与自定义头。
