@@ -2,6 +2,7 @@
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import ModelAdapterTestCard from "@/components/ModelAdapterTestCard.vue";
+import Sortable from "sortablejs";
 import {
   appState,
   cancelModelAdapterTest,
@@ -12,10 +13,11 @@ import {
   getModelAdapterTestResultByID,
   openModelEditorWindow,
   runModelAdapterTest,
+  saveModelAdapterOrder,
   startModelAdapterTest,
   toUserError,
 } from "@/state/appState";
-import { computed, onBeforeUnmount, onDeactivated, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
 
 const emit = defineEmits(["error"]);
 
@@ -33,7 +35,10 @@ const batchStopping = ref(false);
 const batchTotal = ref(0);
 const batchCompleted = ref(0);
 const batchActiveCalls = new Set();
+const listScroller = ref(null);
+const sortSaving = ref(false);
 let batchStopRequested = false;
+let sortable = null;
 
 // 站点筛选只列出「确实有模型」的中转站，避免空站点堆满筛选条。
 const providerFilters = computed(() => {
@@ -272,8 +277,127 @@ async function handleTestAllModelAdapters() {
   }
 }
 
+// sortablejs 会直接改 DOM，而列表外层是 TransitionGroup（FLIP）。
+// 两者同时改同一批节点会互相打架，所以 drop 后立刻用 revert 把 DOM 交还给 Vue，
+// 真正的重排交给数据驱动，视觉过渡仍由 TransitionGroup 负责。
+function destroySortable() {
+  if (!sortable) {
+    return;
+  }
+  sortable.destroy();
+  sortable = null;
+}
+
+function syncSortable() {
+  const element = listScroller.value?.querySelector("[data-model-grid]");
+  if (!(element instanceof HTMLElement)) {
+    destroySortable();
+    return;
+  }
+  if (!sortable || sortable.el !== element) {
+    destroySortable();
+    sortable = Sortable.create(element, {
+      animation: 160,
+      draggable: ".model-sort-item",
+      handle: ".model-sort-handle",
+      ghostClass: "opacity-40",
+      chosenClass: "!border-[#10AD5D]",
+      dragClass: "cursor-grabbing",
+      onEnd: (event) => {
+        void handleModelSort(event);
+      },
+    });
+  }
+  sortable.option("disabled", sortSaving.value || appState.configSaving || batchTesting.value);
+}
+
+// 拖拽只发生在「当前可见子集」内，但 sort 是全量数组的连续序号。
+// 因此把重排后的可见序列按原有槽位回填：不可见的模型一律留在原位置不动。
+function mergeReorderedIntoAll(reorderedVisible) {
+  const visibleIDs = new Set(filteredAdapters.value.map((adapter) => adapter.id));
+  let cursor = 0;
+  return appState.modelAdapters.map((adapter) => {
+    if (!visibleIDs.has(adapter.id)) {
+      return adapter;
+    }
+    const next = reorderedVisible[cursor];
+    cursor += 1;
+    return next;
+  });
+}
+
+// 把被拖动的节点放回它原来的兄弟位置。sortablejs 的 onEnd 提供了
+// oldIndex 对应的原始 DOM 顺序信息，这里用 draggable 集合重新定位。
+function revertDraggedNode(event) {
+  const item = event.item;
+  const container = event.from;
+  if (!(item instanceof HTMLElement) || !(container instanceof HTMLElement)) {
+    return;
+  }
+  const oldIndex = event.oldDraggableIndex ?? event.oldIndex;
+  if (!Number.isInteger(oldIndex)) {
+    return;
+  }
+  const siblings = Array.from(container.querySelectorAll(":scope > .model-sort-item"))
+    .filter((node) => node !== item);
+  const anchor = siblings[oldIndex] ?? null;
+  container.insertBefore(item, anchor);
+}
+
+async function handleModelSort(event) {
+  const oldIndex = event.oldDraggableIndex ?? event.oldIndex;
+  const newIndex = event.newDraggableIndex ?? event.newIndex;
+  // sortablejs 已经把节点挪到新位置了。这里先把它塞回原来的兄弟节点之前，
+  // 让 DOM 回到 Vue 认知中的状态，避免和随后的 FLIP 补丁互相错位。
+  revertDraggedNode(event);
+  if (!Number.isInteger(oldIndex) || !Number.isInteger(newIndex) || oldIndex === newIndex) {
+    return;
+  }
+
+  const reorderedVisible = filteredAdapters.value.slice();
+  const [movedAdapter] = reorderedVisible.splice(oldIndex, 1);
+  if (!movedAdapter || newIndex < 0 || newIndex > reorderedVisible.length) {
+    return;
+  }
+  reorderedVisible.splice(newIndex, 0, movedAdapter);
+
+  const previousAdapters = appState.modelAdapters.slice();
+  const nextAdapters = mergeReorderedIntoAll(reorderedVisible)
+    .map((adapter, index) => ({ ...adapter, sort: index + 1 }));
+
+  sortSaving.value = true;
+  appState.modelAdapters = nextAdapters;
+  try {
+    const result = await saveModelAdapterOrder(nextAdapters.map((adapter) => adapter.id));
+    if (!result.ok) {
+      appState.modelAdapters = previousAdapters;
+      reportError("排序失败", result.error);
+    }
+  } catch (error) {
+    appState.modelAdapters = previousAdapters;
+    reportError("排序失败", toUserError(error));
+  } finally {
+    sortSaving.value = false;
+    await nextTick();
+    syncSortable();
+  }
+}
+
+watch(
+  [filteredAdapters, sortSaving, batchTesting, () => appState.configSaving],
+  () => {
+    void nextTick().then(syncSortable);
+  },
+  { flush: "post" },
+);
+
+onMounted(() => {
+  void nextTick().then(syncSortable);
+});
+
 onBeforeUnmount(() => {
   void stopBatchTesting();
+  destroySortable();
 });
 // KeepAlive 下切 tab 不触发 unmount。批量测速是 10 并发、且会持续改写 appState，
 // 留一个用户看不见也停不掉的后台任务比丢进度更糟，所以切走时同样停掉。
@@ -304,13 +428,13 @@ onDeactivated(() => {
         <div class="center-row gap-2">
           <Button
             variant="default"
-            :disabled="appState.configSaving || (!batchTesting && filteredAdapters.length === 0)"
+            :disabled="sortSaving || appState.configSaving || (!batchTesting && filteredAdapters.length === 0)"
             :loading="batchStopping"
             @click="handleTestAllModelAdapters"
           >
             {{ batchButtonText }}
           </Button>
-          <Button variant="primary" :disabled="appState.configSaving || batchTesting" @click="openEditor()">新增模型</Button>
+          <Button variant="primary" :disabled="sortSaving || appState.configSaving || batchTesting" @click="openEditor()">新增模型</Button>
         </div>
       </div>
 
@@ -378,18 +502,19 @@ onDeactivated(() => {
         当前还没有配置任何 {{ typeLabel(activeType) }} 模型。
       </div>
 
-      <div v-else class="h-full min-h-0 overflow-y-auto pr-1">
+      <div v-else ref="listScroller" class="h-full min-h-0 overflow-y-auto pr-1">
         <!-- 卡片数量在几十以内，FLIP 重排负担得起。
              复制模型时会凭空多出一张卡，没有进场动画的话用户看不出是哪张。 -->
         <TransitionGroup
           tag="div"
           name="mo-list"
+          data-model-grid
           class="relative grid gap-3 pb-1 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]"
         >
           <Card
             v-for="(adapter, index) in filteredAdapters"
             :key="adapter.id || `${adapter.baseURL}-${adapter.modelID}-${index}`"
-            class="h-full [&>div]:h-full"
+            class="model-sort-item group relative h-full [&>div]:h-full"
           >
             <div class="flex h-full min-h-[154px] flex-col justify-between gap-3">
               <div class="flex flex-col gap-2.5">
@@ -434,10 +559,20 @@ onDeactivated(() => {
                 />
               </div>
 
-              <div class="center-row flex-wrap justify-end gap-2 border-t border-[#343434] pt-3">
+              <div class="center-row flex-wrap gap-2 border-t border-[#343434] pt-3">
+                <button
+                  type="button"
+                  class="model-sort-handle center-row mr-auto h-[26px] w-[26px] shrink-0 touch-none cursor-grab justify-center rounded-[6px] border border-transparent bg-transparent text-[#5c5c5c] outline-none transition-[color,border-color,background-color] hover:border-[#454545] hover:bg-[#333333] hover:text-white focus-visible:border-[#10AD5D] focus-visible:bg-[#333333] focus-visible:text-white active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-30"
+                  :disabled="sortSaving || appState.configSaving || batchTesting"
+                  aria-label="拖拽排序"
+                  title="拖拽排序"
+                  @click.stop
+                >
+                  <span class="icon-[icon-park-outline--drag] text-[16px]"></span>
+                </button>
                 <Button
                   variant="default"
-                  :disabled="appState.configSaving || batchTesting"
+                  :disabled="sortSaving || appState.configSaving || batchTesting"
                   :loading="isAdapterTesting(adapter) && !getAdapterTestResult(adapter)?.warmupCancelable"
                   @click="isAdapterTesting(adapter) && getAdapterTestResult(adapter)?.warmupCancelable
                     ? handleCancelModelAdapter(adapter)
@@ -447,9 +582,9 @@ onDeactivated(() => {
                     ? (getAdapterTestResult(adapter)?.warmupCancelable ? "取消排队" : "测试中...")
                     : (isWarmupAdapter(adapter) ? "排队检测" : "测试") }}
                 </Button>
-                <Button variant="default" :disabled="appState.configSaving" @click="openEditor(appState.modelAdapters.indexOf(adapter))">编辑</Button>
-                <Button variant="default" :disabled="appState.configSaving" @click="handleDuplicateModelAdapter(appState.modelAdapters.indexOf(adapter))">复制</Button>
-                <Button variant="text" :disabled="appState.configSaving"
+                <Button variant="default" :disabled="sortSaving || appState.configSaving" @click="openEditor(appState.modelAdapters.indexOf(adapter))">编辑</Button>
+                <Button variant="default" :disabled="sortSaving || appState.configSaving" @click="handleDuplicateModelAdapter(appState.modelAdapters.indexOf(adapter))">复制</Button>
+                <Button variant="text" :disabled="sortSaving || appState.configSaving"
                   @click="handleDeleteModelAdapter(appState.modelAdapters.indexOf(adapter))">删除</Button>
               </div>
             </div>

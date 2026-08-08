@@ -44,6 +44,7 @@ import {
   repairModelAdapterProviderReferences,
   refreshDetailedLoggingState,
   saveDetailedLogging,
+  saveModelAdapterOrder,
   startModelAdapterTest,
   validateModelAdapters,
   validateProviderDetails,
@@ -233,5 +234,31 @@ describe("中转站编辑反馈", () => {
 
   it("导入结果区分新增与重复", () => {
     expect(formatImportSummary({ added: 2, skipped: 1 })).toBe("已导入 2 个模型，跳过 1 个重复");
+  });
+});
+
+describe("模型拖拽排序", () => {
+  it("提交的 ID 序列与当前配置不一致时拒绝写盘", async () => {
+    const provider = providerFixture();
+    const stored = normalizeModelAdapter({ ...adapterFixture(), id: "adapter-a" });
+    vi.mocked(clientApi.loadUserConfig).mockResolvedValue({
+      providers: [provider],
+      modelAdapters: [stored, { ...stored, id: "adapter-b", modelID: "claude-opus-4-1" }],
+    });
+    vi.mocked(clientApi.saveUserConfig).mockClear();
+
+    const missingOne = await saveModelAdapterOrder(["adapter-a"]);
+    expect(missingOne.ok).toBe(false);
+    expect(missingOne.error).toContain("请刷新后重试");
+
+    const duplicated = await saveModelAdapterOrder(["adapter-a", "adapter-a"]);
+    expect(duplicated.ok).toBe(false);
+
+    const unknown = await saveModelAdapterOrder(["adapter-a", "adapter-zzz"]);
+    expect(unknown.ok).toBe(false);
+    // 该测试文件里 loadUserConfig 与 saveUserConfig 共用同一个 stub，
+    // 只有写盘调用会带载荷，用参数个数区分读和写。
+    const persistCalls = vi.mocked(clientApi.saveUserConfig).mock.calls.filter((args) => args.length > 0);
+    expect(persistCalls).toHaveLength(0);
   });
 });

@@ -474,6 +474,7 @@ export function normalizeModelAdapter(source) {
   );
   return {
     id: asString(raw.id),
+    sort: asPositiveInteger(raw.sort),
     providerID: asString(raw.providerID ?? raw.provider_id),
     displayName: asString(raw.displayName || raw.name),
     type: SUPPORTED_MODEL_ADAPTER_TYPES.has(normalizedType) ? normalizedType : "",
@@ -1573,6 +1574,42 @@ export async function deleteModelAdapterAt(index) {
 
   nextAdapters.splice(index, 1);
 
+  return persistConfigPayload(
+    {
+      ...currentConfig,
+      modelAdapters: nextAdapters,
+    },
+    { modelAdaptersOnly: true },
+  );
+}
+
+// 拖拽排序按「整份 ID 序列」提交，而不是提交单个模型的新下标。
+// 序列长度或成员与当前配置不一致，说明列表在拖拽期间被别处改过，
+// 此时宁可让用户刷新重来，也不要把一份过期顺序写回磁盘。
+export async function saveModelAdapterOrder(adapterIDs) {
+  const orderedIDs = asArray(adapterIDs)
+    .map((item) => asString(item))
+    .filter(Boolean);
+  const currentConfig = await loadPersistedUserConfig();
+  const currentAdapters = normalizeModelAdapters(currentConfig.modelAdapters);
+  const adaptersByID = new Map(currentAdapters.map((adapter) => [adapter.id, adapter]));
+  const uniqueIDs = new Set(orderedIDs);
+
+  if (
+    orderedIDs.length !== currentAdapters.length
+    || uniqueIDs.size !== currentAdapters.length
+    || orderedIDs.some((id) => !adaptersByID.has(id))
+  ) {
+    return {
+      ok: false,
+      error: "模型配置已发生变化，请刷新后重试",
+    };
+  }
+
+  const nextAdapters = orderedIDs.map((id, index) => ({
+    ...adaptersByID.get(id),
+    sort: index + 1,
+  }));
   return persistConfigPayload(
     {
       ...currentConfig,
