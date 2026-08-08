@@ -166,6 +166,10 @@ type ActiveStream struct {
 	ProviderShortStopRecoveryAttempts           int
 	ProviderRecoveryDirective                   string
 	PendingCompaction                           *PendingCompaction
+	PendingCheckpointBlobWrites                 map[uint32]string
+	ConfirmedCheckpointBlobs                    map[string]struct{}
+	NextCheckpointBlobRequestID                 uint32
+	PendingCheckpoint                           *pendingCheckpointPublish
 
 	Backlog                     []StreamEvent
 	Subscribers                 map[string]*StreamSubscriber
@@ -220,6 +224,12 @@ type pendingTurnCompletion struct {
 	ProviderPass   int
 	Usage          turnUsageSnapshot
 	Disposition    pendingCompletionDisposition
+}
+
+type pendingCheckpointPublish struct {
+	State      *agentv1.ConversationStateStructure
+	Required   map[string]struct{}
+	Completion *pendingTurnCompletion
 }
 
 type PendingCompaction struct {
