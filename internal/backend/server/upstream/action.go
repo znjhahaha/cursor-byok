@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -26,6 +27,39 @@ func DirectAction(deps Dependencies, cfg CompatRouteConfig) server.HandlerFunc {
 			return err
 		}
 		return handleDirect(reqCtx, route)
+	}
+}
+
+// AuthenticatedDirectAction 用桌面端独立 Cursor 账号转发一次控制面请求。
+//
+// 它只服务 Dashboard / MCPRegistry 这类控制面路由，模型转发不会走到这里：
+// 因此登录与否都不改变模型请求的鉴权来源与目标站点。
+//
+// 鉴权头在 PatchHeaders 阶段注入，即本地模式的身份改写之后，
+// 保证这里写入的真实身份不会再被 LocalRelayToken 覆盖。
+func AuthenticatedDirectAction(deps Dependencies, cfg CompatRouteConfig, authorizationProvider AuthorizationProvider) server.HandlerFunc {
+	return func(ctx *server.Context) error {
+		reqCtx, _, err := newCompatRouteObjects(ctx, deps, cfg)
+		if err != nil {
+			return err
+		}
+		if reqCtx == nil || reqCtx.Request == nil {
+			return fmt.Errorf("Cursor 控制面请求上下文无效")
+		}
+		if authorizationProvider == nil {
+			return fmt.Errorf("Cursor 账号服务未初始化")
+		}
+		authorization, err := authorizationProvider.Authorization(reqCtx.Request.Context())
+		if err != nil {
+			return err
+		}
+		_, err = ForwardToUpstream(reqCtx, ForwardOptions{
+			PatchHeaders: func(headers http.Header) {
+				headers.Set("Authorization", authorization)
+				headers.Set("x-cursor-checksum", BuildCursorChecksum(authorization))
+			},
+		})
+		return err
 	}
 }
 

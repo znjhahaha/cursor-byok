@@ -26,11 +26,18 @@ const healthPath = "/healthz"
 
 const tabServerBaseURL = "https://tab.leokun.cn"
 
+// cursorControlPlaneHost 是官方控制面（插件、Skills、MCP 注册表）的目标地址。
+// 只有登录了独立 Cursor 账号的控制面请求会被改写到这里，模型请求不受影响。
+const cursorControlPlaneHost = "api2.cursor.sh:443"
+
 type Host struct {
 	store      *serverconfig.Store
 	listenAddr string
 	configs    *serverconfig.Manager
 	healthHTTP *http.Client
+	// controlPlaneAuth 是仅供控制面使用的独立 Cursor 身份；为空或未登录时
+	// 所有控制面路由维持原有本地行为。
+	controlPlaneAuth upstream.AuthorizationProvider
 
 	runMu      sync.RWMutex
 	httpServer *http.Server
@@ -40,7 +47,7 @@ type Host struct {
 	mux http.Handler
 }
 
-func NewHost(store *serverconfig.Store) (*Host, error) {
+func NewHost(store *serverconfig.Store, controlPlaneAuth upstream.AuthorizationProvider) (*Host, error) {
 	if store == nil {
 		return nil, fmt.Errorf("backend config store is required")
 	}
@@ -50,10 +57,11 @@ func NewHost(store *serverconfig.Store) (*Host, error) {
 	}
 	cfg := configs.Current()
 	host := &Host{
-		store:      store,
-		listenAddr: cfg.BackendListenAddr,
-		configs:    configs,
-		healthHTTP: newLoopbackHTTPClient(),
+		store:            store,
+		listenAddr:       cfg.BackendListenAddr,
+		configs:          configs,
+		healthHTTP:       newLoopbackHTTPClient(),
+		controlPlaneAuth: controlPlaneAuth,
 	}
 	if err := host.rebuild(cfg); err != nil {
 		return nil, err
@@ -601,18 +609,30 @@ func (host *Host) rebuildLocked(cfg serverconfig.Config) error {
 				Name: "dashboard_get_teams",
 			})),
 		),
+		// 下面几条控制面路由包了一层「登录才接管」：未登录时执行原有的 mock，
+		// 行为与接入账号功能之前完全一致；登录后才换成真实身份直连官方控制面。
 		server.POST("/aiserver.v1.DashboardService/GetManagedSkills",
 			server.Name("dashboard_get_managed_skills"),
 			server.ConnectUnary(),
-			server.Local(upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
-				Name:          "dashboard_get_managed_skills",
-				StatusCode:    http.StatusOK,
-				MockProtoType: "aiserver.v1.GetManagedSkillsResponse",
-				MockBuilder:   upstream.DashboardManagedSkillsMockBuilder,
-			})),
-			server.Upstream(upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
-				Name: "dashboard_get_managed_skills",
-			})),
+			server.Local(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_get_managed_skills",
+				upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
+					Name:          "dashboard_get_managed_skills",
+					StatusCode:    http.StatusOK,
+					MockProtoType: "aiserver.v1.GetManagedSkillsResponse",
+					MockBuilder:   upstream.DashboardManagedSkillsMockBuilder,
+				}),
+			)),
+			server.Upstream(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_get_managed_skills",
+				upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
+					Name: "dashboard_get_managed_skills",
+				}),
+			)),
 		),
 		server.POST("/aiserver.v1.DashboardService/GetTeamAdminSettingsOrEmptyIfNotInTeam",
 			server.Name("dashboard_get_team_admin_settings_or_empty"),
@@ -643,15 +663,25 @@ func (host *Host) rebuildLocked(cfg serverconfig.Config) error {
 		server.POST("/aiserver.v1.DashboardService/ListMarketplaces",
 			server.Name("dashboard_list_marketplaces"),
 			server.ConnectUnary(),
-			server.Local(upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
-				Name:          "dashboard_list_marketplaces",
-				StatusCode:    http.StatusOK,
-				MockProtoType: "aiserver.v1.ListMarketplacesResponse",
-				MockBuilder:   upstream.EmptyMockBuilder,
-			})),
-			server.Upstream(upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
-				Name: "dashboard_list_marketplaces",
-			})),
+			server.Local(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_list_marketplaces",
+				upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
+					Name:          "dashboard_list_marketplaces",
+					StatusCode:    http.StatusOK,
+					MockProtoType: "aiserver.v1.ListMarketplacesResponse",
+					MockBuilder:   upstream.EmptyMockBuilder,
+				}),
+			)),
+			server.Upstream(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_list_marketplaces",
+				upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
+					Name: "dashboard_list_marketplaces",
+				}),
+			)),
 		),
 		server.POST("/aiserver.v1.DashboardService/GetGlobalCommands",
 			server.Name("dashboard_get_global_commands"),
@@ -669,28 +699,48 @@ func (host *Host) rebuildLocked(cfg serverconfig.Config) error {
 		server.POST("/aiserver.v1.DashboardService/GetEffectiveUserPlugins",
 			server.Name("dashboard_get_effective_user_plugins"),
 			server.ConnectUnary(),
-			server.Local(upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
-				Name:          "dashboard_get_effective_user_plugins",
-				StatusCode:    http.StatusOK,
-				MockProtoType: "aiserver.v1.GetEffectiveUserPluginsResponse",
-				MockBuilder:   upstream.EmptyMockBuilder,
-			})),
-			server.Upstream(upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
-				Name: "dashboard_get_effective_user_plugins",
-			})),
+			server.Local(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_get_effective_user_plugins",
+				upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
+					Name:          "dashboard_get_effective_user_plugins",
+					StatusCode:    http.StatusOK,
+					MockProtoType: "aiserver.v1.GetEffectiveUserPluginsResponse",
+					MockBuilder:   upstream.EmptyMockBuilder,
+				}),
+			)),
+			server.Upstream(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_get_effective_user_plugins",
+				upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
+					Name: "dashboard_get_effective_user_plugins",
+				}),
+			)),
 		),
 		server.POST("/aiserver.v1.DashboardService/RegisterMarketplaceAndPlugins",
 			server.Name("dashboard_register_marketplace_and_plugins"),
 			server.ConnectUnary(),
-			server.Local(upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
-				Name:          "dashboard_register_marketplace_and_plugins",
-				StatusCode:    http.StatusOK,
-				MockProtoType: "aiserver.v1.RegisterMarketplaceAndPluginsResponse",
-				MockBuilder:   upstream.EmptyMockBuilder,
-			})),
-			server.Upstream(upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
-				Name: "dashboard_register_marketplace_and_plugins",
-			})),
+			server.Local(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_register_marketplace_and_plugins",
+				upstream.MockProtoAction(routeDeps, upstream.CompatRouteConfig{
+					Name:          "dashboard_register_marketplace_and_plugins",
+					StatusCode:    http.StatusOK,
+					MockProtoType: "aiserver.v1.RegisterMarketplaceAndPluginsResponse",
+					MockBuilder:   upstream.EmptyMockBuilder,
+				}),
+			)),
+			server.Upstream(cursorControlPlaneAction(
+				host.controlPlaneAuth,
+				routeDeps,
+				"dashboard_register_marketplace_and_plugins",
+				upstream.DirectAction(routeDeps, upstream.CompatRouteConfig{
+					Name: "dashboard_register_marketplace_and_plugins",
+				}),
+			)),
 		),
 		server.POST("/aiserver.v1.DashboardService/GetCliDownloadUrl",
 			server.Name("dashboard_get_cli_download_url"),
@@ -771,6 +821,24 @@ func (host *Host) rebuildLocked(cfg serverconfig.Config) error {
 			})),
 		),
 		// tabServerUpstreamProcedure("/aiserver.v1.DashboardService/GetEffectiveUserPlugins", "dashboard_get_effective_user_plugins", server.ConnectUnary(), routeDeps),
+		// 以下 procedure 本地没有 mock 实现，未登录时仍返回 404，
+		// 登录后才用真实身份直连官方控制面。已在上方单独包装的
+		// ListMarketplaces / GetEffectiveUserPlugins / RegisterMarketplaceAndPlugins 不再重复注册。
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/AddMarketplace", "dashboard_add_marketplace", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/AddMcpServersFromPlugin", "dashboard_add_mcp_servers_from_plugin", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/BatchGetPluginMcpConfig", "dashboard_batch_get_plugin_mcp_config", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/GetAvailableMcpServers", "dashboard_get_available_mcp_servers", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/GetPlugin", "dashboard_get_plugin", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/GetPluginMcpConfig", "dashboard_get_plugin_mcp_config", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/InstallUserPlugin", "dashboard_install_user_plugin", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/ListMarketplacePlugins", "dashboard_list_marketplace_plugins", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/ListUserPluginInstalls", "dashboard_list_user_plugin_installs", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/RefreshMarketplace", "dashboard_refresh_marketplace", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/RemoveMarketplace", "dashboard_remove_marketplace", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/ResolvePluginsByRef", "dashboard_resolve_plugins_by_ref", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/UninstallUserPlugin", "dashboard_uninstall_user_plugin", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.DashboardService/UpdateUserPluginInstall", "dashboard_update_user_plugin_install", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
+		cursorControlPlaneProcedure("/aiserver.v1.MCPRegistryService/GetKnownServers", "mcp_registry_get_known_servers", server.ConnectUnary(), host.controlPlaneAuth, routeDeps),
 		server.Any("/aiserver.v1.DashboardService/*",
 			server.Name("dashboard"),
 			server.HTTP(),
@@ -940,6 +1008,61 @@ func tabServerUpstreamProcedure(pattern string, name string, protocol server.Rou
 		server.Local(action),
 		server.Upstream(action),
 	)
+}
+
+// cursorControlPlaneProcedure 注册一条只在登录独立 Cursor 账号后才生效的控制面路由。
+//
+// 未登录时回落到 notFound：这些 procedure 本地没有等价实现，
+// 保持 404 与「该功能尚未接入」的既有表现一致。
+func cursorControlPlaneProcedure(
+	pattern string,
+	name string,
+	protocol server.RouteOption,
+	authorizationProvider upstream.AuthorizationProvider,
+	deps upstream.Dependencies,
+) server.Option {
+	notFound := func(ctx *server.Context) error {
+		http.NotFound(ctx.Writer, ctx.Request)
+		return nil
+	}
+	return server.POST(pattern,
+		server.Name(name),
+		protocol,
+		server.Local(cursorControlPlaneAction(authorizationProvider, deps, name, notFound)),
+		server.Upstream(cursorControlPlaneAction(
+			authorizationProvider,
+			deps,
+			name,
+			upstream.DirectAction(deps, upstream.CompatRouteConfig{Name: name}),
+		)),
+	)
+}
+
+// cursorControlPlaneAction 把一条既有 handler 包成「登录才接管」的二态。
+//
+// 这是本功能保持纯增量的关键：未登录时原样执行 fallback，
+// 因此已有的 mock 路由在未登录状态下行为完全不变；只有登录后
+// 才改写目标地址并换成真实身份转发。模型路由不使用这个包装器。
+func cursorControlPlaneAction(
+	authorizationProvider upstream.AuthorizationProvider,
+	deps upstream.Dependencies,
+	name string,
+	fallback server.HandlerFunc,
+) server.HandlerFunc {
+	direct := upstream.AuthenticatedDirectAction(deps, upstream.CompatRouteConfig{Name: name}, authorizationProvider)
+	return func(ctx *server.Context) error {
+		if authorizationProvider == nil || !authorizationProvider.SignedIn() {
+			return fallback(ctx)
+		}
+		if ctx == nil || ctx.Request == nil || ctx.Request.URL == nil {
+			return fmt.Errorf("Cursor 控制面请求上下文无效")
+		}
+		targetURL := *ctx.Request.URL
+		targetURL.Scheme = "https"
+		targetURL.Host = cursorControlPlaneHost
+		ctx.UpstreamURL = &targetURL
+		return direct(ctx)
+	}
 }
 
 type serverSystemSettings struct {

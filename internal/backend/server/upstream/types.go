@@ -20,6 +20,13 @@ type SystemSettingService interface {
 	ResolveModelAdapters(context.Context) ([]legacyruntime.ModelAdapterConfig, error)
 }
 
+// AuthorizationProvider 提供仅用于官方控制面（插件、Skills、MCP 注册表）的独立
+// Cursor 身份。模型转发不使用它，所以登录与否都不会改变模型请求的鉴权来源。
+type AuthorizationProvider interface {
+	Authorization(context.Context) (string, error)
+	SignedIn() bool
+}
+
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }

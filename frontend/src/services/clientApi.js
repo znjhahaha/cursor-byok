@@ -3,8 +3,10 @@ import {
   GetModelAdapterTestResults,
   GetDiagnosticLogs,
   GetDetailedLoggingState,
+  DisconnectCursorAccount,
   ExportDiagnosticBundle,
   FetchModelAdapterModels,
+  GetCursorAccountStatus,
   GetProviderModelsCache,
   GetState,
   ListProviderModels,
@@ -12,6 +14,7 @@ import {
   RefreshProviderModels,
   SaveUserConfig,
   SetDetailedLoggingEnabled,
+  StartCursorAccountLogin,
   StartProxy,
   StopProxy,
   TestModelAdapter,
@@ -74,6 +77,18 @@ export function loadUserConfig() {
 
 export function saveUserConfig(payload) {
   return withApiLogging("SaveUserConfig", payload, () => SaveUserConfig(payload));
+}
+
+export function getCursorAccountStatus() {
+  return withApiLogging("GetCursorAccountStatus", undefined, () => GetCursorAccountStatus());
+}
+
+export function startCursorAccountLogin() {
+  return withApiLogging("StartCursorAccountLogin", undefined, () => StartCursorAccountLogin());
+}
+
+export function disconnectCursorAccount() {
+  return withApiLogging("DisconnectCursorAccount", undefined, () => DisconnectCursorAccount());
 }
 
 export function getProxyState() {
