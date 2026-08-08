@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import {
   cancelModelAdapterTest as cancelModelAdapterTestAPI,
   checkForUpdates,
+  fetchModelAdapterModels,
   getAppVersion,
   getHomeMetricsSummary,
   getDetailedLoggingState,
@@ -2067,6 +2068,39 @@ async function runProviderModelsFetch(normalized, key, force) {
       error: message,
       result: normalizeProviderModelsResult({ providerID: normalized.id, error: message }),
     };
+  }
+}
+
+// fetchModelAdapterCandidates 为模型编辑器取一次模型下拉候选。
+//
+// 与 fetchProviderModels 的差别只在入口形态：那边的输入是已落盘的中转站，
+// 这边是编辑器里还没保存的草稿。路径探测、鉴权与缓存都在 Go 侧复用同一条链路，
+// 所以这里只做「草稿 → 请求」的折算与结果归一，不写第二套探测规则。
+export async function fetchModelAdapterCandidates(draft) {
+  const source = draft && typeof draft === "object" ? draft : {};
+  try {
+    const result = await fetchModelAdapterModels({
+      type: asString(source.type),
+      providerID: asString(source.providerID),
+      baseURL: asString(source.baseURL),
+      apiKey: asString(source.apiKey),
+      clientProfile: asString(source.clientProfile),
+      customHeadersEnabled: asBoolean(source.customHeadersEnabled),
+      customHeadersJSON: asString(source.customHeadersJSON),
+    });
+    const seen = new Set();
+    const models = asArray(result?.models)
+      .map((item) => asString(item?.id))
+      .filter((modelID) => {
+        if (!modelID || seen.has(modelID)) {
+          return false;
+        }
+        seen.add(modelID);
+        return true;
+      });
+    return { ok: true, error: "", models, fromCache: asBoolean(result?.fromCache) };
+  } catch (error) {
+    return { ok: false, error: toUserError(error), models: [] };
   }
 }
 

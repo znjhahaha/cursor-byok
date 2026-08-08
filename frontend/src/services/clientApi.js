@@ -4,6 +4,7 @@ import {
   GetDiagnosticLogs,
   GetDetailedLoggingState,
   ExportDiagnosticBundle,
+  FetchModelAdapterModels,
   GetProviderModelsCache,
   GetState,
   ListProviderModels,
@@ -214,6 +215,10 @@ export function refreshProviderModels(provider) {
 
 export function getProviderModelsCache() {
   return withApiLogging("GetProviderModelsCache", undefined, () => GetProviderModelsCache());
+}
+
+export function fetchModelAdapterModels(payload) {
+  return withApiLogging("FetchModelAdapterModels", payload, () => FetchModelAdapterModels(payload));
 }
 
 export function getUsageSeries(days) {

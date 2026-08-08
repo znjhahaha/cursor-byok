@@ -1,5 +1,6 @@
 <script setup>
 import Button from "@/components/ui/Button.vue";
+import Combobox from "@/components/ui/Combobox.vue";
 import Input from "@/components/ui/Input.vue";
 import ModelAdapterTestCard from "@/components/ModelAdapterTestCard.vue";
 import Select from "@/components/ui/Select.vue";
@@ -18,6 +19,7 @@ import {
   createEmptyModelAdapter,
   CUSTOM_HEADERS_DEFAULT_JSON,
   EXTRA_PARAMS_DEFAULT_JSON,
+  fetchModelAdapterCandidates,
   getModelAdapterTestResult,
   getModelAdapterTestResultByID,
   inferModelProtocol,
@@ -68,6 +70,11 @@ const errorMessage = ref("");
 const loading = ref(true);
 const lastTestAdapterID = ref("");
 const localTestFailure = ref("");
+// 模型候选是「按需拉一次」的临时数据，不进 appState：
+// 它只服务当前这个编辑器窗口，且换连接信息后立即作废。
+const modelOptions = ref([]);
+const modelOptionsLoading = ref(false);
+const modelOptionsError = ref("");
 // 新建模型时，协议与显示名跟着模型标识自动推断；用户一旦手动改过对应字段，
 // 就停止自动跟随——否则用户的选择会被下一次输入静默覆盖。
 const protocolTouched = ref(false);
@@ -316,6 +323,61 @@ watch(
   },
 );
 
+// 绑定中转站时连接信息由站点下发，表单里的 baseURL / apiKey 是只读展示，
+// 所以这两种情形的「可拉取」判定条件不同。
+const canFetchModels = computed(() => {
+  if (inheritsConnection.value) {
+    return true;
+  }
+  return Boolean(String(baseURLInput.value || "").trim() && String(draft.apiKey || "").trim());
+});
+const fetchModelsHint = computed(() => {
+  if (modelOptionsError.value) {
+    return modelOptionsError.value;
+  }
+  if (!canFetchModels.value) {
+    return "填写接口地址与访问密钥后可获取模型列表。";
+  }
+  if (modelOptions.value.length) {
+    return `已获取 ${modelOptions.value.length} 个模型，可直接选择或继续手动输入。`;
+  }
+  return "";
+});
+
+async function handleFetchModels() {
+  if (modelOptionsLoading.value || !canFetchModels.value) {
+    return;
+  }
+  modelOptionsLoading.value = true;
+  modelOptionsError.value = "";
+  try {
+    const result = await fetchModelAdapterCandidates({
+      ...draft,
+      baseURL: baseURLInput.value,
+    });
+    modelOptions.value = result.models;
+    if (!result.ok) {
+      modelOptionsError.value = result.error;
+      return;
+    }
+    if (result.models.length === 0) {
+      modelOptionsError.value = "该接口没有返回可用模型";
+    }
+  } finally {
+    modelOptionsLoading.value = false;
+  }
+}
+
+// 连接信息一变，已拉到的候选就不再属于当前配置，必须清掉。
+// 留着会让用户从旧站点的列表里选出一个新站点并不存在的模型。
+watch(
+  () => [draft.type, draft.providerID, baseURLInput.value, draft.apiKey].join("\u0000"),
+  () => {
+    modelOptions.value = [];
+    modelOptionsError.value = "";
+  },
+);
+
 async function handleTest() {
   localTestFailure.value = "";
   try {
@@ -444,18 +506,40 @@ onMounted(async () => {
             />
           </label>
 
-          <label class="flex flex-col gap-1">
+          <!-- 这一格用 div 而不是 label：label 会把「获取模型」的点击语义
+               转发给内部输入框，可访问性由 Combobox 自己的 aria-label 承担。 -->
+          <div class="flex flex-col gap-1">
             <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
               <Tooltip :content="fieldTips.modelID" />
               <span>模型标识</span>
             </span>
-            <input
+            <Combobox
               v-model="draft.modelID"
-              type="text"
+              :options="modelOptions"
+              :loading="modelOptionsLoading"
               placeholder="例如：gpt-4.1"
-              class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
-            />
-          </label>
+              empty-text="没有匹配的模型"
+              aria-label="模型标识"
+            >
+              <template #append>
+                <Button
+                  variant="default"
+                  :disabled="!canFetchModels"
+                  :loading="modelOptionsLoading"
+                  @click="handleFetchModels"
+                >
+                  {{ modelOptionsLoading ? "获取中..." : "获取模型" }}
+                </Button>
+              </template>
+            </Combobox>
+            <span
+              v-if="fetchModelsHint"
+              class="text-xs leading-5"
+              :class="modelOptionsError ? 'text-[#d6ad63]' : 'text-[#8f8f8f]'"
+            >
+              {{ fetchModelsHint }}
+            </span>
+          </div>
 
           <label class="flex flex-col gap-1">
             <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
