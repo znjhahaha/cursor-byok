@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,6 +37,8 @@ const (
 // ModelAdapterConfig 定义了当前模块中的 ModelAdapterConfig 类型。
 type ModelAdapterConfig struct {
 	ID string `json:"id,omitempty"`
+	// Sort 表示模型渠道在列表中的展示顺序，从 1 开始，0 表示尚未设置。
+	Sort int `json:"sort"`
 	// ProviderID 表示适配器所属中转站的持久化标识，为空表示适配器自带连接信息。
 	ProviderID string `json:"providerID,omitempty"`
 	// ProviderName 表示所属中转站的显示名，仅用于日志与统计展示。
@@ -111,6 +114,7 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 			return nil, err
 		}
 		next := ModelAdapterConfig{
+			Sort:                 item.Sort,
 			ProviderID:           strings.TrimSpace(item.ProviderID),
 			ProviderName:         strings.TrimSpace(item.ProviderName),
 			DisplayName:          strings.TrimSpace(item.DisplayName),
@@ -175,7 +179,30 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 		seenChannelIDs[next.ID] = struct{}{}
 		normalized = append(normalized, next)
 	}
+	normalizeModelAdapterSorts(normalized)
 	return normalized, nil
+}
+
+// normalizeModelAdapterSorts 把显式排序值排到前面，未设置排序的保持原有相对顺序垫后，
+// 随后统一改写为从 1 开始的连续序号，避免拖拽后出现空洞或重复。
+func normalizeModelAdapterSorts(adapters []ModelAdapterConfig) {
+	sort.SliceStable(adapters, func(leftIndex, rightIndex int) bool {
+		left := adapters[leftIndex].Sort
+		right := adapters[rightIndex].Sort
+		switch {
+		case left <= 0 && right <= 0:
+			return false
+		case left <= 0:
+			return false
+		case right <= 0:
+			return true
+		default:
+			return left < right
+		}
+	})
+	for index := range adapters {
+		adapters[index].Sort = index + 1
+	}
 }
 
 func validateJSONMap(value string, fieldName string) error {

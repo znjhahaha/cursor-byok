@@ -155,6 +155,7 @@ func (manager *Manager) LegacyRuntimeSnapshot(_ context.Context) (legacyruntime.
 		}
 		adapters = append(adapters, legacyruntime.ModelAdapterConfig{
 			ID:                        item.ID,
+			Sort:                      item.Sort,
 			ProviderID:                item.ProviderID,
 			ProviderName:              providerName,
 			DisplayName:               item.DisplayName,
