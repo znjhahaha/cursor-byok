@@ -1317,7 +1317,17 @@ func isAnthropicCacheableBlock(block map[string]any) bool {
 	case contentPartTypeText:
 		return strings.TrimSpace(anthropicStringField(block, "text")) != ""
 	case "tool_result":
-		return strings.TrimSpace(anthropicStringField(block, "content")) != ""
+		// content 既可能是纯文本，也可能是携带图片的块数组。
+		switch content := block["content"].(type) {
+		case string:
+			return strings.TrimSpace(content) != ""
+		case []map[string]any:
+			return len(content) > 0
+		case []any:
+			return len(content) > 0
+		default:
+			return false
+		}
 	case "tool_use":
 		return strings.TrimSpace(anthropicStringField(block, "id")) != "" && strings.TrimSpace(anthropicStringField(block, "name")) != ""
 	default:
@@ -1359,10 +1369,20 @@ func normalizeAnthropicProviderMessages(input []Message, thinkingEnabled bool, r
 			if toolUseID == "" {
 				return nil, nil, fmt.Errorf("anthropic tool message requires tool_call_id")
 			}
+			// tool_result.content 支持块数组，图片走这条路才能被模型看见；
+			// 没图片时保持纯字符串，避免给不认数组形态的中转站添麻烦。
+			var content any = message.Content
+			if hasImageContentParts(message.ContentParts) {
+				contentBlocks, err := anthropicContentBlocks(message)
+				if err != nil {
+					return nil, nil, err
+				}
+				content = contentBlocks
+			}
 			pendingToolResults = append(pendingToolResults, map[string]any{
 				"type":        "tool_result",
 				"tool_use_id": toolUseID,
-				"content":     message.Content,
+				"content":     content,
 			})
 		case "user", "assistant":
 			flushToolResults()

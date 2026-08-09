@@ -4,6 +4,7 @@ package execbridge
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -2285,6 +2286,27 @@ func buildReadMcpResourceCompletedToolCall(argsJSON []byte, result *agentv1.Read
 	}
 }
 
+// isSupportedReadImage 判断 Read 返回的二进制是否为模型能直接消费的图片格式。
+func isSupportedReadImage(data []byte) bool {
+	return SupportedReadImageMIMEType(data) != ""
+}
+
+// SupportedReadImageMIMEType 返回受支持的图片 MIME，不受支持时返回空串。
+// 这四种是 chat/completions、responses、anthropic 三家图片块的交集。
+// 导出是为了让 forwarder 的投影阶段复用同一套判定，避免两处标准漂移。
+func SupportedReadImageMIMEType(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	mimeType := strings.ToLower(strings.TrimSpace(http.DetectContentType(data)))
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+		return mimeType
+	default:
+		return ""
+	}
+}
+
 // convertReadResultToReadToolResult 把 `ReadResult` 映射为 `ReadToolResult`。
 func convertReadResultToReadToolResult(result *agentv1.ReadResult) *agentv1.ReadToolResult {
 	if result == nil {
@@ -2318,7 +2340,12 @@ func convertReadResultToReadToolResult(result *agentv1.ReadResult) *agentv1.Read
 		if content != "" {
 			toolSuccess.Output = &agentv1.ReadToolSuccess_Content{Content: content}
 		} else if len(data) > 0 {
-			if len(data) > readReplayBinaryLimit {
+			if isSupportedReadImage(data) {
+				// 图片必须原样留在 Data 里：投影阶段会把它变成标准图片块交给模型。
+				// 走 readReplayBinaryLimit 截断只会得到一段残缺 base64，模型既看不懂
+				// 又白白吃掉上下文。
+				toolSuccess.Output = &agentv1.ReadToolSuccess_Data{Data: append([]byte(nil), data...)}
+			} else if len(data) > readReplayBinaryLimit {
 				toolSuccess.ExceededLimit = true
 				toolSuccess.Output = &agentv1.ReadToolSuccess_Content{
 					Content: replayTruncationNotice("Read binary data", readReplayBinaryLimit, 0, len(data)),

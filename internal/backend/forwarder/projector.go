@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"cursor/gen/agentv1"
+	execbridge "cursor/internal/backend/agent/bridge/exec"
 	modeladapter "cursor/internal/backend/agent/model"
 	promptengine "cursor/internal/backend/agent/prompt"
 )
@@ -215,6 +216,7 @@ func (projector *HistoryProjector) ProjectPromptReplay(conversation *Conversatio
 					if ok {
 						replayMessage.Name = toolName
 						replayMessage.Content = limitProjectedToolResultReplay(toolName, replayMessage.Content, payload.ResultText, true, historicalToolResult)
+						attachReadImageContentParts(&replayMessage, toolCall)
 						messages = append(messages, toModelMessage(replayMessage))
 						continue
 					}
@@ -249,12 +251,13 @@ func (projector *HistoryProjector) ProjectPromptReplay(conversation *Conversatio
 					replayMessages[index].OpenAIResponsesReasoningSummary = append(json.RawMessage(nil), payload.ReasoningSummary...)
 					applyPromptProviderMetadataToFirstToolCall(&replayMessages[index], payload.ProviderItemID, payload.ProviderCallID, payload.ProviderStatus)
 				}
-				for _, replay := range replayMessages {
-					if strings.TrimSpace(replay.Role) == "tool" {
-						toolName := firstNonEmpty(strings.TrimSpace(replay.Name), strings.TrimSpace(payload.ToolName))
-						replay.Content = limitProjectedToolResultReplay(toolName, replay.Content, payload.ResultText, true, historicalToolResult)
+				for index := range replayMessages {
+					if strings.TrimSpace(replayMessages[index].Role) == "tool" {
+						toolName := firstNonEmpty(strings.TrimSpace(replayMessages[index].Name), strings.TrimSpace(payload.ToolName))
+						replayMessages[index].Content = limitProjectedToolResultReplay(toolName, replayMessages[index].Content, payload.ResultText, true, historicalToolResult)
+						attachReadImageContentParts(&replayMessages[index], toolCall)
 					}
-					messages = append(messages, toModelMessage(replay))
+					messages = append(messages, toModelMessage(replayMessages[index]))
 				}
 				continue
 			}
@@ -303,6 +306,54 @@ func (projector *HistoryProjector) ProjectPromptReplay(conversation *Conversatio
 		}
 	}
 	return normalizeReplayMessageSequence(messages), nil
+}
+
+// attachReadImageContentParts 把 Read 工具读到的图片从「一坨 base64 文本」换成结构化图片块。
+//
+// 不换的话，图片二进制会被当普通文本走截断逻辑，模型拿到的是一段残缺 base64：
+// 既读不出内容，又白白撑爆上下文，还容易据此编造。改成 ContentParts 之后，
+// 三家 provider 各自的编码器会把它翻译成自己的标准图片块
+// （chat/completions 的 image_url、responses 的 input_image、anthropic 的 image/source）。
+//
+// Content 同时被替换为一句纯文本摘要：不支持图片的下游路径（例如统计与压缩摘要）
+// 仍然读得到有意义的信息，而不是二进制垃圾。
+func attachReadImageContentParts(message *promptengine.Message, toolCall *agentv1.ToolCall) {
+	if message == nil || toolCall == nil || strings.TrimSpace(message.Role) != "tool" {
+		return
+	}
+	readToolCall := toolCall.GetReadToolCall()
+	if readToolCall == nil {
+		return
+	}
+	success := readToolCall.GetResult().GetSuccess()
+	if success == nil {
+		return
+	}
+	data := success.GetData()
+	mimeType := execbridge.SupportedReadImageMIMEType(data)
+	if mimeType == "" {
+		return
+	}
+	path := firstNonEmpty(strings.TrimSpace(success.GetPath()), strings.TrimSpace(readToolCall.GetArgs().GetPath()))
+	summary := fmt.Sprintf("read image path=%q mime=%s bytes=%d", path, mimeType, len(data))
+	if fileSize := success.GetFileSize(); fileSize > 0 && uint64(fileSize) != uint64(len(data)) {
+		summary += fmt.Sprintf(" file_size=%d", fileSize)
+	}
+	if success.GetExceededLimit() {
+		summary += " truncated=true"
+	}
+	message.Content = summary
+	message.ContentParts = []promptengine.ContentPart{
+		{Type: "text", Text: summary},
+		{
+			Type: "image",
+			Image: &promptengine.ImageContent{
+				MIMEType: mimeType,
+				Path:     path,
+				Data:     append([]byte(nil), data...),
+			},
+		},
+	}
 }
 
 func compactedPromptProjectionEntries(entries []HistoryEntry) []HistoryEntry {

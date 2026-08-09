@@ -1980,10 +1980,20 @@ func normalizeOpenAIResponsesInput(messages []Message) (string, []map[string]any
 		}
 		if role == "tool" && strings.TrimSpace(message.ToolCallID) != "" {
 			callID := openAIResponsesToolMessageCallID(message, responsesCallIDs)
+			// 带图片时 output 用 input_text + input_image 的块数组，
+			// 否则保持纯字符串，不给只认字符串的端点添麻烦。
+			var output any = openAIResponsesMessageText(message)
+			if hasImageContentParts(message.ContentParts) {
+				content, err := openAIResponsesMessageContent(message, false)
+				if err != nil {
+					return "", nil, err
+				}
+				output = content
+			}
 			items = append(items, map[string]any{
 				"type":    "function_call_output",
 				"call_id": callID,
-				"output":  openAIResponsesMessageText(message),
+				"output":  output,
 			})
 			activeAssistantReasoningKey = ""
 			continue
