@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -19,16 +18,22 @@ import (
 const (
 	maxConcurrentWarmups       = 2
 	warmupMaxTransientFailures = 5
-	warmupBaseDelay            = 500 * time.Millisecond
-	warmupMaxDelay             = 5 * time.Second
-	warmupProgressInterval     = 250 * time.Millisecond
+	// warmupProgressInterval 只控制等待期内「已等待 / 下次尝试」这两个读数的推送节奏，
+	// 与真正的重试节奏（站点配置的固定间隔）无关，调它不会改变对上游的请求频率。
+	//
+	// 取 500ms 与默认重试间隔对齐：更快只会让秒下的数字空转刷新，
+	// 每一跳都要走一次全量快照事件，前端反而被迫在同一秒内重排多次。
+	warmupProgressInterval = 500 * time.Millisecond
 )
+
+// defaultWarmupRetryDelay 是配置缺省时的重试间隔。
+// 数值真源在 serverconfig，避免这里和配置校验各自持有一份会漂移的默认值。
+const defaultWarmupRetryDelay = time.Duration(serverconfig.DefaultWarmupIntervalMS) * time.Millisecond
 
 var (
 	errWarmupBusy       = errors.New("正在排队检测的模型过多，请等待其中一个结束")
 	warmupStatusPattern = regexp.MustCompile(`status=(\d{3})`)
 	warmupRetryPattern  = regexp.MustCompile(`retry_after=([^\s]+)`)
-	warmupJitter        = func() float64 { return 0.9 + rand.Float64()*0.2 }
 )
 
 var queueRejectionMarkers = []string{
@@ -95,16 +100,33 @@ func isTransientWarmupError(err error) bool {
 	return false
 }
 
-func (s *ProxyService) shouldWarmupModelAdapter(adapter serverconfig.ModelAdapterConfig) bool {
+// warmupPlan 是一次排队检测的调度参数，解析自模型所属的中转站配置。
+type warmupPlan struct {
+	retryDelay time.Duration
+}
+
+// resolveWarmupPlan 解析该模型的排队调度参数。
+// 第二个返回值为 false 表示所属站点没有开启排队检测，调用方应走普通单次测速。
+//
+// 「是否排队」和「按什么节奏排队」在同一次配置加载里取出：拆成两次查询，
+// 就可能出现开关读到新配置、间隔读到旧配置的错位状态。
+func (s *ProxyService) resolveWarmupPlan(adapter serverconfig.ModelAdapterConfig) (warmupPlan, bool) {
 	if s == nil || strings.TrimSpace(adapter.ProviderID) == "" {
-		return false
+		return warmupPlan{}, false
 	}
 	cfg, err := s.LoadUserConfig()
 	if err != nil {
-		return false
+		return warmupPlan{}, false
 	}
 	provider, ok := serverconfig.FindProvider(cfg.Providers, adapter.ProviderID)
-	return ok && provider.WarmupEnabled
+	if !ok || !provider.WarmupEnabled {
+		return warmupPlan{}, false
+	}
+	retryDelay := time.Duration(provider.WarmupIntervalMS) * time.Millisecond
+	if retryDelay <= 0 {
+		retryDelay = defaultWarmupRetryDelay
+	}
+	return warmupPlan{retryDelay: retryDelay}, true
 }
 
 func (s *ProxyService) beginWarmup(adapterID string) (context.Context, context.CancelFunc, bool) {
@@ -185,6 +207,7 @@ func (s *ProxyService) warmupModelAdapter(
 	parent context.Context,
 	adapter serverconfig.ModelAdapterConfig,
 	requestHash string,
+	plan warmupPlan,
 ) (ModelAdapterTestResult, error) {
 	warmupCtx, cancel, ok := s.beginWarmup(adapter.ID)
 	if !ok {
@@ -246,7 +269,7 @@ func (s *ProxyService) warmupModelAdapter(
 			}
 		}
 
-		delay := warmupRetryDelay(attempt, err)
+		delay := warmupRetryDelay(err, plan.retryDelay)
 		waiting := lastResult
 		waiting.Status = string(ModelAdapterTestStatusRunning)
 		waiting.Availability = "unavailable"
@@ -338,19 +361,21 @@ func (s *ProxyService) waitWarmupRetry(ctx context.Context, waiting ModelAdapter
 	}
 }
 
-func warmupRetryDelay(attempt int, err error) time.Duration {
-	delay := warmupBaseDelay
-	for index := 1; index < attempt && delay < warmupMaxDelay; index++ {
-		delay *= 2
-		if delay > warmupMaxDelay {
-			delay = warmupMaxDelay
-		}
+// warmupRetryDelay 返回下一次重试前的等待时间：固定间隔，不做指数退避。
+//
+// 排队检测面对的是「上游满了，等它腾出位置」，跟服务故障不是一回事。
+// 退避的意义在于别把已经不行的服务压垮；而排队时每多等一轮，
+// 只是把刚空出来的位置让给别的客户端。用户配 0.5s 就该每 0.5s 问一次。
+//
+// Retry-After 仍然优先：那是上游明确给出的指令，无视它只会白白撞墙。
+func warmupRetryDelay(err error, retryDelay time.Duration) time.Duration {
+	if retryDelay <= 0 {
+		retryDelay = defaultWarmupRetryDelay
 	}
-	delay = time.Duration(float64(delay) * warmupJitter())
-	if retryAfter := warmupRetryAfter(err); retryAfter > delay {
-		delay = retryAfter
+	if retryAfter := warmupRetryAfter(err); retryAfter > retryDelay {
+		return retryAfter
 	}
-	return delay
+	return retryDelay
 }
 
 func warmupRetryAfter(err error) time.Duration {

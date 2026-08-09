@@ -289,7 +289,10 @@ export function formatModelAdapterTestSummary(source) {
   if (status === "running") {
     if (asBoolean(result.warmupWaiting)) {
       const attempt = Math.max(0, Math.round(asNumber(result.warmupAttempt)));
-      return `排队中${attempt > 0 ? `（第 ${attempt} 次）` : ""} | 已等待 ${formatDuration(result.warmupElapsedMS)} | 下次 ${formatDuration(result.warmupNextRetryMS)}`;
+      // 时长不进这句摘要：它每 500ms 重写一次、位数还会在 3 位和 5 位之间跳，
+      // 一旦拼进整行文案就会带着这一行的宽度一起抖。
+      // 已等待 / 下次尝试改由 ModelAdapterTestCard 的定宽格子单独承载。
+      return `排队中${attempt > 0 ? `（第 ${attempt} 次）` : ""}…`;
     }
     return "测试中...";
   }
@@ -543,7 +546,7 @@ export function createEmptyProvider() {
     pinned: false,
     warmupEnabled: false,
     warmupMaxMinutes: 0,
-    warmupIntervalSeconds: 0,
+    warmupIntervalMS: 0,
     homeURL: "",
   };
 }
@@ -575,7 +578,8 @@ export function normalizeProvider(source) {
     // 漏掉任何一个都会让用户的设置在下一次保存时被静默剥掉。
     warmupEnabled: asBoolean(raw.warmupEnabled ?? raw.warmup_enabled),
     warmupMaxMinutes: asNumber(raw.warmupMaxMinutes ?? raw.warmup_max_minutes, 0),
-    warmupIntervalSeconds: asNumber(raw.warmupIntervalSeconds ?? raw.warmup_interval_seconds, 0),
+    // 0 表示「未设置」，由后端回填默认起始间隔，不要在这里替它做决定。
+    warmupIntervalMS: asNumber(raw.warmupIntervalMS ?? raw.warmup_interval_ms, 0),
     homeURL: asString(raw.homeURL ?? raw.home_url),
   };
 }

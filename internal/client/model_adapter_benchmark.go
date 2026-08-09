@@ -170,8 +170,8 @@ func (s *ProxyService) TestModelAdapter(adapter serverconfig.ModelAdapterConfig)
 	// 站点开了排队预热就走长循环，否则保持原来的单次探测。
 	// 分流放在这里而不是 runModelAdapterTest 内部：后者是「一次探测」这个语义单元，
 	// 预热循环要复用它。
-	if s.shouldWarmupModelAdapter(normalized) {
-		result, warmupErr := s.warmupModelAdapter(context.Background(), normalized, requestHash)
+	if plan, ok := s.resolveWarmupPlan(normalized); ok {
+		result, warmupErr := s.warmupModelAdapter(context.Background(), normalized, requestHash, plan)
 		s.storeAndEmitModelAdapterTestResult(result)
 		return result, warmupErr
 	}

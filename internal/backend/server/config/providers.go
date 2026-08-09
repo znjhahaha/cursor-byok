@@ -42,20 +42,27 @@ type ProviderConfig struct {
 	// 通用错误格式（new_api_error / get_channel_failed），同一份报文可能来自任意一家
 	// 基于该面板搭建的站点，域名与厂商名都不构成可靠特征。
 	WarmupEnabled bool `json:"warmupEnabled,omitempty" yaml:"warmupEnabled,omitempty"`
-	// WarmupMaxMinutes 与 WarmupIntervalSeconds 仅为旧配置兼容字段。新版手动排队检测
-	// 使用可取消的指数退避，不再读取这两个预算值。
-	WarmupMaxMinutes      int `json:"warmupMaxMinutes,omitempty" yaml:"warmupMaxMinutes,omitempty"`
-	WarmupIntervalSeconds int `json:"warmupIntervalSeconds,omitempty" yaml:"warmupIntervalSeconds,omitempty"`
+	// WarmupIntervalMS 是排队重试的固定间隔（毫秒）。每次被拒后都等这么久再试，
+	// 不做指数退避；上游给出 Retry-After 且更长时以它为准。
+	// 0 表示采用 DefaultWarmupIntervalMS。
+	//
+	// 用毫秒而不是秒：0.5 秒是这里最有用的取值，整秒粒度连默认值都表达不了。
+	WarmupIntervalMS int `json:"warmupIntervalMS,omitempty" yaml:"warmupIntervalMS,omitempty"`
+	// WarmupMaxMinutes 仅为旧配置兼容字段。新版手动排队检测可以一直等到用户取消，
+	// 不再读取这个预算值。
+	WarmupMaxMinutes int `json:"warmupMaxMinutes,omitempty" yaml:"warmupMaxMinutes,omitempty"`
 }
 
 // 预热预算的默认值与钳制区间。
 const (
-	DefaultWarmupMaxMinutes      = 10
-	DefaultWarmupIntervalSeconds = 15
-	minWarmupMaxMinutes          = 1
-	maxWarmupMaxMinutes          = 60
-	minWarmupIntervalSeconds     = 5
-	maxWarmupIntervalSeconds     = 300
+	DefaultWarmupMaxMinutes = 10
+	minWarmupMaxMinutes     = 1
+	maxWarmupMaxMinutes     = 60
+	// DefaultWarmupIntervalMS 同时也是下限：再短就不是「排队等待」而是对上游压测，
+	// 排队场景下上游本来就在拒绝我们，加密探测只会让情况更糟。
+	DefaultWarmupIntervalMS = 500
+	MinWarmupIntervalMS     = 500
+	MaxWarmupIntervalMS     = 30000
 )
 
 const providerIDHexLength = 12
@@ -123,10 +130,10 @@ func NormalizeProviderConfig(item ProviderConfig) (ProviderConfig, error) {
 		WarmupEnabled: item.WarmupEnabled,
 	}
 	if next.WarmupEnabled {
+		next.WarmupIntervalMS = clampWarmupBudget(
+			item.WarmupIntervalMS, DefaultWarmupIntervalMS, MinWarmupIntervalMS, MaxWarmupIntervalMS)
 		next.WarmupMaxMinutes = clampWarmupBudget(
 			item.WarmupMaxMinutes, DefaultWarmupMaxMinutes, minWarmupMaxMinutes, maxWarmupMaxMinutes)
-		next.WarmupIntervalSeconds = clampWarmupBudget(
-			item.WarmupIntervalSeconds, DefaultWarmupIntervalSeconds, minWarmupIntervalSeconds, maxWarmupIntervalSeconds)
 	}
 	if next.Name == "" {
 		return ProviderConfig{}, errors.New("中转站名称不能为空")

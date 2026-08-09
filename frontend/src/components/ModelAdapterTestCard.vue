@@ -44,7 +44,6 @@ const warmupWaiting = computed(
   () => normalizedStatus.value === "running" && Boolean(props.result?.warmupWaiting),
 );
 
-const warmupAttempt = computed(() => Math.max(0, Math.round(Number(props.result?.warmupAttempt) || 0)));
 const warmupElapsed = computed(() => formatDuration(props.result?.warmupElapsedMS));
 const warmupNextRetry = computed(() => formatDuration(props.result?.warmupNextRetryMS));
 
@@ -144,11 +143,13 @@ const summaryClass = computed(() => {
           {{ summaryText }}
         </div>
       </div>
+      <!-- 次数与时长都已由下方 summary 行和定宽格子承载，
+           徽章只做状态标识、保持恒定宽度，避免它随重试次数增位去挤压左侧标题。 -->
       <span
         v-if="warmupWaiting"
         class="shrink-0 rounded-[999px] border border-[#8a6d1a] px-2 py-1 text-xs text-[#f6d77a]"
       >
-        排队预热{{ warmupAttempt > 0 ? ` · 第 ${warmupAttempt} 次` : "" }}
+        排队预热
       </span>
       <span
         v-else-if="stale"
@@ -158,12 +159,26 @@ const summaryClass = computed(() => {
       </span>
     </div>
 
-    <div v-if="warmupWaiting" class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#d6b65f]">
-      <span>已等待 {{ warmupElapsed }} · 下次尝试 {{ warmupNextRetry }}</span>
+    <!-- 这两个读数每 500ms 重写一次，位数还会在 "999 ms" 与 "123.4 s" 之间变。
+         原先它们和取消按钮同处一个 flex-wrap 行：文本一变长就把按钮挤到第二行，
+         下一跳变短又收回来，表现为卡片宽高反复横跳。
+         改成定宽两列独立承载，数字再长也只在各自格子内变化，外层尺寸恒定；
+         tabular-nums 进一步锁掉等宽数字之间的字形宽度差。 -->
+    <div v-if="warmupWaiting" class="mt-2 flex flex-col gap-2">
+      <div class="grid grid-cols-2 gap-2">
+        <div class="min-w-0 rounded-[6px] bg-[#241d0c] px-2.5 py-1.5">
+          <div class="text-[10px] uppercase tracking-[0.08em] text-[#9a8340]">已等待</div>
+          <div class="mt-0.5 truncate text-xs tabular-nums text-[#f6d77a]">{{ warmupElapsed }}</div>
+        </div>
+        <div class="min-w-0 rounded-[6px] bg-[#241d0c] px-2.5 py-1.5">
+          <div class="text-[10px] uppercase tracking-[0.08em] text-[#9a8340]">下次尝试</div>
+          <div class="mt-0.5 truncate text-xs tabular-nums text-[#f6d77a]">{{ warmupNextRetry }}</div>
+        </div>
+      </div>
       <button
         v-if="result?.warmupCancelable"
         type="button"
-        class="rounded-[6px] border border-[#8a6d1a] px-2 py-1 text-[#f6d77a] transition-colors hover:bg-[#3a2d12]"
+        class="w-full rounded-[6px] border border-[#8a6d1a] px-2 py-1 text-xs text-[#f6d77a] transition-colors hover:bg-[#3a2d12]"
         @click="emit('cancel')"
       >
         取消排队
@@ -180,11 +195,11 @@ const summaryClass = computed(() => {
     >
       <div class="rounded-[8px] bg-[#1c1c1c] px-3 py-2">
         <div class="text-[11px] uppercase tracking-[0.08em] text-[#666]">总耗时</div>
-        <div class="mt-1 text-sm text-[#d4d4d4]">{{ formatDuration(result?.totalDurationMS) }}</div>
+        <div class="mt-1 text-sm tabular-nums text-[#d4d4d4]">{{ formatDuration(result?.totalDurationMS) }}</div>
       </div>
       <div class="rounded-[8px] bg-[#1c1c1c] px-3 py-2">
         <div class="text-[11px] uppercase tracking-[0.08em] text-[#666]">输出 Token</div>
-        <div class="mt-1 text-sm text-[#d4d4d4]">{{ result?.outputTokens ?? 0 }}</div>
+        <div class="mt-1 text-sm tabular-nums text-[#d4d4d4]">{{ result?.outputTokens ?? 0 }}</div>
       </div>
     </div>
 

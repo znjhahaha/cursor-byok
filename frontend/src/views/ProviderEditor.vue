@@ -45,10 +45,36 @@ const fieldTips = {
   inferencePath: "最近一次连接探测命中的推理端点，仅用于诊断；真实请求路径由模型协议在请求时派生。",
   nameTemplate: "该站点下模型的显示名模板，支持 {provider} 与 {model} 两个占位符。留空按「站点名-模型ID」生成。",
   warmupEnabled: "开启后，手动检测会发送极小流式请求，并在 429 或明确的无渠道响应后智能排队，直到成功或由你取消。只影响手动检测，不介入真实 Agent 请求。",
+  warmupInterval: "排队被拒后等待多久再试。每次都等这么久，不做退避；上游返回 Retry-After 且更长时以它为准。留空按 0.5 秒。",
   note: "仅本地展示的说明文字。",
 };
 
 const draft = reactive(createEmptyProvider());
+
+// 配置面按「秒」收，落盘按毫秒存：0.5 这个最有用的取值，整秒粒度根本表达不了。
+// 留空写回 0，交给后端回填默认值——不在前端替它决定默认是多少，
+// 否则前后端各持一份默认值，改一处就会漂移。
+const WARMUP_INTERVAL_MIN_SECONDS = 0.5;
+const warmupIntervalSecondsInput = computed({
+  get() {
+    return draft.warmupIntervalMS > 0 ? String(draft.warmupIntervalMS / 1000) : "";
+  },
+  set(value) {
+    const seconds = Number(String(value ?? "").trim());
+    draft.warmupIntervalMS = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : 0;
+  },
+});
+// 低于下限时只提示、不改写用户输入：输入过程中的中间值（比如刚敲下 "0."）
+// 一旦被即时纠正，用户就再也打不出小数了。真正的钳制由后端归一化兜底。
+const warmupIntervalHint = computed(() => {
+  if (draft.warmupIntervalMS <= 0) {
+    return "留空使用默认 0.5 秒；每次排队被拒后都等待该固定时长再试。";
+  }
+  if (draft.warmupIntervalMS < WARMUP_INTERVAL_MIN_SECONDS * 1000) {
+    return `最短 ${WARMUP_INTERVAL_MIN_SECONDS} 秒，保存时会自动抬回下限。`;
+  }
+  return "每次排队被拒后都等待该固定时长再试，不会随次数变长。";
+});
 const loading = ref(true);
 const errorMessage = ref("");
 const fetching = ref(false);
@@ -98,7 +124,12 @@ const advancedSummary = computed(() => {
   }
   // 预热开着会显著改变探测行为，折叠时必须在摘要里可见。
   if (draft.warmupEnabled) {
-    configured.push("排队预热");
+    // 只在用户显式改过间隔时才写进摘要：默认值写上去等于每次都在提示一条没做过的设置。
+    configured.push(
+      draft.warmupIntervalMS > 0 && draft.warmupIntervalMS !== 500
+        ? `排队预热 ${draft.warmupIntervalMS / 1000}s`
+        : "排队预热",
+    );
   }
   if (draft.note) {
     configured.push("备注");
@@ -609,6 +640,22 @@ onMounted(async () => {
                     :enabled="draft.warmupEnabled"
                     @change="draft.warmupEnabled = $event"
                   />
+                </div>
+                <div v-if="draft.warmupEnabled" class="flex flex-col gap-2 border-t border-[#343434] pt-2.5">
+                  <label class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,140px)]">
+                    <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+                      <Tooltip :content="fieldTips.warmupInterval" />
+                      <span>重试间隔（秒）</span>
+                    </span>
+                    <input
+                      v-model="warmupIntervalSecondsInput"
+                      type="text"
+                      inputmode="decimal"
+                      placeholder="0.5"
+                      class="h-9 rounded-[6px] border border-[#3f3f3f] bg-[#232323] px-3 text-sm tabular-nums text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
+                    />
+                  </label>
+                  <span class="text-xs leading-5 text-[#8f8f8f]">{{ warmupIntervalHint }}</span>
                 </div>
                 <span v-if="draft.warmupEnabled" class="text-xs leading-5 text-[#8f8f8f]">
                   仅作用于模型的「排队检测」按钮；429 可持续等待，服务故障会有限重试，随时可以取消。

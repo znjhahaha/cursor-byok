@@ -27,28 +27,34 @@ func TestIsQueueRejectionErrorMatchesRealPayload(t *testing.T) {
 	}
 }
 
-func TestWarmupRetryDelayUsesHalfSecondBackoffJitterAndRetryAfter(t *testing.T) {
-	previous := warmupJitter
-	warmupJitter = func() float64 { return 1 }
-	defer func() { warmupJitter = previous }()
-	wants := []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second, 5 * time.Second, 5 * time.Second}
-	for index, want := range wants {
-		if got := warmupRetryDelay(index+1, errors.New("status=429")); got != want {
-			t.Fatalf("attempt %d delay = %s, want %s", index+1, got, want)
+// 重试间隔是固定的：配多少就等多少，不随尝试次数增长。
+func TestWarmupRetryDelayIsConstantAndHonoursRetryAfter(t *testing.T) {
+	for _, attempt := range []int{1, 2, 3, 10} {
+		if got := warmupRetryDelay(errors.New("status=429"), defaultWarmupRetryDelay); got != 500*time.Millisecond {
+			t.Fatalf("attempt %d delay = %s, want 500ms", attempt, got)
 		}
 	}
-	if got := warmupRetryDelay(1, errors.New("status=429 retry_after=3")); got != 3*time.Second {
+	if got := warmupRetryDelay(errors.New("status=429"), 2*time.Second); got != 2*time.Second {
+		t.Fatalf("configured 2s delay = %s", got)
+	}
+	// 缺省（0）必须落回默认间隔，而不是退化成 0 秒空转重试。
+	if got := warmupRetryDelay(errors.New("status=429"), 0); got != defaultWarmupRetryDelay {
+		t.Fatalf("zero delay = %s, want %s", got, defaultWarmupRetryDelay)
+	}
+	// Retry-After 是上游的明确指令，比本地配置更长时以它为准。
+	if got := warmupRetryDelay(errors.New("status=429 retry_after=3"), defaultWarmupRetryDelay); got != 3*time.Second {
 		t.Fatalf("Retry-After delay = %s", got)
 	}
-	if got := warmupRetryDelay(1, errors.New("status=429 retry_after=750ms")); got != 750*time.Millisecond {
+	if got := warmupRetryDelay(errors.New("status=429 retry_after=750ms"), defaultWarmupRetryDelay); got != 750*time.Millisecond {
 		t.Fatalf("duration Retry-After delay = %s", got)
+	}
+	// 反过来，Retry-After 比配置短时不该让我们提前去撞墙。
+	if got := warmupRetryDelay(errors.New("status=429 retry_after=0"), 2*time.Second); got != 2*time.Second {
+		t.Fatalf("short Retry-After delay = %s, want 2s", got)
 	}
 }
 
 func TestWarmupQueueThenFirstTextSuccessUsesRealWireBuilder(t *testing.T) {
-	previous := warmupJitter
-	warmupJitter = func() float64 { return 0 }
-	defer func() { warmupJitter = previous }()
 	var attempts atomic.Int32
 	var capturedModel atomic.Value
 	var capturedUA atomic.Value
@@ -77,7 +83,7 @@ func TestWarmupQueueThenFirstTextSuccessUsesRealWireBuilder(t *testing.T) {
 	result, err := service.warmupModelAdapter(context.Background(), serverconfig.ModelAdapterConfig{
 		ID: "anyrouter-model", Type: "anthropic", BaseURL: server.URL, APIKey: "secret", ModelID: "claude-opus-5[1m]",
 		ClientProfile: "claude-code", Anthropic1MContextEnabled: true,
-	}, "hash")
+	}, "hash", warmupPlan{retryDelay: time.Millisecond})
 	if err != nil {
 		t.Fatalf("warmup error = %v", err)
 	}
@@ -93,9 +99,6 @@ func TestWarmupQueueThenFirstTextSuccessUsesRealWireBuilder(t *testing.T) {
 }
 
 func TestWarmupCanBeCanceledAndDuplicateTaskIsRejected(t *testing.T) {
-	previous := warmupJitter
-	warmupJitter = func() float64 { return 0 }
-	defer func() { warmupJitter = previous }()
 	started := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		select {
@@ -110,7 +113,7 @@ func TestWarmupCanBeCanceledAndDuplicateTaskIsRejected(t *testing.T) {
 	adapter := serverconfig.ModelAdapterConfig{ID: "queued-model", Type: "anthropic", BaseURL: server.URL, APIKey: "secret", ModelID: "claude-test"}
 	done := make(chan ModelAdapterTestResult, 1)
 	go func() {
-		result, _ := service.warmupModelAdapter(context.Background(), adapter, "hash")
+		result, _ := service.warmupModelAdapter(context.Background(), adapter, "hash", warmupPlan{retryDelay: time.Millisecond})
 		done <- result
 	}()
 	select {
@@ -118,7 +121,7 @@ func TestWarmupCanBeCanceledAndDuplicateTaskIsRejected(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("warmup did not start")
 	}
-	if _, err := service.warmupModelAdapter(context.Background(), adapter, "hash"); !errors.Is(err, errWarmupBusy) {
+	if _, err := service.warmupModelAdapter(context.Background(), adapter, "hash", warmupPlan{retryDelay: time.Millisecond}); !errors.Is(err, errWarmupBusy) {
 		t.Fatalf("duplicate error = %v", err)
 	}
 	if _, err := service.CancelModelAdapterTest(adapter.ID); err != nil {
@@ -192,35 +195,41 @@ func TestIsQueueRejectionErrorMatchesOtherPanelWordings(t *testing.T) {
 
 func TestNormalizeProviderConfigClampsWarmupBudget(t *testing.T) {
 	cases := []struct {
-		name            string
-		input           serverconfig.ProviderConfig
-		wantMinutes     int
-		wantIntervalSec int
+		name           string
+		input          serverconfig.ProviderConfig
+		wantMinutes    int
+		wantIntervalMS int
 	}{
 		{
-			name:            "未设预算时回填默认",
-			input:           serverconfig.ProviderConfig{WarmupEnabled: true},
-			wantMinutes:     serverconfig.DefaultWarmupMaxMinutes,
-			wantIntervalSec: serverconfig.DefaultWarmupIntervalSeconds,
+			name:           "未设预算时回填默认",
+			input:          serverconfig.ProviderConfig{WarmupEnabled: true},
+			wantMinutes:    serverconfig.DefaultWarmupMaxMinutes,
+			wantIntervalMS: serverconfig.DefaultWarmupIntervalMS,
 		},
 		{
-			// 1 秒间隔会把预热变成对上游的压测，必须抬到下限。
-			name:            "间隔过短被抬到下限",
-			input:           serverconfig.ProviderConfig{WarmupEnabled: true, WarmupMaxMinutes: 5, WarmupIntervalSeconds: 1},
-			wantMinutes:     5,
-			wantIntervalSec: 5,
+			// 低于 500ms 就不再是排队等待，而是对一个正在拒绝我们的上游加密探测。
+			name:           "间隔过短被抬到下限",
+			input:          serverconfig.ProviderConfig{WarmupEnabled: true, WarmupMaxMinutes: 5, WarmupIntervalMS: 50},
+			wantMinutes:    5,
+			wantIntervalMS: serverconfig.MinWarmupIntervalMS,
 		},
 		{
-			name:            "时长过长被压到上限",
-			input:           serverconfig.ProviderConfig{WarmupEnabled: true, WarmupMaxMinutes: 9999, WarmupIntervalSeconds: 9999},
-			wantMinutes:     60,
-			wantIntervalSec: 300,
+			name:           "时长过长被压到上限",
+			input:          serverconfig.ProviderConfig{WarmupEnabled: true, WarmupMaxMinutes: 9999, WarmupIntervalMS: 999999},
+			wantMinutes:    60,
+			wantIntervalMS: serverconfig.MaxWarmupIntervalMS,
 		},
 		{
-			name:            "负值按默认处理",
-			input:           serverconfig.ProviderConfig{WarmupEnabled: true, WarmupMaxMinutes: -3, WarmupIntervalSeconds: -3},
-			wantMinutes:     serverconfig.DefaultWarmupMaxMinutes,
-			wantIntervalSec: serverconfig.DefaultWarmupIntervalSeconds,
+			name:           "负值按默认处理",
+			input:          serverconfig.ProviderConfig{WarmupEnabled: true, WarmupMaxMinutes: -3, WarmupIntervalMS: -3},
+			wantMinutes:    serverconfig.DefaultWarmupMaxMinutes,
+			wantIntervalMS: serverconfig.DefaultWarmupIntervalMS,
+		},
+		{
+			name:           "半秒是合法取值，不被抬高",
+			input:          serverconfig.ProviderConfig{WarmupEnabled: true, WarmupIntervalMS: 500},
+			wantMinutes:    serverconfig.DefaultWarmupMaxMinutes,
+			wantIntervalMS: 500,
 		},
 	}
 	for _, tc := range cases {
@@ -236,8 +245,8 @@ func TestNormalizeProviderConfigClampsWarmupBudget(t *testing.T) {
 			if normalized.WarmupMaxMinutes != tc.wantMinutes {
 				t.Fatalf("时长期望 %d，实际 %d", tc.wantMinutes, normalized.WarmupMaxMinutes)
 			}
-			if normalized.WarmupIntervalSeconds != tc.wantIntervalSec {
-				t.Fatalf("间隔期望 %d，实际 %d", tc.wantIntervalSec, normalized.WarmupIntervalSeconds)
+			if normalized.WarmupIntervalMS != tc.wantIntervalMS {
+				t.Fatalf("间隔期望 %d，实际 %d", tc.wantIntervalMS, normalized.WarmupIntervalMS)
 			}
 		})
 	}
@@ -246,12 +255,12 @@ func TestNormalizeProviderConfigClampsWarmupBudget(t *testing.T) {
 // 关闭预热时不应残留预算值，否则配置文件里会出现一组不会生效的数字，误导排查。
 func TestNormalizeProviderConfigDropsWarmupBudgetWhenDisabled(t *testing.T) {
 	normalized, err := serverconfig.NormalizeProviderConfig(serverconfig.ProviderConfig{
-		Name:                  "测试站",
-		Type:                  "openai",
-		BaseURL:               "https://example.com",
-		WarmupEnabled:         false,
-		WarmupMaxMinutes:      30,
-		WarmupIntervalSeconds: 20,
+		Name:             "测试站",
+		Type:             "openai",
+		BaseURL:          "https://example.com",
+		WarmupEnabled:    false,
+		WarmupMaxMinutes: 30,
+		WarmupIntervalMS: 2000,
 	})
 	if err != nil {
 		t.Fatalf("归一化失败：%v", err)
@@ -259,9 +268,9 @@ func TestNormalizeProviderConfigDropsWarmupBudgetWhenDisabled(t *testing.T) {
 	if normalized.WarmupEnabled {
 		t.Fatal("预热应保持关闭")
 	}
-	if normalized.WarmupMaxMinutes != 0 || normalized.WarmupIntervalSeconds != 0 {
+	if normalized.WarmupMaxMinutes != 0 || normalized.WarmupIntervalMS != 0 {
 		t.Fatalf("关闭预热时预算应清零，实际 %d/%d",
-			normalized.WarmupMaxMinutes, normalized.WarmupIntervalSeconds)
+			normalized.WarmupMaxMinutes, normalized.WarmupIntervalMS)
 	}
 }
 

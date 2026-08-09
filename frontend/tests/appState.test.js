@@ -109,6 +109,22 @@ describe("中转站继承校验", () => {
   });
 });
 
+describe("排队重试间隔配置", () => {
+  it("归一化保留毫秒级间隔，缺省时留 0 交给后端回填默认", () => {
+    expect(normalizeProvider({ ...providerFixture(), warmupIntervalMS: 500 }).warmupIntervalMS).toBe(500);
+    expect(normalizeProvider({ ...providerFixture(), warmupIntervalMS: 2500 }).warmupIntervalMS).toBe(2500);
+    // 0 不是「零间隔」，而是「未设置」；前端不替后端决定默认值。
+    expect(normalizeProvider(providerFixture()).warmupIntervalMS).toBe(0);
+  });
+
+  // 旧的秒字段已从配置结构里移除，不应再被 normalize 复活，
+  // 否则配置文件会同时存在两个含义重叠、只有一个生效的间隔。
+  it("不再保留已废弃的秒级间隔字段", () => {
+    const normalized = normalizeProvider({ ...providerFixture(), warmupIntervalSeconds: 15 });
+    expect(normalized.warmupIntervalSeconds).toBeUndefined();
+  });
+});
+
 describe("模型测试部分成功状态", () => {
   it("收到正文但流未完整结束时显示可用警告而不是超时失败", () => {
     expect(formatModelAdapterTestSummary({
@@ -183,14 +199,16 @@ describe("详细日志开关", () => {
     expect(appState.detailedLoggingStateKnown).toBe(true);
   });
 
-  it("实时排队状态包含次数、已等待时间和倒计时", () => {
+  // 时长不再进摘要：它每 500ms 刷新一次、位数还会跳，拼进整行会让这一行宽度跟着抖。
+  // warmupElapsedMS / warmupNextRetryMS 仍原样保留，由 ModelAdapterTestCard 的定宽格子单独渲染。
+  it("实时排队摘要只含次数，时长交给结构化字段承载", () => {
     expect(formatModelAdapterTestSummary({
       status: "running",
       warmupWaiting: true,
       warmupAttempt: 3,
       warmupElapsedMS: 5200,
       warmupNextRetryMS: 750,
-    })).toBe("排队中（第 3 次） | 已等待 5.2 s | 下次 750 ms");
+    })).toBe("排队中（第 3 次）…");
   });
 
   it("排队测试结果保留可取消字段，取消后同步 canceled 状态", async () => {

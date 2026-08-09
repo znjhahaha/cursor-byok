@@ -7,7 +7,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 495,
+          "line": 526,
           "column": 58
         }
       ]
@@ -77,7 +77,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1339,
+          "line": 1343,
           "column": 14
         }
       ]
@@ -130,7 +130,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 404,
+          "line": 435,
           "column": 23
         }
       ]
@@ -190,7 +190,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 717,
+          "line": 721,
           "column": 14
         }
       ]
@@ -308,7 +308,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 684,
+          "line": 688,
           "column": 14
         }
       ]
@@ -419,6 +419,18 @@
         }
       ]
     },
+    "0e41cc85e7db8a05": {
+      "source": "每次排队被拒后都等待该固定时长再试，不会随次数变长。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 76,
+          "column": 10
+        }
+      ]
+    },
     "0ffcd290714860ad": {
       "source": "取消置顶 {0}",
       "kind": "template",
@@ -450,7 +462,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 81,
+          "line": 107,
           "column": 82
         }
       ]
@@ -597,7 +609,7 @@
         },
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 168,
+          "line": 183,
           "column": 9
         }
       ]
@@ -667,7 +679,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 407,
+          "line": 410,
           "column": 14
         }
       ]
@@ -679,7 +691,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 342,
+          "line": 373,
           "column": 1
         }
       ]
@@ -691,7 +703,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1316,
+          "line": 1320,
           "column": 47
         }
       ]
@@ -705,6 +717,18 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 135,
           "column": 78
+        }
+      ]
+    },
+    "18ccc620ed3679f2": {
+      "source": "排队中{0}…",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/state/appState.js",
+          "line": 295,
+          "column": 14
         }
       ]
     },
@@ -749,7 +773,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 743,
+          "line": 747,
           "column": 12
         }
       ]
@@ -903,7 +927,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 433,
+          "line": 436,
           "column": 36
         },
         {
@@ -925,7 +949,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 81,
+          "line": 107,
           "column": 72
         }
       ]
@@ -961,7 +985,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 608,
+          "line": 639,
           "column": 21
         }
       ]
@@ -1053,7 +1077,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1307,
+          "line": 1311,
           "column": 12
         }
       ]
@@ -1106,7 +1130,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 726,
+          "line": 730,
           "column": 14
         }
       ]
@@ -1203,7 +1227,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1381,
+          "line": 1385,
           "column": 12
         },
         {
@@ -1213,7 +1237,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 285,
+          "line": 316,
           "column": 57
         }
       ]
@@ -1261,7 +1285,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 350,
+          "line": 381,
           "column": 58
         }
       ]
@@ -1333,22 +1357,22 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 628,
+          "line": 632,
           "column": 56
         },
         {
           "file": "src/state/appState.js",
-          "line": 698,
+          "line": 702,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 704,
+          "line": 708,
           "column": 16
         },
         {
           "file": "src/state/appState.js",
-          "line": 710,
+          "line": 714,
           "column": 16
         }
       ]
@@ -1382,7 +1406,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 194,
+          "line": 209,
           "column": 7
         }
       ]
@@ -1394,7 +1418,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 664,
+          "line": 668,
           "column": 14
         }
       ]
@@ -1447,7 +1471,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1738,
+          "line": 1742,
           "column": 32
         }
       ]
@@ -1507,7 +1531,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 173,
+          "line": 188,
           "column": 60
         }
       ]
@@ -1555,12 +1579,12 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 508,
+          "line": 539,
           "column": 26
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 518,
+          "line": 549,
           "column": 1
         }
       ]
@@ -1601,12 +1625,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 595,
+          "line": 599,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 599,
+          "line": 603,
           "column": 12
         }
       ]
@@ -1618,7 +1642,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 267,
+          "line": 298,
           "column": 9
         }
       ]
@@ -1630,7 +1654,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1373,
+          "line": 1377,
           "column": 14
         }
       ]
@@ -1642,7 +1666,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1932,
+          "line": 1936,
           "column": 32
         }
       ]
@@ -1710,6 +1734,18 @@
         }
       ]
     },
+    "39c29a37255b86cf": {
+      "source": "留空使用默认 0.5 秒；每次排队被拒后都等待该固定时长再试。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 71,
+          "column": 12
+        }
+      ]
+    },
     "39f52eee100131d7": {
       "source": "缓存输入",
       "kind": "text",
@@ -1729,7 +1765,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 132,
+          "line": 163,
           "column": 27
         }
       ]
@@ -1804,12 +1840,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 612,
+          "line": 616,
           "column": 47
         },
         {
           "file": "src/state/appState.js",
-          "line": 672,
+          "line": 676,
           "column": 14
         }
       ]
@@ -1833,7 +1869,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 530,
+          "line": 561,
           "column": 66
         }
       ]
@@ -1879,7 +1915,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1337,
+          "line": 1341,
           "column": 5
         }
       ]
@@ -1927,7 +1963,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 633,
+          "line": 637,
           "column": 47
         }
       ]
@@ -1939,7 +1975,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 392,
+          "line": 423,
           "column": 17
         }
       ]
@@ -1987,7 +2023,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 182,
+          "line": 197,
           "column": 74
         }
       ]
@@ -1999,7 +2035,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 453,
+          "line": 484,
           "column": 54
         }
       ]
@@ -2143,7 +2179,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 332,
+          "line": 363,
           "column": 64
         }
       ]
@@ -2155,7 +2191,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 687,
+          "line": 691,
           "column": 14
         }
       ]
@@ -2296,7 +2332,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 386,
+          "line": 417,
           "column": 23
         }
       ]
@@ -2349,7 +2385,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 607,
+          "line": 638,
           "column": 21
         }
       ]
@@ -2426,7 +2462,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1441,
+          "line": 1445,
           "column": 21
         }
       ]
@@ -2462,7 +2498,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 156,
+          "line": 157,
           "column": 9
         }
       ]
@@ -2508,7 +2544,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 436,
+          "line": 467,
           "column": 23
         }
       ]
@@ -2520,7 +2556,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 106,
+          "line": 137,
           "column": 34
         }
       ]
@@ -2532,7 +2568,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 460,
+          "line": 491,
           "column": 1
         }
       ]
@@ -2561,7 +2597,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 626,
+          "line": 673,
           "column": 19
         }
       ]
@@ -2631,8 +2667,8 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 162,
-          "column": 13
+          "line": 170,
+          "column": 79
         }
       ]
     },
@@ -2672,7 +2708,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 410,
+          "line": 413,
           "column": 12
         }
       ]
@@ -2696,7 +2732,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 138,
+          "line": 169,
           "column": 26
         }
       ]
@@ -2778,7 +2814,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 452,
+          "line": 483,
           "column": 58
         }
       ]
@@ -2874,7 +2910,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 292,
+          "line": 295,
           "column": 34
         }
       ]
@@ -2920,7 +2956,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 660,
+          "line": 664,
           "column": 20
         }
       ]
@@ -2968,7 +3004,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 426,
+          "line": 429,
           "column": 14
         }
       ]
@@ -2980,7 +3016,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 139,
+          "line": 138,
           "column": 19
         }
       ]
@@ -3021,7 +3057,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 480,
+          "line": 511,
           "column": 23
         }
       ]
@@ -3033,7 +3069,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1305,
+          "line": 1309,
           "column": 14
         }
       ]
@@ -3057,7 +3093,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 681,
+          "line": 685,
           "column": 14
         }
       ]
@@ -3139,7 +3175,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 428,
+          "line": 459,
           "column": 17
         }
       ]
@@ -3237,7 +3273,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 119,
+          "line": 150,
           "column": 65
         }
       ]
@@ -3249,7 +3285,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 2114,
+          "line": 2118,
           "column": 26
         }
       ]
@@ -3345,13 +3381,13 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 150,
+          "line": 151,
           "column": 9
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 101,
-          "column": 21
+          "line": 131,
+          "column": 11
         }
       ]
     },
@@ -3374,7 +3410,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 614,
+          "line": 661,
           "column": 1
         }
       ]
@@ -3400,18 +3436,6 @@
           "file": "src/components/charts/HourlyUsageChart.vue",
           "line": 42,
           "column": 10
-        }
-      ]
-    },
-    "729c9d6655e72ad6": {
-      "source": "· 下次尝试",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 162,
-          "column": 37
         }
       ]
     },
@@ -3446,7 +3470,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 472,
+          "line": 503,
           "column": 17
         }
       ]
@@ -3458,7 +3482,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1606,
+          "line": 1610,
           "column": 14
         }
       ]
@@ -3552,7 +3576,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 148,
+          "line": 179,
           "column": 25
         }
       ]
@@ -3564,7 +3588,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 60,
+          "line": 59,
           "column": 12
         },
         {
@@ -3666,12 +3690,12 @@
         },
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 57,
+          "line": 56,
           "column": 12
         },
         {
           "file": "src/state/appState.js",
-          "line": 294,
+          "line": 297,
           "column": 12
         },
         {
@@ -3748,7 +3772,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 336,
+          "line": 367,
           "column": 17
         }
       ]
@@ -3760,7 +3784,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 590,
+          "line": 594,
           "column": 12
         }
       ]
@@ -3777,7 +3801,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1358,
+          "line": 1362,
           "column": 16
         }
       ]
@@ -3854,7 +3878,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 422,
+          "line": 453,
           "column": 23
         }
       ]
@@ -3955,7 +3979,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 337,
+          "line": 368,
           "column": 17
         }
       ]
@@ -3967,7 +3991,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 2129,
+          "line": 2133,
           "column": 32
         }
       ]
@@ -4020,7 +4044,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1302,
+          "line": 1306,
           "column": 14
         }
       ]
@@ -4044,7 +4068,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 72,
+          "line": 98,
           "column": 12
         }
       ]
@@ -4116,12 +4140,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 622,
+          "line": 626,
           "column": 18
         },
         {
           "file": "src/state/appState.js",
-          "line": 675,
+          "line": 679,
           "column": 14
         }
       ]
@@ -4278,7 +4302,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 693,
+          "line": 697,
           "column": 14
         }
       ]
@@ -4312,7 +4336,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 295,
+          "line": 326,
           "column": 14
         }
       ]
@@ -4493,18 +4517,6 @@
         }
       ]
     },
-    "96c28a0c1782ff30": {
-      "source": "排队中{0} | 已等待 {1} | 下次 {2}",
-      "kind": "template",
-      "placeholders": 3,
-      "refs": [
-        {
-          "file": "src/state/appState.js",
-          "line": 292,
-          "column": 14
-        }
-      ]
-    },
     "970388573a3c88c9": {
       "source": "缓存读取：{0} × ${1}/1M = {2}",
       "kind": "template",
@@ -4548,12 +4560,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 2251,
+          "line": 2255,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 2272,
+          "line": 2276,
           "column": 32
         }
       ]
@@ -4589,7 +4601,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 607,
+          "line": 611,
           "column": 20
         }
       ]
@@ -4613,7 +4625,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 87,
+          "line": 113,
           "column": 101
         }
       ]
@@ -4637,7 +4649,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 584,
+          "line": 615,
           "column": 25
         }
       ]
@@ -4690,7 +4702,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 496,
+          "line": 527,
           "column": 54
         }
       ]
@@ -4726,7 +4738,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1379,
+          "line": 1383,
           "column": 14
         }
       ]
@@ -4762,7 +4774,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 734,
+          "line": 738,
           "column": 14
         }
       ]
@@ -4774,7 +4786,7 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 186,
+          "line": 201,
           "column": 74
         }
       ]
@@ -4798,7 +4810,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 714,
+          "line": 718,
           "column": 14
         }
       ]
@@ -4810,12 +4822,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1325,
+          "line": 1329,
           "column": 12
         },
         {
           "file": "src/state/appState.js",
-          "line": 1368,
+          "line": 1372,
           "column": 87
         }
       ]
@@ -4849,7 +4861,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 295,
+          "line": 326,
           "column": 14
         }
       ]
@@ -4866,7 +4878,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1672,
+          "line": 1676,
           "column": 14
         }
       ]
@@ -5120,7 +5132,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 48,
+          "line": 49,
           "column": 9
         }
       ]
@@ -5132,7 +5144,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1354,
+          "line": 1358,
           "column": 16
         }
       ]
@@ -5469,7 +5481,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 292,
+          "line": 323,
           "column": 14
         }
       ]
@@ -5505,7 +5517,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 616,
+          "line": 620,
           "column": 50
         }
       ]
@@ -5606,7 +5618,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 609,
+          "line": 613,
           "column": 47
         }
       ]
@@ -5623,6 +5635,18 @@
         }
       ]
     },
+    "c0d5a7aebbc605b1": {
+      "source": "最短 {0} 秒，保存时会自动抬回下限。",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 74,
+          "column": 12
+        }
+      ]
+    },
     "c18e5e7914ca3eaa": {
       "source": "拉取模型列表失败",
       "kind": "text",
@@ -5630,8 +5654,20 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 261,
+          "line": 292,
           "column": 44
+        }
+      ]
+    },
+    "c1ea85d412faaf2f": {
+      "source": "排队被拒后等待多久再试。每次都等这么久，不做退避；上游返回 Retry-After 且更长时以它为准。留空按 0.5 秒。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 48,
+          "column": 19
         }
       ]
     },
@@ -5693,7 +5729,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 306,
+          "line": 309,
           "column": 12
         }
       ]
@@ -5727,8 +5763,20 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 112,
+          "line": 143,
           "column": 33
+        }
+      ]
+    },
+    "c47f12c7caa12b43": {
+      "source": "重试间隔（秒）",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 648,
+          "column": 29
         }
       ]
     },
@@ -5799,7 +5847,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 2116,
+          "line": 2120,
           "column": 24
         }
       ]
@@ -5883,17 +5931,17 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1632,
+          "line": 1636,
           "column": 28
         },
         {
           "file": "src/state/appState.js",
-          "line": 1634,
+          "line": 1638,
           "column": 56
         },
         {
           "file": "src/state/appState.js",
-          "line": 1680,
+          "line": 1684,
           "column": 93
         }
       ]
@@ -5941,7 +5989,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1314,
+          "line": 1318,
           "column": 51
         }
       ]
@@ -5989,7 +6037,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 402,
+          "line": 405,
           "column": 12
         }
       ]
@@ -6073,7 +6121,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 669,
+          "line": 673,
           "column": 14
         }
       ]
@@ -6102,7 +6150,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1572,
+          "line": 1576,
           "column": 14
         }
       ]
@@ -6126,7 +6174,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 106,
+          "line": 137,
           "column": 66
         }
       ]
@@ -6138,12 +6186,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 297,
+          "line": 300,
           "column": 38
         },
         {
           "file": "src/state/appState.js",
-          "line": 342,
+          "line": 345,
           "column": 50
         }
       ]
@@ -6155,7 +6203,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 97,
+          "line": 123,
           "column": 21
         }
       ]
@@ -6196,7 +6244,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 416,
+          "line": 419,
           "column": 49
         },
         {
@@ -6206,7 +6254,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 565,
+          "line": 596,
           "column": 25
         }
       ]
@@ -6242,7 +6290,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 437,
+          "line": 440,
           "column": 36
         },
         {
@@ -6259,7 +6307,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1748,
+          "line": 1752,
           "column": 32
         }
       ]
@@ -6360,7 +6408,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 364,
+          "line": 367,
           "column": 18
         },
         {
@@ -6370,12 +6418,12 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 104,
+          "line": 135,
           "column": 21
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 621,
+          "line": 668,
           "column": 25
         }
       ]
@@ -6387,7 +6435,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 351,
+          "line": 382,
           "column": 54
         }
       ]
@@ -6399,7 +6447,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 2116,
+          "line": 2120,
           "column": 63
         }
       ]
@@ -6423,7 +6471,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 690,
+          "line": 694,
           "column": 14
         }
       ]
@@ -6435,7 +6483,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 678,
+          "line": 682,
           "column": 14
         }
       ]
@@ -6447,7 +6495,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 358,
+          "line": 389,
           "column": 1
         }
       ]
@@ -6459,7 +6507,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1336,
+          "line": 1340,
           "column": 5
         }
       ]
@@ -6524,6 +6572,18 @@
         }
       ]
     },
+    "dffc14e5dd1ba82e": {
+      "source": "下次尝试",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ModelAdapterTestCard.vue",
+          "line": 174,
+          "column": 79
+        }
+      ]
+    },
     "e009c148d1890dac": {
       "source": "合计",
       "kind": "text",
@@ -6560,7 +6620,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 550,
+          "line": 581,
           "column": 21
         }
       ]
@@ -6632,7 +6692,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1480,
+          "line": 1484,
           "column": 23
         }
       ]
@@ -6721,7 +6781,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 594,
+          "line": 625,
           "column": 1
         }
       ]
@@ -6747,6 +6807,18 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 13,
           "column": 12
+        }
+      ]
+    },
+    "e710594a7d19e40a": {
+      "source": "排队预热 {0}s",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/views/ProviderEditor.vue",
+          "line": 130,
+          "column": 11
         }
       ]
     },
@@ -6820,7 +6892,7 @@
         },
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 119,
+          "line": 150,
           "column": 32
         }
       ]
@@ -6844,7 +6916,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 309,
+          "line": 312,
           "column": 10
         }
       ]
@@ -6868,7 +6940,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1356,
+          "line": 1360,
           "column": 16
         }
       ]
@@ -6880,7 +6952,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 292,
+          "line": 323,
           "column": 14
         }
       ]
@@ -6894,18 +6966,6 @@
           "file": "src/components/charts/DailyUsageChart.vue",
           "line": 76,
           "column": 29
-        }
-      ]
-    },
-    "ee6106f20242b482": {
-      "source": " · 第 {0} 次",
-      "kind": "template",
-      "placeholders": 1,
-      "refs": [
-        {
-          "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 151,
-          "column": 16
         }
       ]
     },
@@ -6952,7 +7012,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 467,
+          "line": 498,
           "column": 23
         }
       ]
@@ -6993,7 +7053,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 556,
+          "line": 587,
           "column": 21
         }
       ]
@@ -7065,7 +7125,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 94,
+          "line": 120,
           "column": 21
         }
       ]
@@ -7077,7 +7137,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 423,
+          "line": 426,
           "column": 14
         }
       ]
@@ -7089,7 +7149,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1316,
+          "line": 1320,
           "column": 38
         }
       ]
@@ -7113,12 +7173,12 @@
       "refs": [
         {
           "file": "src/components/ModelAdapterTestCard.vue",
-          "line": 63,
+          "line": 62,
           "column": 12
         },
         {
           "file": "src/state/appState.js",
-          "line": 300,
+          "line": 303,
           "column": 44
         }
       ]
@@ -7216,7 +7276,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 266,
+          "line": 297,
           "column": 9
         }
       ]
@@ -7228,12 +7288,12 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 720,
+          "line": 724,
           "column": 14
         },
         {
           "file": "src/state/appState.js",
-          "line": 723,
+          "line": 727,
           "column": 14
         }
       ]
@@ -7245,7 +7305,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 603,
+          "line": 634,
           "column": 27
         }
       ]
@@ -7305,7 +7365,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 2114,
+          "line": 2118,
           "column": 56
         }
       ]
@@ -7342,7 +7402,7 @@
         },
         {
           "file": "src/state/appState.js",
-          "line": 1375,
+          "line": 1379,
           "column": 12
         }
       ]
@@ -7354,7 +7414,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 164,
+          "line": 195,
           "column": 25
         }
       ]
@@ -7378,7 +7438,7 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1314,
+          "line": 1318,
           "column": 40
         }
       ]
@@ -7426,37 +7486,37 @@
       "refs": [
         {
           "file": "src/state/appState.js",
-          "line": 1779,
+          "line": 1783,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1785,
+          "line": 1789,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1815,
+          "line": 1819,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1852,
+          "line": 1856,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1878,
+          "line": 1882,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 1883,
+          "line": 1887,
           "column": 32
         },
         {
           "file": "src/state/appState.js",
-          "line": 2134,
+          "line": 2138,
           "column": 32
         }
       ]
@@ -7516,7 +7576,7 @@
       "refs": [
         {
           "file": "src/views/ProviderEditor.vue",
-          "line": 85,
+          "line": 111,
           "column": 39
         }
       ]
