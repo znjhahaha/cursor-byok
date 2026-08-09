@@ -13,7 +13,7 @@ import (
 	serverconfig "cursor/internal/backend/server/config"
 )
 
-func TestAnthropicBenchmarkAcceptsDataOnlySSEAndDoesNotForceThinking(t *testing.T) {
+func TestAnthropicBenchmarkAcceptsDataOnlySSEAndDisablesThinking(t *testing.T) {
 	var requestBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
@@ -39,8 +39,18 @@ func TestAnthropicBenchmarkAcceptsDataOnlySSEAndDoesNotForceThinking(t *testing.
 	if metrics == nil || metrics.firstTextTokenAt.IsZero() || strings.TrimSpace(metrics.text.String()) == "" {
 		t.Fatalf("metrics = %+v, want parsed text", metrics)
 	}
-	if _, exists := requestBody["thinking"]; exists {
-		t.Fatalf("benchmark request unexpectedly forced thinking: %#v", requestBody["thinking"])
+	// 测速必须显式禁用 thinking：留空只是不写字段，对默认开启 adaptive thinking 的
+	// 模型（Opus 这一代）无效，128 的 max_tokens 会被 thinking 直接吃光。
+	thinking, exists := requestBody["thinking"]
+	if !exists {
+		t.Fatal("benchmark request did not disable thinking")
+	}
+	thinkingConfig, ok := thinking.(map[string]any)
+	if !ok || thinkingConfig["type"] != "disabled" {
+		t.Fatalf("benchmark thinking = %#v, want type=disabled", thinking)
+	}
+	if _, exists := requestBody["output_config"]; exists {
+		t.Fatalf("benchmark request kept output_config alongside disabled thinking: %#v", requestBody["output_config"])
 	}
 }
 

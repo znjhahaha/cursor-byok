@@ -404,11 +404,14 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 	if prompt == "" {
 		prompt = modelAdapterTestPrompt
 	}
-	// A connectivity benchmark should not force adaptive thinking. Some Claude
-	// compatible relays spend the entire short benchmark budget in a thinking
-	// block even though normal Agent requests work correctly. Leaving both
-	// fields empty preserves the provider default and asks for ordinary text.
-	thinkingEffort := ""
+	// 测速只关心首字延迟与吞吐，thinking 既污染指标又会吃光这里的小额 max_tokens。
+	// 曾经的做法是把两个字段都留空，但留空只等于「不写 thinking 字段」，对默认开启
+	// adaptive thinking 的模型（Opus 这一代）无效：Anthropic 要求 max_tokens 大于
+	// thinking budget（下限 1024），而测速只给 128，必然要么 400 要么无正文返回。
+	// 因此显式请求 thinking:{type:"disabled"}，由 runtime 档位承载；
+	// AnthropicThinkingEffort 必须保持空，否则会被重新写回 adaptive。
+	const runtimeThinkingEffort = "disabled"
+	anthropicThinkingEffort := ""
 	extraParamsEnabled, extraParamsJSON := modelAdapterTestExtraParams(
 		adapter.AnthropicExtraParamsEnabled,
 		adapter.AnthropicExtraParamsJSON,
@@ -431,14 +434,15 @@ func (s *ProxyService) executeAnthropicStreamingTest(ctx context.Context, adapte
 		ResolvedChannelID:           strings.TrimSpace(adapter.ID),
 		ResolvedChannelName:         strings.TrimSpace(adapter.DisplayName),
 		ResolvedContextWindowTokens: adapter.ContextWindowTokens,
-		ThinkingEffort:              thinkingEffort,
+		ThinkingEffort:              runtimeThinkingEffort,
 		AnthropicMaxTokens:          maxTokens,
-		AnthropicThinkingEffort:     thinkingEffort,
+		AnthropicThinkingEffort:     anthropicThinkingEffort,
 		CustomHeadersEnabled:        adapter.CustomHeadersEnabled,
 		CustomHeadersJSON:           strings.TrimSpace(adapter.CustomHeadersJSON),
 		AnthropicExtraParamsEnabled: extraParamsEnabled,
 		AnthropicExtraParamsJSON:    extraParamsJSON,
-		ThinkingBudgetTokens:        adapter.ThinkingBudgetTokens,
+		// thinking 已显式禁用，再带预算是自相矛盾的输入。
+		ThinkingBudgetTokens: 0,
 		Messages:                    []modeladapter.Message{{Role: "user", Content: prompt}},
 		MaxTokens:                   maxTokens,
 		Stream:                      true,
