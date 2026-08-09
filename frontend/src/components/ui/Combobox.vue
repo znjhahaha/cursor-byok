@@ -320,10 +320,13 @@ onBeforeUnmount(() => {
         :id="listboxID"
         ref="menuRef"
         role="listbox"
-        class="fixed z-[999] overflow-hidden rounded-[8px] border border-[#3f3f3f] bg-[#232323] p-1.5 shadow-[0_16px_30px_-12px_rgba(0,0,0,0.7)]"
+        class="fixed z-[999] flex flex-col overflow-hidden rounded-[8px] border border-[#3f3f3f] bg-[#232323] p-1.5 shadow-[0_16px_30px_-12px_rgba(0,0,0,0.7)]"
         :style="menuStyle"
       >
-        <ul v-if="filteredOptions.length" class="overflow-y-auto">
+        <!-- 滚动条必须长在被 max-height 约束住的那一层：floating-ui 把 maxHeight 写在
+             外层浮层上，若 ul 保持内容高度，它自身永远不溢出，overflow-y-auto 不生效，
+             超出的候选会被外层 overflow-hidden 直接裁掉。这里让 ul 作为可收缩的 flex 项。 -->
+        <ul v-if="filteredOptions.length" class="min-h-0 overflow-y-auto">
           <li v-for="(option, index) in filteredOptions" :key="option.value">
             <button
               :id="`${listboxID}-option-${option.optionIndex}`"
