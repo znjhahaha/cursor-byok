@@ -2374,6 +2374,12 @@ func (service *Service) failStream(stream *ActiveStream, terminalCode string, ca
 	if errors.As(cause, &providerErr) || resolvedTerminalCode == "provider_error" {
 		metadataType = "provider_error"
 	}
+	// 失败和取消一样会打断 provider pass：此刻 stream 里累计的文本已经流式推给了
+	// Cursor 界面，却还没落盘。不补这一刀，下一轮 replay 就缺这段内容，表现为
+	// 「已生成的回答凭空消失，而且没有任何报错」——错误只写进 metadata，不进 replay。
+	// 与 handleCancelIntent 共用同一个幂等键，两条路径先后触发也不会写出重复条目。
+	// 这里刻意吞掉错误：收口流程不能被持久化失败阻断，否则客户端会一直挂着。
+	_, _ = service.persistInterruptedProviderOutput(stream)
 	_, _ = service.appendConversationEntries(stream, stream.ConversationID, []HistoryEntry{
 		newMetadataEntry(stream.TurnSeq, stream.RequestID, metadataType, map[string]any{
 			"error": errorText,

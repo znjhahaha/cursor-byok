@@ -2,6 +2,7 @@ package forwarder
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -184,4 +185,115 @@ func TestProjectPromptReplayPreservesLegacyCanceledTurnActivity(t *testing.T) {
 		}
 	}
 	t.Fatalf("replay = %#v, want legacy canceled activity", replay)
+}
+
+// provider 报错和取消一样会打断 provider pass，已经推送给界面的文本必须同样落盘，
+// 否则下一轮 replay 缺内容，用户看到的就是「回答凭空消失且没有报错」。
+func TestFailStreamPersistsInterruptedProviderOutput(t *testing.T) {
+	service, stream, _ := testCheckpointBlobProjection(t)
+	conversation, _, _, err := service.snapshotCheckpointConversation(stream)
+	if err != nil {
+		t.Fatalf("snapshotCheckpointConversation() error = %v", err)
+	}
+	if _, err := service.store.SaveConversationWithEntries(stream.ConversationID, conversation, conversation.Entries); err != nil {
+		t.Fatalf("SaveConversationWithEntries() error = %v", err)
+	}
+
+	stream.mu.Lock()
+	stream.CurrentModelCallID = "model-call-1"
+	stream.ProviderAccumulatedText = "partial answer"
+	stream.ProviderAccumulatedReasoning = "partial reasoning"
+	stream.mu.Unlock()
+
+	cause := providerTerminalError{cause: errors.New("upstream connection reset")}
+	_ = service.failStream(stream, "unknown", cause)
+	// 同一个 provider pass 再次收口不应产生重复条目。
+	stream.mu.Lock()
+	stream.ProviderAccumulatedText = "late duplicate fragment"
+	stream.mu.Unlock()
+	_ = service.failStream(stream, "unknown", cause)
+
+	persisted, err := service.store.LoadConversation(stream.ConversationID)
+	if err != nil {
+		t.Fatalf("LoadConversation() error = %v", err)
+	}
+	assistantEntries := 0
+	providerErrorEntries := 0
+	for _, entry := range persisted.Entries {
+		if entry.Kind == "metadata" {
+			var payload metadataPayload
+			if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+				t.Fatalf("decode metadata entry: %v", err)
+			}
+			if payload.Type == "provider_error" {
+				providerErrorEntries++
+			}
+		}
+		if entry.Kind != "assistant_text" {
+			continue
+		}
+		var payload assistantTextPayload
+		if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+			t.Fatalf("decode assistant entry: %v", err)
+		}
+		if payload.Text == "partial answer" {
+			assistantEntries++
+		}
+	}
+	if assistantEntries != 1 {
+		t.Fatalf("persisted interrupted assistant entries = %d, want 1", assistantEntries)
+	}
+	if providerErrorEntries == 0 {
+		t.Fatal("provider_error metadata was not persisted")
+	}
+
+	replay, err := service.projector.ProjectPromptReplay(persisted)
+	if err != nil {
+		t.Fatalf("ProjectPromptReplay() error = %v", err)
+	}
+	for _, message := range replay {
+		if message.Role == "assistant" &&
+			strings.TrimSpace(message.Content) == "partial answer" &&
+			strings.TrimSpace(message.ReasoningContent) == "partial reasoning" {
+			return
+		}
+	}
+	t.Fatalf("replay = %#v, want interrupted assistant output after provider failure", replay)
+}
+
+// 没有任何已生成内容时，失败收口不应该凭空写出一条空的 assistant 消息。
+func TestFailStreamWithoutAccumulatedOutputWritesNoAssistantEntry(t *testing.T) {
+	service, stream, _ := testCheckpointBlobProjection(t)
+	conversation, _, _, err := service.snapshotCheckpointConversation(stream)
+	if err != nil {
+		t.Fatalf("snapshotCheckpointConversation() error = %v", err)
+	}
+	if _, err := service.store.SaveConversationWithEntries(stream.ConversationID, conversation, conversation.Entries); err != nil {
+		t.Fatalf("SaveConversationWithEntries() error = %v", err)
+	}
+	before, err := service.store.LoadConversation(stream.ConversationID)
+	if err != nil {
+		t.Fatalf("LoadConversation() error = %v", err)
+	}
+	assistantBefore := countAssistantTextEntries(before.Entries)
+
+	_ = service.failStream(stream, "empty_response", errors.New("empty provider response"))
+
+	after, err := service.store.LoadConversation(stream.ConversationID)
+	if err != nil {
+		t.Fatalf("LoadConversation() error = %v", err)
+	}
+	if got := countAssistantTextEntries(after.Entries); got != assistantBefore {
+		t.Fatalf("assistant entries = %d, want unchanged %d", got, assistantBefore)
+	}
+}
+
+func countAssistantTextEntries(entries []HistoryEntry) int {
+	total := 0
+	for _, entry := range entries {
+		if entry.Kind == "assistant_text" {
+			total++
+		}
+	}
+	return total
 }
