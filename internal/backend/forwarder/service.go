@@ -11,6 +11,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -248,6 +249,7 @@ func subagentModelOverrideSummaries(overrides map[string]runtimecore.SubagentMod
 
 type Service struct {
 	store              *ConversationFileStore
+	backgroundTasks    *BackgroundTaskFileStore
 	usageStore         *UsageFileStore
 	codebaseIndexStore *CodebaseIndexStore
 	docsIndexStore     *DocsIndexStore
@@ -263,6 +265,7 @@ type Service struct {
 	execBridge         execbridge.ExecBridge
 	interactionBridge  interactionbridge.InteractionBridge
 	appendSeq          *appendSequenceTracker
+	runDispatchMu      sync.Mutex
 }
 
 type agentModelMemory interface {
@@ -287,6 +290,7 @@ func NewService(historyRoot string, resolver modeladapter.ChannelResolver) *Serv
 	debug := newDebugRecorder(historyRoot, broker, debugConfig)
 	service := &Service{
 		store:              store,
+		backgroundTasks:    NewBackgroundTaskFileStore(historyRoot),
 		usageStore:         NewUsageFileStore(historyRoot),
 		codebaseIndexStore: NewCodebaseIndexStore(appdata.CodebaseIndexRootPath()),
 		docsIndexStore:     NewDocsIndexStore(appdata.DocsIndexRootPath()),
@@ -304,6 +308,7 @@ func NewService(historyRoot string, resolver modeladapter.ChannelResolver) *Serv
 		appendSeq:          newAppendSequenceTracker(),
 	}
 	service.startHistoryMaintenance()
+	service.startBackgroundTaskRecovery()
 	return service
 }
 
@@ -316,6 +321,7 @@ func newServiceWithDependencies(store *ConversationFileStore, projector *History
 	debug := newDebugRecorder(historyRoot, broker, nil)
 	return &Service{
 		store:              store,
+		backgroundTasks:    NewBackgroundTaskFileStore(historyRoot),
 		rules:              NewUserRuleStore(appdata.RulesRootPath()),
 		projector:          projector,
 		compiler:           compiler,
@@ -340,6 +346,10 @@ func (service *Service) BidiAppend(ctx context.Context, req *connect.Request[ais
 	requestID := protocol.NormalizeRequestID(protocol.ReadAppendRequestID(req.Msg))
 	if requestID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("request_id is required"))
+	}
+	requestMetadata := readBackgroundTaskRequestMetadata(req.Header())
+	if err := service.observeBackgroundTaskRequest(requestID, requestMetadata); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	appendSeqno := req.Msg.GetAppendSeqno()
 	dataHex := req.Msg.GetData()
@@ -370,6 +380,10 @@ func (service *Service) BidiAppend(ctx context.Context, req *connect.Request[ais
 			"error": err.Error(),
 		})
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	intent.RequestMetadata = requestMetadata
+	if err := service.bindBackgroundTaskConversation(intent); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	service.debug.LogBidiRaw(ctx, requestID, intent.ConversationID, appendSeqno, dataHex, "accepted", map[string]any{
 		"client_kind": strings.TrimSpace(clientKind),
@@ -423,6 +437,9 @@ func (service *Service) RunSSE(ctx context.Context, req *connect.Request[aiserve
 	requestID := protocol.NormalizeRequestID(protocol.ReadBidiRequestID(req.Msg))
 	if requestID == "" {
 		return buildRunSSECustomError(connect.CodeInvalidArgument, "请求参数无效", fmt.Errorf("request_id is required"))
+	}
+	if err := service.observeBackgroundTaskRequest(requestID, readBackgroundTaskRequestMetadata(req.Header())); err != nil {
+		return buildRunSSECustomError(connect.CodeInternal, "后台任务关联失败", err)
 	}
 	subscriberID, signal, err := service.broker.Subscribe(requestID)
 	if err != nil {
@@ -559,6 +576,7 @@ func (service *Service) decodeInboundIntent(requestID string, message *agentv1.A
 		intent.ConversationID = conversationID
 		intent.ConversationState = runRequest.GetConversationState()
 		intent.UserMessage = extractUserMessage(message)
+		intent.BackgroundTaskCompletions = extractBackgroundSubagentCompletions(runRequest.GetAction())
 		intent.RequestContext = extractRequestContext(message)
 		if service.shouldIgnoreEmptyResumeRunRequest(requestID, runRequest, intent.UserMessage, intent.RequestContext) {
 			intent.Kind = "metadata"
@@ -618,6 +636,7 @@ func (service *Service) decodeInboundIntent(requestID string, message *agentv1.A
 			return InboundIntent{}, fmt.Errorf("conversation_action payload is required")
 		}
 		intent.UserMessage = extractConversationActionUserMessage(action)
+		intent.BackgroundTaskCompletions = extractBackgroundSubagentCompletions(action)
 		intent.RequestContext = extractConversationActionRequestContext(action)
 		intent.StartsRun = conversationActionStartsRun(action)
 		intent.Mode, intent.ModeSource, intent.HasExplicitMode, err = extractConversationActionMode(action)
@@ -643,6 +662,13 @@ func (service *Service) decodeInboundIntent(requestID string, message *agentv1.A
 						intent.SubagentTypeName = strings.TrimSpace(stream.CheckpointConversation.SubagentTypeName)
 					}
 					stream.mu.Unlock()
+				}
+				if strings.TrimSpace(intent.ConversationID) == "" && len(intent.BackgroundTaskCompletions) > 0 {
+					parentConversationID, resolveErr := service.resolveBackgroundCompletionParentConversation(intent.BackgroundTaskCompletions)
+					if resolveErr != nil {
+						return InboundIntent{}, resolveErr
+					}
+					intent.ConversationID = parentConversationID
 				}
 				if strings.TrimSpace(intent.ConversationID) == "" {
 					return InboundIntent{}, fmt.Errorf("conversation_action requires active request context")
@@ -680,8 +706,56 @@ func (service *Service) decodeInboundIntent(requestID string, message *agentv1.A
 }
 
 // handleRunIntent 处理 run/prewarm 类 intent，负责建会话、写 turn 和拉起 provider。
-func (service *Service) handleRunIntent(intent InboundIntent) error {
+func (service *Service) handleRunIntent(intent InboundIntent) (runErr error) {
 	intent.UserMessage = normalizeUserMessageForStorage(intent.UserMessage)
+	completionRun := len(intent.BackgroundTaskCompletions) > 0
+	claimedCompletionCount := 0
+	claimActive := false
+	if completionRun {
+		if err := service.restoreBackgroundCompletionRuntimeIntent(&intent); err != nil {
+			return err
+		}
+	}
+	if len(intent.BackgroundTaskCompletions) > 0 {
+		claimedCompletions, claimedCount, err := service.claimBackgroundCompletions(
+			intent.ConversationID,
+			intent.BackgroundTaskCompletions,
+			intent.RequestID,
+		)
+		if err != nil {
+			return err
+		}
+		if len(claimedCompletions) == 0 {
+			return service.finishDuplicateBackgroundCompletionRun(intent.RequestID)
+		}
+		intent.BackgroundTaskCompletions = claimedCompletions
+		claimedCompletionCount = claimedCount
+		claimActive = claimedCount > 0
+		defer func() {
+			if runErr != nil && claimActive {
+				service.releaseBackgroundCompletionClaim(intent.RequestID)
+			}
+		}()
+	}
+	conversation, effectiveMode, turnSeq, initialEntries, err := service.bootstrapRuntimeConversation(intent)
+	if err != nil {
+		return err
+	}
+	if completionRun && len(intent.BackgroundTaskCompletions) > 0 {
+		intent.BackgroundTaskCompletions = filterNewBackgroundSubagentCompletions(conversation, intent.BackgroundTaskCompletions)
+		if len(intent.BackgroundTaskCompletions) == 0 {
+			if claimedCompletionCount == 0 {
+				return service.finishDuplicateBackgroundCompletionRun(intent.RequestID)
+			}
+			initialEntries = nil
+		}
+		if len(intent.BackgroundTaskCompletions) > 0 {
+			initialEntries, err = buildRunEntries(intent, effectiveMode, turnSeq)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	if !intent.Prewarm {
 		service.cancelOtherConversationActors(
 			intent.ConversationID,
@@ -689,11 +763,10 @@ func (service *Service) handleRunIntent(intent InboundIntent) error {
 			"[canceled] Superseded by newer request",
 		)
 	}
-	conversation, effectiveMode, turnSeq, initialEntries, err := service.bootstrapRuntimeConversation(intent)
-	if err != nil {
-		return err
+	rewindDecision := runRewindDecision{}
+	if !completionRun {
+		rewindDecision = service.decideRunRewind(intent, conversation)
 	}
-	rewindDecision := service.decideRunRewind(intent, conversation)
 	if rewindDecision.Evaluated && !rewindDecision.Apply {
 		service.logRunRewindDecision(intent.RequestID, intent.ConversationID, "rewind_skipped", rewindDecision)
 	}
@@ -722,6 +795,23 @@ func (service *Service) handleRunIntent(intent InboundIntent) error {
 				conversation = persisted
 			}
 			service.logRunRewindDecision(intent.RequestID, intent.ConversationID, "rewind_applied", rewindDecision)
+		} else if completionRun && len(intent.BackgroundTaskCompletions) > 0 {
+			completionKeys := backgroundSubagentCompletionIdempotencyKeys(intent.BackgroundTaskCompletions)
+			persisted, _, accepted, err := service.store.SaveConversationWithEntriesIfAnyIdempotencyKeyIsNew(
+				intent.ConversationID,
+				conversation,
+				initialEntries,
+				completionKeys,
+			)
+			if err != nil {
+				return err
+			}
+			if !accepted {
+				return service.finishDuplicateBackgroundCompletionRun(intent.RequestID)
+			}
+			if persisted != nil {
+				conversation = persisted
+			}
 		} else {
 			persisted, err := service.store.SaveConversationWithEntries(intent.ConversationID, conversation, initialEntries)
 			if err != nil {
@@ -738,7 +828,6 @@ func (service *Service) handleRunIntent(intent InboundIntent) error {
 		appendEntriesInPlace(conversation, initialEntries)
 		deriveConversationLoopState(conversation)
 	}
-
 	stream, err := service.broker.OpenStream(intent.RequestID, intent.ConversationID, turnSeq, intent.ModelID, intent.ModelName, effectiveMode, userMessageText(intent.UserMessage))
 	if err != nil {
 		return err
@@ -753,6 +842,7 @@ func (service *Service) handleRunIntent(intent InboundIntent) error {
 	service.updateStreamMCPToolServers(stream, intent.RequestContext)
 	clearPendingProviderCompletion(stream)
 	stream.mu.Lock()
+	stream.RequestMetadata = intent.RequestMetadata
 	stream.ThinkingEffort = strings.TrimSpace(intent.ThinkingEffort)
 	stream.SubagentModelOverrides = cloneSubagentModelOverrides(intent.SubagentModelOverrides)
 	stream.ManualCompaction = intent.ManualCompaction
@@ -799,9 +889,16 @@ func (service *Service) handleRunIntent(intent InboundIntent) error {
 		return err
 	}
 	if intent.Prewarm {
+		if claimActive {
+			service.releaseBackgroundCompletionClaim(intent.RequestID)
+			claimActive = false
+		}
 		return nil
 	}
-	return service.requestProviderAction(stream, providerActionStart)
+	if err := service.requestProviderAction(stream, providerActionStart); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (service *Service) loadPreviousSummaryReplay(conversationID string) ([][]byte, bool, error) {
@@ -870,7 +967,10 @@ func (service *Service) handleCancelIntent(intent InboundIntent) error {
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
 	service.setTurnPhase(stream, TurnPhaseCanceled)
-	return service.broker.Cancel(intent.RequestID, firstNonEmpty(intent.CancelReason, "[canceled] User aborted request"))
+	service.completeBackgroundSubagentCanceled(stream.ConversationID, firstNonEmpty(intent.CancelReason, "subagent canceled"))
+	err := service.broker.Cancel(intent.RequestID, firstNonEmpty(intent.CancelReason, "[canceled] User aborted request"))
+	service.releaseBackgroundCompletionClaim(intent.RequestID)
+	return err
 }
 
 func checkpointTurnHasReplayActivity(stream *ActiveStream) bool {
@@ -989,6 +1089,9 @@ func (service *Service) handleExecResult(intent InboundIntent) error {
 	}
 	result, err := service.execBridge.ApplyExecClientMessage(intent.ExecClientMessage, pending)
 	if err != nil {
+		return err
+	}
+	if err := service.observeBackgroundSubagentAck(stream, pending, intent.ExecClientMessage); err != nil {
 		return err
 	}
 	if result.ShellOutputDelta != nil {
@@ -1736,8 +1839,10 @@ func (service *Service) handleToolInvocation(stream *ActiveStream, invocation ru
 	stream.mu.Lock()
 	mode := stream.Mode
 	subagentTypeName := ""
+	rootConversationID := strings.TrimSpace(stream.ConversationID)
 	if stream.CheckpointConversation != nil {
 		subagentTypeName = strings.TrimSpace(stream.CheckpointConversation.SubagentTypeName)
+		rootConversationID = firstNonEmpty(stream.CheckpointConversation.RootConversationID, rootConversationID)
 	}
 	stream.ToolInvocationCount++
 	stream.UpdatedAt = time.Now().UTC()
@@ -1837,7 +1942,9 @@ func (service *Service) handleToolInvocation(stream *ActiveStream, invocation ru
 	if isExecInvocation {
 		serverMessage, pendingExec, err := service.execBridge.OpenExec(execbridge.OpenExecContext{
 			ConversationID:         stream.ConversationID,
+			RootConversationID:     rootConversationID,
 			ModelID:                stream.ModelID,
+			Mode:                   mode,
 			SubagentModelOverrides: subagentOverrides,
 		}, invocation)
 		if err != nil {
@@ -1848,11 +1955,15 @@ func (service *Service) handleToolInvocation(stream *ActiveStream, invocation ru
 		pendingExec.ReasoningSignature = invocation.ReasoningSignature
 		pendingExec.ReasoningSignatureSource = invocation.ReasoningSignatureSource
 		pendingExec = initializePendingExecForTracking(pendingExec)
+		if err := service.registerBackgroundSubagentTask(stream, pendingExec, invocation, serverMessage); err != nil {
+			return err
+		}
 		stream.mu.Lock()
 		pendingExec.ProviderPass = stream.ProviderPassCount
 		stream.PendingExecs[pendingExec.ExecID] = pendingExec
 		stream.mu.Unlock()
 		service.scheduleShellForegroundRecovery(stream.RequestID, pendingExec)
+		service.scheduleSubagentInactivityRecovery(stream.RequestID, pendingExec)
 		removePendingExec := func() {
 			stream.mu.Lock()
 			delete(stream.PendingExecs, pendingExec.ExecID)
@@ -2061,7 +2172,17 @@ func (service *Service) applyExecProgress(stream *ActiveStream, pending runtimec
 }
 
 func (service *Service) applyExecControlProgress(stream *ActiveStream, pending runtimecore.PendingExec, message *agentv1.ExecClientControlMessage) runtimecore.PendingExec {
-	if stream == nil || message == nil || strings.TrimSpace(pending.ExecKind) != "shell" {
+	if stream == nil || message == nil {
+		return pending
+	}
+	if strings.TrimSpace(pending.ExecKind) == "subagent" {
+		// 子代理心跳只用来证明对端还在，从而顺延失联 deadline。
+		if _, ok := message.GetMessage().(*agentv1.ExecClientControlMessage_Heartbeat); ok {
+			return markSubagentLiveness(stream, pending)
+		}
+		return pending
+	}
+	if strings.TrimSpace(pending.ExecKind) != "shell" {
 		return pending
 	}
 	stream.mu.Lock()
@@ -2219,6 +2340,10 @@ func (service *Service) completeSuccessfulTurn(stream *ActiveStream, completion 
 			err,
 		)
 	}
+	service.completeBackgroundSubagentSuccess(conversationID, completion.FinalMessage)
+	if err := service.persistBackgroundCompletionConfirmation(stream, conversationID, requestID); err != nil {
+		return fmt.Errorf("persist background completion confirmation: %w", err)
+	}
 	return service.publishCheckpointWithCompletion(requestID, conversationID, &completion)
 }
 
@@ -2237,6 +2362,7 @@ func (service *Service) finishSuccessfulTurnAfterCheckpoint(stream *ActiveStream
 		return err
 	}
 	service.setTurnPhase(stream, TurnPhaseCompleted)
+	service.confirmBackgroundCompletionClaim(requestID)
 	return nil
 }
 
@@ -2433,12 +2559,14 @@ func (service *Service) failActiveStream(stream *ActiveStream, conversationID st
 	if err := service.broker.Fail(requestID, terminalCode, terminalMessage); err != nil && firstErr == nil {
 		firstErr = err
 	}
+	service.completeBackgroundSubagentError(conversationID, terminalMessage)
+	service.releaseBackgroundCompletionClaim(requestID)
 	return firstErr
 }
 
 // buildRunEntries 构造一次 run intent 需要写入 history 的首批 entry。
 func buildRunEntries(intent InboundIntent, effectiveMode agentv1.AgentMode, turnSeq int64) ([]HistoryEntry, error) {
-	entries := make([]HistoryEntry, 0, 4)
+	entries := make([]HistoryEntry, 0, 4+len(intent.BackgroundTaskCompletions))
 	if intent.RequestContext != nil {
 		normalized := normalizeRequestContextForStorageMode(intent.RequestContext, turnSeq == 1)
 		if normalized != nil {
@@ -2476,6 +2604,15 @@ func buildRunEntries(intent InboundIntent, effectiveMode agentv1.AgentMode, turn
 			)))
 		}
 	}
+	for _, completion := range intent.BackgroundTaskCompletions {
+		entry, ok, err := newBackgroundSubagentCompletionEntry(turnSeq, intent.RequestID, completion)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			entries = append(entries, entry)
+		}
+	}
 	modeEntry, err := newModeMetadataEntry(turnSeq, intent.RequestID, effectiveMode, intent.HasExplicitMode, intent.ModeSource)
 	if err != nil {
 		return nil, err
@@ -2490,11 +2627,247 @@ func buildRunEntries(intent InboundIntent, effectiveMode agentv1.AgentMode, turn
 	return entries, nil
 }
 
+func newBackgroundSubagentCompletionEntry(turnSeq int64, requestID string, completion *agentv1.BackgroundTaskCompletion) (HistoryEntry, bool, error) {
+	if !isTerminalBackgroundSubagentCompletion(completion) {
+		return HistoryEntry{}, false, nil
+	}
+	userMessage := newBackgroundSubagentCompletionUserMessage(completion)
+	userMessage = normalizeUserMessageForStorage(userMessage)
+	payload, err := protojson.Marshal(userMessage)
+	if err != nil {
+		return HistoryEntry{}, false, err
+	}
+	return HistoryEntry{
+		TurnSeq:        turnSeq,
+		RequestID:      strings.TrimSpace(requestID),
+		IdempotencyKey: backgroundSubagentCompletionIdempotencyKey(completion),
+		Role:           "user",
+		Kind:           "user_message",
+		Payload:        payload,
+	}, true, nil
+}
+
+func newBackgroundSubagentCompletionUserMessage(completion *agentv1.BackgroundTaskCompletion) *agentv1.UserMessage {
+	if completion == nil {
+		return nil
+	}
+	taskID := strings.TrimSpace(completion.GetTaskId())
+	subagentID := firstNonEmpty(strings.TrimSpace(completion.GetSubagentId()), taskID)
+	toolCallID := strings.TrimSpace(completion.GetToolCallId())
+	title := firstNonEmpty(strings.TrimSpace(completion.GetTitle()), "Background subagent")
+	detail := strings.TrimSpace(completion.GetDetail())
+	if detail == "" {
+		detail = "(The subagent returned no final message.)"
+	}
+	status := strings.ToLower(strings.TrimPrefix(completion.GetStatus().String(), "BACKGROUND_TASK_STATUS_"))
+	if status == "" || status == "unspecified" {
+		status = "finished"
+	}
+	attributes := []string{
+		fmt.Sprintf(`title=%q`, title),
+		fmt.Sprintf(`status=%q`, status),
+	}
+	if taskID != "" {
+		attributes = append(attributes, fmt.Sprintf(`task_id=%q`, taskID))
+	}
+	if subagentID != "" {
+		attributes = append(attributes, fmt.Sprintf(`subagent_id=%q`, subagentID))
+	}
+	if toolCallID != "" {
+		attributes = append(attributes, fmt.Sprintf(`tool_call_id=%q`, toolCallID))
+	}
+	text := "<background_subagent_completion " + strings.Join(attributes, " ") + ">\n" + detail + "\n</background_subagent_completion>"
+	simulated := true
+	reason := agentv1.SimulatedMsgReason_SIMULATED_MSG_REASON_BACKGROUND_TASK_COMPLETION
+	return &agentv1.UserMessage{
+		Text:               text,
+		MessageId:          backgroundSubagentCompletionMessageID(completion),
+		IsSimulatedMsg:     &simulated,
+		SimulatedMsgReason: &reason,
+		SimulatedMessageMetadata: &agentv1.UserMessage_SimulatedMessageMetadata{
+			Title:  stringPtr(title),
+			TaskId: stringPtr(taskID),
+		},
+		ThreadId: stringPtr(strings.TrimSpace(completion.GetThreadId())),
+	}
+}
+
+func backgroundSubagentCompletionIdempotencyKey(completion *agentv1.BackgroundTaskCompletion) string {
+	digest := backgroundSubagentCompletionDigest(completion)
+	return "background-subagent-completion:" + hex.EncodeToString(digest[:])
+}
+
+func backgroundSubagentCompletionMessageID(completion *agentv1.BackgroundTaskCompletion) string {
+	digest := backgroundSubagentCompletionDigest(completion)
+	return "background-completion-" + hex.EncodeToString(digest[:12])
+}
+
+func backgroundSubagentCompletionDigest(completion *agentv1.BackgroundTaskCompletion) [sha256.Size]byte {
+	if completion == nil {
+		return sha256.Sum256(nil)
+	}
+	identity := firstNonEmpty(
+		strings.TrimSpace(completion.GetToolCallId()),
+		strings.TrimSpace(completion.GetSubagentId()),
+		strings.TrimSpace(completion.GetTaskId()),
+		strings.TrimSpace(completion.GetThreadId()),
+	)
+	if identity != "" {
+		return sha256.Sum256([]byte("background_subagent_completion\x00" + identity))
+	}
+	payload := strings.Join([]string{
+		"background_subagent_completion",
+		completion.GetKind().String(),
+		completion.GetStatus().String(),
+		completion.GetReason().String(),
+		strings.TrimSpace(completion.GetTitle()),
+		strings.TrimSpace(completion.GetDetail()),
+	}, "\x00")
+	return sha256.Sum256([]byte(payload))
+}
+
+func backgroundCompletionUserMessages(entries []HistoryEntry) []*agentv1.UserMessage {
+	messages := make([]*agentv1.UserMessage, 0, len(entries))
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.Kind) != "user_message" || !strings.HasPrefix(strings.TrimSpace(entry.IdempotencyKey), "background-subagent-completion:") {
+			continue
+		}
+		message := &agentv1.UserMessage{}
+		if err := protojson.Unmarshal(entry.Payload, message); err != nil {
+			continue
+		}
+		if message.GetIsSimulatedMsg() && message.GetSimulatedMsgReason() == agentv1.SimulatedMsgReason_SIMULATED_MSG_REASON_BACKGROUND_TASK_COMPLETION {
+			messages = append(messages, message)
+		}
+	}
+	return messages
+}
+
+func (service *Service) restoreBackgroundCompletionRuntimeIntent(intent *InboundIntent) error {
+	if service == nil || service.store == nil || intent == nil || strings.TrimSpace(intent.ConversationID) == "" {
+		return nil
+	}
+	conversation, err := service.store.LoadConversation(intent.ConversationID)
+	if err != nil || conversation == nil {
+		return err
+	}
+	if !intent.HasExplicitMode && strings.TrimSpace(conversation.Mode) != "" {
+		mode, parseErr := parseModeAlias(conversation.Mode)
+		if parseErr != nil {
+			return parseErr
+		}
+		intent.Mode = mode
+	}
+	modelID, modelName, thinkingEffort := latestConversationRunModel(conversation)
+	if strings.TrimSpace(intent.ModelID) == "" || strings.TrimSpace(intent.ModelID) == "default" {
+		if modelID != "" {
+			intent.ModelID = modelID
+		}
+	}
+	if strings.TrimSpace(intent.ModelName) == "" || strings.TrimSpace(intent.ModelName) == "default" {
+		intent.ModelName = firstNonEmpty(modelName, intent.ModelID)
+	}
+	if strings.TrimSpace(intent.ThinkingEffort) == "" {
+		intent.ThinkingEffort = thinkingEffort
+	}
+	return nil
+}
+
+func latestConversationRunModel(conversation *ConversationFile) (string, string, string) {
+	if conversation == nil {
+		return "", "", ""
+	}
+	for index := len(conversation.Entries) - 1; index >= 0; index-- {
+		entry := conversation.Entries[index]
+		if strings.TrimSpace(entry.Kind) != "metadata" {
+			continue
+		}
+		var payload metadataPayload
+		if err := json.Unmarshal(entry.Payload, &payload); err != nil || strings.TrimSpace(payload.Type) != "run_request" {
+			continue
+		}
+		return strings.TrimSpace(readStringValue(payload.Value["model_id"])),
+			strings.TrimSpace(readStringValue(payload.Value["model_name"])),
+			strings.TrimSpace(readStringValue(payload.Value["thinking_effort"]))
+	}
+	if conversation.LastProviderCall != nil {
+		return strings.TrimSpace(conversation.LastProviderCall.Model), strings.TrimSpace(conversation.LastProviderCall.Model), ""
+	}
+	if conversation.LatestRequestPrefix != nil {
+		return "", strings.TrimSpace(conversation.LatestRequestPrefix.Model), ""
+	}
+	return "", "", ""
+}
+
+func filterNewBackgroundSubagentCompletions(conversation *ConversationFile, completions []*agentv1.BackgroundTaskCompletion) []*agentv1.BackgroundTaskCompletion {
+	if len(completions) == 0 {
+		return nil
+	}
+	existing := make(map[string]struct{})
+	if conversation != nil {
+		for _, entry := range conversation.Entries {
+			if key := strings.TrimSpace(entry.IdempotencyKey); key != "" {
+				existing[key] = struct{}{}
+			}
+		}
+	}
+	filtered := make([]*agentv1.BackgroundTaskCompletion, 0, len(completions))
+	for _, completion := range completions {
+		if !isTerminalBackgroundSubagentCompletion(completion) {
+			continue
+		}
+		key := backgroundSubagentCompletionIdempotencyKey(completion)
+		if _, exists := existing[key]; exists {
+			continue
+		}
+		existing[key] = struct{}{}
+		filtered = append(filtered, completion)
+	}
+	return filtered
+}
+
+func backgroundSubagentCompletionIdempotencyKeys(completions []*agentv1.BackgroundTaskCompletion) []string {
+	keys := make([]string, 0, len(completions))
+	seen := make(map[string]struct{}, len(completions))
+	for _, completion := range completions {
+		if !isTerminalBackgroundSubagentCompletion(completion) {
+			continue
+		}
+		key := backgroundSubagentCompletionIdempotencyKey(completion)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func (service *Service) finishDuplicateBackgroundCompletionRun(requestID string) error {
+	if service == nil || service.broker == nil {
+		return nil
+	}
+	stream, ok := service.broker.Get(requestID)
+	if !ok || stream == nil {
+		return nil
+	}
+	stream.mu.Lock()
+	active := stream.ProviderActive || stream.TurnSeq > 0 || stream.Status == StreamStatusStreaming
+	stream.mu.Unlock()
+	if active {
+		return nil
+	}
+	service.setTurnPhase(stream, TurnPhaseCompleted)
+	return service.broker.Complete(requestID, "", "")
+}
+
 func buildRunRequestMetadata(intent InboundIntent) map[string]any {
 	return map[string]any{
-		"model_id":   intent.ModelID,
-		"model_name": intent.ModelName,
-		"prewarm":    intent.Prewarm,
+		"model_id":                    intent.ModelID,
+		"model_name":                  intent.ModelName,
+		"thinking_effort":             intent.ThinkingEffort,
+		"prewarm":                     intent.Prewarm,
+		"background_completion_count": len(intent.BackgroundTaskCompletions),
 	}
 }
 
@@ -2811,6 +3184,41 @@ func resolveInboundManualCompaction(message *agentv1.AgentClientMessage, userMes
 	}
 }
 
+func extractBackgroundSubagentCompletions(action *agentv1.ConversationAction) []*agentv1.BackgroundTaskCompletion {
+	if action == nil {
+		return nil
+	}
+	item, ok := action.GetAction().(*agentv1.ConversationAction_BackgroundTaskCompletionAction)
+	if !ok || item.BackgroundTaskCompletionAction == nil {
+		return nil
+	}
+	completions := make([]*agentv1.BackgroundTaskCompletion, 0, len(item.BackgroundTaskCompletionAction.GetCompletions()))
+	for _, completion := range item.BackgroundTaskCompletionAction.GetCompletions() {
+		if !isTerminalBackgroundSubagentCompletion(completion) {
+			continue
+		}
+		completions = append(completions, completion)
+	}
+	return completions
+}
+
+func isTerminalBackgroundSubagentCompletion(completion *agentv1.BackgroundTaskCompletion) bool {
+	if completion == nil || completion.GetKind() != agentv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT {
+		return false
+	}
+	if completion.GetReason() == agentv1.BackgroundTaskCompletionReason_BACKGROUND_TASK_COMPLETION_REASON_TASK_PROGRESS {
+		return false
+	}
+	switch completion.GetStatus() {
+	case agentv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_SUCCESS,
+		agentv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_ERROR,
+		agentv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_ABORTED:
+		return true
+	default:
+		return completion.GetReason() == agentv1.BackgroundTaskCompletionReason_BACKGROUND_TASK_COMPLETION_REASON_TASK_FINISHED
+	}
+}
+
 func conversationActionStartsRun(action *agentv1.ConversationAction) bool {
 	if action == nil {
 		return false
@@ -2822,6 +3230,8 @@ func conversationActionStartsRun(action *agentv1.ConversationAction) bool {
 		*agentv1.ConversationAction_StartPlanAction,
 		*agentv1.ConversationAction_ExecutePlanAction:
 		return true
+	case *agentv1.ConversationAction_BackgroundTaskCompletionAction:
+		return len(extractBackgroundSubagentCompletions(action)) > 0
 	default:
 		return false
 	}

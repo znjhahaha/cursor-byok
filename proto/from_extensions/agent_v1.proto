@@ -433,6 +433,8 @@ message BackgroundTaskCompletion {
   optional string output_path = 6;
   optional string thread_id = 7;
   BackgroundTaskCompletionReason reason = 8;
+  optional string subagent_id = 9;
+  optional string tool_call_id = 10;
 }
 
 // Copied from: local:agent.v1.BackgroundTaskCompletionAction (var: eZ)

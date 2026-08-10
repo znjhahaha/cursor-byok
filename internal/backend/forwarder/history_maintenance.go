@@ -57,6 +57,10 @@ func cleanupRootLegacyHistoryArtifact(historyRoot string, name string) {
 	if trimmedName == "" || trimmedName == ".history-maintenance.lock" {
 		return
 	}
+	if trimmedName == usageFileName || trimmedName == usageFileName+".lock" ||
+		trimmedName == backgroundTaskFileName || trimmedName == backgroundTaskFileName+".lock" {
+		return
+	}
 	if !isRootLegacyHistoryArtifact(trimmedName) {
 		return
 	}
@@ -71,7 +75,9 @@ func cleanupRootLegacyHistoryArtifact(historyRoot string, name string) {
 }
 
 func isRootLegacyHistoryArtifact(name string) bool {
-	if strings.TrimSpace(name) == usageFileName || strings.TrimSpace(name) == usageFileName+".lock" {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == usageFileName || trimmed == usageFileName+".lock" ||
+		trimmed == backgroundTaskFileName || trimmed == backgroundTaskFileName+".lock" {
 		return false
 	}
 	if strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".jsonl") {

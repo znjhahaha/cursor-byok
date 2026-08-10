@@ -568,6 +568,10 @@ func (service *Service) applyCompactionPlan(stream *ActiveStream, conversationID
 	if err != nil {
 		return err
 	}
+	compactionEntries, err := buildCompactionStateEntries(candidateConversation, plan, summaryText)
+	if err != nil {
+		return err
+	}
 	if err := applyCompactionToConversation(candidateConversation, plan, summaryText); err != nil {
 		return err
 	}
@@ -582,16 +586,15 @@ func (service *Service) applyCompactionPlan(stream *ActiveStream, conversationID
 	if validationErr := validateCompactionCandidateBudget(recompiled, plan); validationErr != nil {
 		return validationErr
 	}
-	replacementEntries := append([]HistoryEntry(nil), candidateConversation.Entries...)
+	return service.persistCompactionState(stream, conversationID, candidateConversation, compactionEntries)
+}
+
+func (service *Service) persistCompactionState(stream *ActiveStream, conversationID string, compacted *ConversationFile, entries []HistoryEntry) error {
+	if service == nil || stream == nil || compacted == nil {
+		return nil
+	}
 	if service.store != nil {
-		persisted, err := service.store.ReplaceEntries(conversationID, replacementEntries, func(item *ConversationFile) error {
-			if item == nil {
-				return nil
-			}
-			item.TokenDetailsUsedTokens = 0
-			clearConversationAutoCompactionState(item)
-			return nil
-		})
+		persisted, err := service.store.SaveConversationWithEntries(conversationID, compacted, entries)
 		if err != nil {
 			return err
 		}
@@ -601,14 +604,11 @@ func (service *Service) applyCompactionPlan(stream *ActiveStream, conversationID
 		stream.mu.Unlock()
 		return nil
 	}
-	_, err = service.updateConversationMetaAndCheckpoint(stream, conversationID, func(item *ConversationFile) error {
+	_, err := service.updateConversationMetaAndCheckpoint(stream, conversationID, func(item *ConversationFile) error {
 		if item == nil {
 			return nil
 		}
-		item.Entries = nil
-		item.NextEntrySeq = 1
-		item.NextTurnSeq = 1
-		appendEntriesInPlace(item, resetEntrySequences(replacementEntries))
+		appendEntriesInPlace(item, resetEntrySequences(entries))
 		item.TokenDetailsUsedTokens = 0
 		clearConversationAutoCompactionState(item)
 		return nil
@@ -660,6 +660,18 @@ func applyCompactionToConversation(conversation *ConversationFile, plan *Pending
 }
 
 func buildCompactedContextEntries(conversation *ConversationFile, plan *PendingCompaction, summaryText string) ([]HistoryEntry, error) {
+	entries, err := buildCompactionStateEntries(conversation, plan, summaryText)
+	if err != nil || plan == nil {
+		return entries, err
+	}
+	if conversation == nil || !plan.PreserveCurrentTurnInputs {
+		return entries, nil
+	}
+	entries = append(entries, buildAutoCompactionPreservedCurrentTurnEntries(conversation.Entries, plan)...)
+	return entries, nil
+}
+
+func buildCompactionStateEntries(conversation *ConversationFile, plan *PendingCompaction, summaryText string) ([]HistoryEntry, error) {
 	if plan == nil {
 		return nil, nil
 	}
@@ -671,10 +683,6 @@ func buildCompactedContextEntries(conversation *ConversationFile, plan *PendingC
 	if ok {
 		entries = append(entries, runtimeEntry)
 	}
-	if conversation == nil || !plan.PreserveCurrentTurnInputs {
-		return entries, nil
-	}
-	entries = append(entries, buildAutoCompactionPreservedCurrentTurnEntries(conversation.Entries, plan)...)
 	return entries, nil
 }
 

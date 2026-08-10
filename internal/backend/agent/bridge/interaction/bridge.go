@@ -20,6 +20,7 @@ import (
 	readability "codeberg.org/readeck/go-readability/v2"
 	htmlmarkdown "github.com/firecrawl/html-to-markdown"
 	mdplugin "github.com/firecrawl/html-to-markdown/plugin"
+	"google.golang.org/protobuf/proto"
 
 	"cursor/gen/agentv1"
 	"cursor/internal/backend/agent/core"
@@ -304,8 +305,8 @@ func (bridge *Bridge) openWebFetch(toolCall runtimecore.ToolInvocation) (*agentv
 
 // openSwitchMode 构造 SwitchMode 交互查询。
 func (bridge *Bridge) openSwitchMode(toolCall runtimecore.ToolInvocation) (*agentv1.AgentServerMessage, runtimecore.PendingInteraction, error) {
-	var args agentv1.SwitchModeArgs
-	if err := json.Unmarshal(toolCall.ArgsJSON, &args); err != nil {
+	args := &agentv1.SwitchModeArgs{}
+	if err := json.Unmarshal(toolCall.ArgsJSON, args); err != nil {
 		return nil, runtimecore.PendingInteraction{}, fmt.Errorf("decode SwitchMode args failed: %w", err)
 	}
 	if err := validateSwitchModeTargetID(args.GetTargetModeId()); err != nil {
@@ -319,7 +320,7 @@ func (bridge *Bridge) openSwitchMode(toolCall runtimecore.ToolInvocation) (*agen
 				Id: messageID,
 				Query: &agentv1.InteractionQuery_SwitchModeRequestQuery{
 					SwitchModeRequestQuery: &agentv1.SwitchModeRequestQuery{
-						Args: &args,
+						Args: args,
 					},
 				},
 			},
@@ -734,7 +735,10 @@ func truncateWebSearchReplay(searchTerm string, references []*agentv1.WebSearchR
 		if reference == nil {
 			continue
 		}
-		next := *reference
+		next, _ := proto.Clone(reference).(*agentv1.WebSearchReference)
+		if next == nil {
+			continue
+		}
 		title := truncateInteractionText("WebSearch title", next.GetTitle(), webSearchTitleLimit)
 		chunk := truncateInteractionText("WebSearch snippet", next.GetChunk(), webSearchChunkLimit)
 		if title != next.GetTitle() || chunk != next.GetChunk() {
@@ -742,7 +746,7 @@ func truncateWebSearchReplay(searchTerm string, references []*agentv1.WebSearchR
 		}
 		next.Title = title
 		next.Chunk = chunk
-		nextReferences = append(nextReferences, &next)
+		nextReferences = append(nextReferences, next)
 	}
 	nextPayload := formatWebSearchPayload(searchTerm, nextReferences)
 	if strings.TrimSpace(payload) != "" && len(nextPayload) == 0 {

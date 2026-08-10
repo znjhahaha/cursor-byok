@@ -149,16 +149,12 @@ func (store *ConversationFileStore) AppendEntries(conversationID string, entries
 			SchemaVersion:      conversationSchemaVersion,
 			ConversationID:     normalizedConversationID,
 			RootConversationID: normalizedConversationID,
+			Mode:               defaultConversationModeAlias,
 			NextTurnSeq:        1,
 			NextEntrySeq:       1,
 			Entries:            make([]HistoryEntry, 0, 16),
 			CreatedAt:          time.Now().UTC(),
 		}
-		alias, err := modeAlias(agentv1.AgentMode_AGENT_MODE_AGENT)
-		if err != nil {
-			return nil, nil, err
-		}
-		conversation.Mode = alias
 	}
 	assigned := appendEntriesInPlace(conversation, entries)
 	deriveConversationLoopState(conversation)
@@ -169,44 +165,86 @@ func (store *ConversationFileStore) AppendEntries(conversationID string, entries
 }
 
 func (store *ConversationFileStore) SaveConversationWithEntries(conversationID string, source *ConversationFile, entries []HistoryEntry) (*ConversationFile, error) {
+	conversation, _, _, err := store.saveConversationWithEntries(conversationID, source, entries, nil)
+	return conversation, err
+}
+
+// SaveConversationWithEntriesIfAnyIdempotencyKeyIsNew 原子追加一批 history；
+// 只有指定幂等键中至少一个尚未存在时才写入。这个判断必须在同一文件锁内完成，
+// 否则重复 completion action 仍可能各自通过检查并启动两次 continuation。
+func (store *ConversationFileStore) SaveConversationWithEntriesIfAnyIdempotencyKeyIsNew(conversationID string, source *ConversationFile, entries []HistoryEntry, idempotencyKeys []string) (*ConversationFile, []HistoryEntry, bool, error) {
+	return store.saveConversationWithEntries(conversationID, source, entries, idempotencyKeys)
+}
+
+func (store *ConversationFileStore) saveConversationWithEntries(conversationID string, source *ConversationFile, entries []HistoryEntry, requiredNewKeys []string) (*ConversationFile, []HistoryEntry, bool, error) {
 	if store == nil {
-		return nil, fmt.Errorf("conversation file store is nil")
+		return nil, nil, false, fmt.Errorf("conversation file store is nil")
 	}
 	normalizedConversationID, err := validateConversationID(conversationID)
 	if err != nil {
-		return nil, err
+		return nil, nil, false, err
 	}
 	if err := os.MkdirAll(store.conversationDir(normalizedConversationID), 0o755); err != nil {
-		return nil, fmt.Errorf("create conversation directory: %w", err)
+		return nil, nil, false, fmt.Errorf("create conversation directory: %w", err)
 	}
 	release, err := acquireConversationLock(store.lockPath(normalizedConversationID))
 	if err != nil {
-		return nil, err
+		return nil, nil, false, err
 	}
 	defer release()
 
 	conversation, err := store.readConversationLocked(normalizedConversationID)
 	if err != nil {
-		return nil, err
+		return nil, nil, false, err
 	}
 	if conversation == nil {
 		conversation = &ConversationFile{
 			SchemaVersion:      conversationSchemaVersion,
 			ConversationID:     normalizedConversationID,
 			RootConversationID: normalizedConversationID,
+			Mode:               defaultConversationModeAlias,
 			NextTurnSeq:        1,
 			NextEntrySeq:       1,
 			Entries:            make([]HistoryEntry, 0, len(entries)),
 			CreatedAt:          time.Now().UTC(),
 		}
 	}
+	if len(requiredNewKeys) > 0 && !conversationHasAnyMissingIdempotencyKey(conversation, requiredNewKeys) {
+		return cloneConversationFile(conversation), nil, false, nil
+	}
 	mergeConversationMetadata(conversation, source)
-	appendEntriesInPlace(conversation, resetEntrySequences(entries))
+	assigned := appendEntriesInPlace(conversation, resetEntrySequences(entries))
 	deriveConversationLoopState(conversation)
 	if err := store.writeConversationLocked(normalizedConversationID, conversation); err != nil {
-		return nil, err
+		return nil, nil, false, err
 	}
-	return cloneConversationFile(conversation), nil
+	return cloneConversationFile(conversation), assigned, true, nil
+}
+
+func conversationHasAnyMissingIdempotencyKey(conversation *ConversationFile, keys []string) bool {
+	if len(keys) == 0 {
+		return false
+	}
+	existingCapacity := 0
+	if conversation != nil {
+		existingCapacity = len(conversation.Entries)
+	}
+	existing := make(map[string]struct{}, existingCapacity)
+	if conversation != nil {
+		for _, entry := range conversation.Entries {
+			if key := strings.TrimSpace(entry.IdempotencyKey); key != "" {
+				existing[key] = struct{}{}
+			}
+		}
+	}
+	for _, key := range keys {
+		if normalized := strings.TrimSpace(key); normalized != "" {
+			if _, ok := existing[normalized]; !ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // UpdateConversationMeta 更新 state.json；context.json 保持不变。
@@ -280,6 +318,7 @@ func (store *ConversationFileStore) ReplaceEntries(conversationID string, entrie
 			SchemaVersion:      conversationSchemaVersion,
 			ConversationID:     normalizedConversationID,
 			RootConversationID: normalizedConversationID,
+			Mode:               defaultConversationModeAlias,
 			NextTurnSeq:        1,
 			NextEntrySeq:       1,
 			Entries:            make([]HistoryEntry, 0, len(entries)),
@@ -394,18 +433,34 @@ func (store *ConversationFileStore) mutateConversation(conversationID string, cr
 	return cloneConversationFile(conversation), nil
 }
 
+// readConversationLocked 以 context.json 为准恢复会话。
+// state.json 中的字段都能从 entries 反推，因此它缺失或损坏时只丢失元数据，
+// 不能让 context.json 里完好的历史一起变得不可见。
 func (store *ConversationFileStore) readConversationLocked(conversationID string) (*ConversationFile, error) {
+	var conversation ConversationFile
+	stateUsable := false
 	stateBody, err := os.ReadFile(store.statePath(conversationID))
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+	switch {
+	case err == nil:
+		if err := json.Unmarshal(stateBody, &conversation); err != nil {
+			conversation = ConversationFile{}
+		} else {
+			stateUsable = true
 		}
+	case !errors.Is(err, os.ErrNotExist):
 		return nil, fmt.Errorf("read conversation state: %w", err)
 	}
-	var conversation ConversationFile
-	if err := json.Unmarshal(stateBody, &conversation); err != nil {
-		return nil, fmt.Errorf("decode conversation state %q: %w", conversationID, err)
+
+	contextExists, err := fileExists(store.contextPath(conversationID))
+	if err != nil {
+		return nil, err
 	}
+	if !stateUsable && !contextExists {
+		return nil, nil
+	}
+
+	// context.json 损坏时必须硬失败：继续下去会把空历史当成真实状态，
+	// 随后的写入就会用它覆盖掉本还可以抢救的文件。
 	context, err := store.readContextLocked(conversationID)
 	if err != nil {
 		return nil, err
@@ -721,6 +776,9 @@ func normalizeLoadedConversation(conversationID string, conversation *Conversati
 	if strings.TrimSpace(conversation.RootConversationID) == "" {
 		conversation.RootConversationID = conversation.ConversationID
 	}
+	// mode 缺失或不可识别时必须回落到 agent：它是投影的必经字段，
+	// 一旦解析失败整个会话历史都无法投影给前端。
+	conversation.Mode = normalizeConversationModeAlias(conversation.Mode)
 	if conversation.NextTurnSeq <= 0 {
 		conversation.NextTurnSeq = 1
 	}
@@ -789,6 +847,12 @@ func writeJSONFileAtomic(path string, payload any) error {
 	if _, err := file.Write(append(data, '\n')); err != nil {
 		file.Close()
 		return fmt.Errorf("write temp file: %w", err)
+	}
+	// rename 之前必须把内容刷到磁盘：否则崩溃或强杀后 rename 可能已生效，
+	// 而目标文件仍是空的或半截的，读取时整条会话都会变得不可用。
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return fmt.Errorf("sync temp file: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)

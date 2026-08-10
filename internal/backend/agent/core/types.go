@@ -252,6 +252,15 @@ type PendingExec struct {
 	StdoutBuffer string
 	// StderrBuffer 保存当前 shell 已累计的 stderr 文本。
 	StderrBuffer string
+	// LastLivenessAt 记录最近一次证明该执行桥仍存活的上行事件时间。
+	// 与 LastShellActivityAt 分开：shell 那组字段服务于 block_until_ms 前台等待窗口，
+	// 这里只表达「对端还在」，用于非 shell 执行桥的失联判定。
+	LastLivenessAt time.Time
+	// InactivityDeadline 表示在没有任何存活信号时，最晚应放弃等待的时间点。
+	// 每次收到存活信号都会顺延，因此持续心跳的长任务不会被误杀。
+	InactivityDeadline time.Time
+	// InactivityRecoveryScheduled 标记是否已为该执行桥安排失联收口。
+	InactivityRecoveryScheduled bool
 	// ArtifactPath 保存该 exec 对应的原始桥接工件路径。
 	ArtifactPath string
 }

@@ -98,6 +98,9 @@ type ConversationSummary struct {
 
 type StreamStatus string
 
+// defaultConversationModeAlias 是模式别名缺失或损坏时的兜底值。
+const defaultConversationModeAlias = "agent"
+
 const (
 	StreamStatusCreated   StreamStatus = "created"
 	StreamStatusStreaming StreamStatus = "streaming"
@@ -126,6 +129,7 @@ type ActiveStream struct {
 	mu sync.Mutex
 
 	RequestID              string
+	RequestMetadata        backgroundTaskRequestMetadata
 	ConversationID         string
 	TurnSeq                int64
 	ModelID                string
@@ -224,6 +228,7 @@ type pendingTurnCompletion struct {
 	ModelCallID    string
 	ProviderPass   int
 	Usage          turnUsageSnapshot
+	FinalMessage   string
 	Disposition    pendingCompletionDisposition
 }
 
@@ -419,30 +424,32 @@ const (
 )
 
 type InboundIntent struct {
-	Kind                     string
-	RequestID                string
-	ConversationID           string
-	ModelID                  string
-	ModelName                string
-	ThinkingEffort           string
-	Mode                     agentv1.AgentMode
-	HasExplicitMode          bool
-	ModeSource               ModeSource
-	StartsRun                bool
-	ManualCompaction         manualCompactionDirective
-	SubagentTypeName         string
-	SubagentModelOverrides   map[string]runtimecore.SubagentModelOverrideSelection
-	ConversationState        *agentv1.ConversationStateStructure
-	UserMessage              *agentv1.UserMessage
-	RequestContext           *agentv1.RequestContext
-	ClientMessage            *agentv1.AgentClientMessage
-	ExecClientMessage        *agentv1.ExecClientMessage
-	ExecClientControlMessage *agentv1.ExecClientControlMessage
-	InteractionResponse      *agentv1.InteractionResponse
-	KVClientMessage          *agentv1.KvClientMessage
-	CancelReason             string
-	IgnoredReason            string
-	Prewarm                  bool
+	Kind                      string
+	RequestID                 string
+	RequestMetadata           backgroundTaskRequestMetadata
+	ConversationID            string
+	ModelID                   string
+	ModelName                 string
+	ThinkingEffort            string
+	Mode                      agentv1.AgentMode
+	HasExplicitMode           bool
+	ModeSource                ModeSource
+	StartsRun                 bool
+	ManualCompaction          manualCompactionDirective
+	SubagentTypeName          string
+	SubagentModelOverrides    map[string]runtimecore.SubagentModelOverrideSelection
+	ConversationState         *agentv1.ConversationStateStructure
+	UserMessage               *agentv1.UserMessage
+	BackgroundTaskCompletions []*agentv1.BackgroundTaskCompletion
+	RequestContext            *agentv1.RequestContext
+	ClientMessage             *agentv1.AgentClientMessage
+	ExecClientMessage         *agentv1.ExecClientMessage
+	ExecClientControlMessage  *agentv1.ExecClientControlMessage
+	InteractionResponse       *agentv1.InteractionResponse
+	KVClientMessage           *agentv1.KvClientMessage
+	CancelReason              string
+	IgnoredReason             string
+	Prewarm                   bool
 }
 
 // normalizeMode 对外部传入的 mode 做最小归一化，但不再静默降级。
@@ -513,6 +520,20 @@ func parseModeAlias(raw string) (agentv1.AgentMode, error) {
 	default:
 		return agentv1.AgentMode_AGENT_MODE_UNSPECIFIED, fmt.Errorf("unsupported mode alias: %q", strings.TrimSpace(raw))
 	}
+}
+
+// normalizeConversationModeAlias 把持久化的模式名收敛为可解析的别名，
+// 无法识别时回落到 agent，避免脏数据让整个会话历史无法投影。
+func normalizeConversationModeAlias(raw string) string {
+	mode, err := parseModeAlias(raw)
+	if err != nil {
+		return defaultConversationModeAlias
+	}
+	alias, err := modeAlias(mode)
+	if err != nil {
+		return defaultConversationModeAlias
+	}
+	return alias
 }
 
 func parseTargetModeID(raw string) (agentv1.AgentMode, error) {

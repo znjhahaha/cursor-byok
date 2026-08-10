@@ -69,6 +69,7 @@ const (
 	streamTimerShellTransportClose  streamTimerKind = "shell_transport_close"
 	streamTimerCheckpointBlobs      streamTimerKind = "checkpoint_blobs"
 	streamTimerOrphanCancel         streamTimerKind = "orphan_cancel"
+	streamTimerSubagentInactivity   streamTimerKind = "subagent_inactivity"
 )
 
 type streamProviderEvent struct {
@@ -131,6 +132,14 @@ func (service *Service) dispatchInboundIntent(intent InboundIntent) error {
 	if service == nil {
 		return fmt.Errorf("forwarder service is nil")
 	}
+	if strings.TrimSpace(intent.Kind) == "run" {
+		service.runDispatchMu.Lock()
+		defer service.runDispatchMu.Unlock()
+	}
+	return service.dispatchInboundIntentLocked(intent)
+}
+
+func (service *Service) dispatchInboundIntentLocked(intent InboundIntent) error {
 	stream, err := service.streamForIntent(intent)
 	if err != nil {
 		return err
@@ -828,6 +837,7 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 			ModelCallID:    modelCallID,
 			ProviderPass:   currentProviderPass(stream),
 			Usage:          usage,
+			FinalMessage:   strings.TrimSpace(accumulatedText),
 			Disposition:    completionDispositionForExternalResults(finishReason, forceComplete, hadToolInvocation),
 		})
 		if awaitingUser {
@@ -860,6 +870,9 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 			completion.ProviderPass = currentProviderPass(stream)
 		}
 		completion.Usage = usage
+		if strings.TrimSpace(accumulatedText) != "" {
+			completion.FinalMessage = strings.TrimSpace(accumulatedText)
+		}
 		clearPendingProviderCompletion(stream)
 		if completion.Disposition == completionDispositionResumeAfterExternal {
 			if err := service.publishCheckpoint(requestID, conversationID); err != nil {
@@ -913,6 +926,7 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		ModelCallID:    modelCallID,
 		ProviderPass:   currentProviderPass(stream),
 		Usage:          usage,
+		FinalMessage:   strings.TrimSpace(accumulatedText),
 	}); err != nil {
 		return service.failStreamIfNonTerminal(stream, "unknown", err)
 	}
@@ -1137,6 +1151,8 @@ func (service *Service) handleTimerEvent(stream *ActiveStream, payload *streamTi
 			return nil
 		}
 		return service.recoverShellWithoutTerminal(stream, current, shellRecoveryReasonTransportClosed)
+	case streamTimerSubagentInactivity:
+		return service.recoverSubagentAfterInactivityIfNeeded(stream, payload.ExecID, payload.MessageID)
 	case streamTimerCheckpointBlobs:
 		return service.handleCheckpointBlobTimeout(stream)
 	case streamTimerOrphanCancel:
@@ -1253,6 +1269,9 @@ func mergePendingProviderCompletion(existing *pendingTurnCompletion, incoming pe
 	}
 	if incoming.Usage.hasAny() {
 		merged.Usage = incoming.Usage
+	}
+	if strings.TrimSpace(incoming.FinalMessage) != "" {
+		merged.FinalMessage = strings.TrimSpace(incoming.FinalMessage)
 	}
 	merged.Disposition = mergeCompletionDisposition(merged.Disposition, incoming.Disposition)
 	return merged

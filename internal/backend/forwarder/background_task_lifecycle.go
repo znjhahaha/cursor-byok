@@ -1,0 +1,312 @@
+package forwarder
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+
+	"cursor/gen/agentv1"
+	runtimecore "cursor/internal/backend/agent/core"
+)
+
+const (
+	backgroundTaskParentRequestHeader  = "x-parent-request-id"
+	backgroundTaskRootRequestHeader    = "x-root-parent-request-id"
+	backgroundTaskParentToolCallHeader = "x-parent-agent-tool-call-id"
+	backgroundTaskDirectMetaHeader     = "x-direct-meta-parent-child-subagent"
+)
+
+func readBackgroundTaskRequestMetadata(header http.Header) backgroundTaskRequestMetadata {
+	if header == nil {
+		return backgroundTaskRequestMetadata{}
+	}
+	return backgroundTaskRequestMetadata{
+		ParentRequestID:     strings.TrimSpace(header.Get(backgroundTaskParentRequestHeader)),
+		RootParentRequestID: strings.TrimSpace(header.Get(backgroundTaskRootRequestHeader)),
+		ParentToolCallID:    strings.TrimSpace(header.Get(backgroundTaskParentToolCallHeader)),
+		DirectMeta:          strings.EqualFold(strings.TrimSpace(header.Get(backgroundTaskDirectMetaHeader)), "true"),
+	}
+}
+
+func (service *Service) observeBackgroundTaskRequest(requestID string, metadata backgroundTaskRequestMetadata) error {
+	if service == nil || service.backgroundTasks == nil {
+		return nil
+	}
+	task, found, err := service.backgroundTasks.ObserveChildRequest(requestID, metadata)
+	if err != nil || !found {
+		return err
+	}
+	service.debug.LogRuntime(context.Background(), requestID, task.ChildConversationID, "background_subagent_request_linked", map[string]any{
+		"background_task_id":  task.ID,
+		"parent_conversation": task.ParentConversationID,
+		"parent_request_id":   task.ParentRequestID,
+		"parent_tool_call_id": task.ParentToolCallID,
+		"root_parent_request": task.RootParentRequestID,
+		"direct_meta":         metadata.DirectMeta,
+	})
+	return nil
+}
+
+func (service *Service) bindBackgroundTaskConversation(intent InboundIntent) error {
+	if service == nil || service.backgroundTasks == nil || strings.TrimSpace(intent.ConversationID) == "" {
+		return nil
+	}
+	task, found, err := service.backgroundTasks.BindChildConversation(intent.RequestID, intent.ConversationID, intent.SubagentTypeName)
+	if err != nil || !found {
+		return err
+	}
+	rootConversationID := task.ParentConversationID
+	if service.store != nil {
+		if parent, loadErr := service.store.LoadConversation(task.ParentConversationID); loadErr != nil {
+			return loadErr
+		} else if parent != nil {
+			rootConversationID = firstNonEmpty(parent.RootConversationID, parent.ConversationID, rootConversationID)
+		}
+		_, err = service.store.UpdateConversationMeta(intent.ConversationID, func(conversation *ConversationFile) error {
+			conversation.ParentConversationID = task.ParentConversationID
+			conversation.ParentToolCallID = task.ParentToolCallID
+			conversation.RootConversationID = rootConversationID
+			conversation.SubagentTypeName = firstNonEmpty(intent.SubagentTypeName, task.SubagentTypeName)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	service.debug.LogRuntime(context.Background(), intent.RequestID, intent.ConversationID, "background_subagent_conversation_bound", map[string]any{
+		"background_task_id":     task.ID,
+		"parent_conversation_id": task.ParentConversationID,
+		"parent_tool_call_id":    task.ParentToolCallID,
+		"root_conversation_id":   rootConversationID,
+	})
+	return nil
+}
+
+func (service *Service) registerBackgroundSubagentTask(stream *ActiveStream, pending runtimecore.PendingExec, invocation runtimecore.ToolInvocation, message *agentv1.AgentServerMessage) error {
+	if service == nil || service.backgroundTasks == nil || stream == nil || strings.TrimSpace(invocation.ToolName) != "Task" {
+		return nil
+	}
+	subagentArgs := message.GetExecServerMessage().GetSubagentArgs()
+	if subagentArgs == nil || !subagentArgs.GetRunInBackground() {
+		return nil
+	}
+	var args struct {
+		Description  string `json:"description"`
+		Prompt       string `json:"prompt"`
+		SubagentType string `json:"subagent_type"`
+	}
+	_ = json.Unmarshal(invocation.ArgsJSON, &args)
+	stream.mu.Lock()
+	rootParentRequestID := firstNonEmpty(stream.RequestMetadata.RootParentRequestID, stream.RequestID)
+	stream.mu.Unlock()
+	_, err := service.backgroundTasks.Register(BackgroundSubagentTask{
+		ParentConversationID: strings.TrimSpace(stream.ConversationID),
+		ParentRequestID:      strings.TrimSpace(stream.RequestID),
+		RootParentRequestID:  rootParentRequestID,
+		ParentModelCallID:    strings.TrimSpace(invocation.ModelCallID),
+		ParentToolCallID:     strings.TrimSpace(pending.ToolCallID),
+		SubagentTypeName:     firstNonEmpty(strings.TrimSpace(args.SubagentType), strings.TrimSpace(subagentArgs.GetSubagentType())),
+		Description:          strings.TrimSpace(args.Description),
+		Prompt:               strings.TrimSpace(args.Prompt),
+		Status:               BackgroundTaskStatusAccepted,
+	})
+	return err
+}
+
+func (service *Service) observeBackgroundSubagentAck(stream *ActiveStream, pending runtimecore.PendingExec, message *agentv1.ExecClientMessage) error {
+	if service == nil || service.backgroundTasks == nil || stream == nil || strings.TrimSpace(pending.ExecKind) != "subagent" || message == nil {
+		return nil
+	}
+	result := message.GetSubagentResult()
+	if result == nil {
+		return nil
+	}
+	success := result.GetSuccess()
+	if success == nil || success.GetBackgroundReason() == agentv1.SubagentBackgroundReason_SUBAGENT_BACKGROUND_REASON_UNSPECIFIED {
+		return nil
+	}
+	_, _, err := service.backgroundTasks.MarkRunning(stream.RequestID, pending.ToolCallID, success.GetAgentId())
+	return err
+}
+
+func (service *Service) completeBackgroundSubagentSuccess(conversationID string, finalMessage string) {
+	service.completeBackgroundSubagent(conversationID, BackgroundTaskStatusCompleted, finalMessage, "")
+}
+
+func (service *Service) completeBackgroundSubagentError(conversationID string, errorText string) {
+	service.completeBackgroundSubagent(conversationID, BackgroundTaskStatusError, "", errorText)
+}
+
+func (service *Service) completeBackgroundSubagentCanceled(conversationID string, reason string) {
+	service.completeBackgroundSubagent(conversationID, BackgroundTaskStatusCanceled, "", reason)
+}
+
+func (service *Service) completeBackgroundSubagent(conversationID string, status BackgroundTaskStatus, finalMessage string, errorText string) {
+	if service == nil || service.backgroundTasks == nil || strings.TrimSpace(conversationID) == "" {
+		return
+	}
+	task, changed, err := service.backgroundTasks.CompleteChild(conversationID, status, finalMessage, errorText)
+	if err != nil {
+		log.Printf("forwarder persist background subagent terminal failed conversation_id=%s err=%v", strings.TrimSpace(conversationID), err)
+		return
+	}
+	if !changed {
+		return
+	}
+	service.debug.LogRuntime(context.Background(), task.ChildRequestID, conversationID, "background_subagent_terminal", map[string]any{
+		"background_task_id":     task.ID,
+		"parent_conversation_id": task.ParentConversationID,
+		"parent_tool_call_id":    task.ParentToolCallID,
+		"status":                 task.Status,
+	})
+}
+
+func backgroundTaskCompletionFromLedger(task BackgroundSubagentTask) *agentv1.BackgroundTaskCompletion {
+	status := agentv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_SUCCESS
+	detail := strings.TrimSpace(task.FinalMessage)
+	switch task.Status {
+	case BackgroundTaskStatusCanceled:
+		status = agentv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_ABORTED
+		detail = firstNonEmpty(task.Error, "Background subagent was canceled.")
+	case BackgroundTaskStatusError:
+		status = agentv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_ERROR
+		detail = firstNonEmpty(task.Error, "Background subagent failed.")
+	default:
+		if detail == "" {
+			detail = "(The subagent returned no final message.)"
+		}
+	}
+	taskID := firstNonEmpty(task.SubagentID, task.ID)
+	subagentID := firstNonEmpty(task.SubagentID, task.ChildConversationID, task.ID)
+	threadID := firstNonEmpty(task.ChildConversationID, subagentID)
+	return &agentv1.BackgroundTaskCompletion{
+		TaskId:     taskID,
+		Kind:       agentv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+		Status:     status,
+		Title:      firstNonEmpty(task.Description, task.SubagentTypeName, "Background subagent"),
+		Detail:     stringPtr(detail),
+		ThreadId:   stringPtr(threadID),
+		Reason:     agentv1.BackgroundTaskCompletionReason_BACKGROUND_TASK_COMPLETION_REASON_TASK_FINISHED,
+		SubagentId: stringPtr(subagentID),
+		ToolCallId: stringPtr(task.ParentToolCallID),
+	}
+}
+
+func (service *Service) startBackgroundTaskRecovery() {
+	if service == nil || service.backgroundTasks == nil {
+		return
+	}
+	claims, err := service.backgroundTasks.InterruptedCompletionClaims()
+	if err != nil {
+		log.Printf("forwarder load interrupted background completion claims failed: %v", err)
+		return
+	}
+	resolvedRequests := make(map[string]struct{}, len(claims))
+	for _, task := range claims {
+		requestID := strings.TrimSpace(task.CompletionContinuationID)
+		if requestID == "" {
+			continue
+		}
+		if _, resolved := resolvedRequests[requestID]; resolved {
+			continue
+		}
+		resolvedRequests[requestID] = struct{}{}
+		confirmed, confirmErr := service.backgroundCompletionConfirmationPersisted(task.ParentConversationID, requestID)
+		if confirmErr != nil {
+			log.Printf("forwarder inspect interrupted background completion claim failed request_id=%s err=%v", requestID, confirmErr)
+			continue
+		}
+		if confirmed {
+			if err := service.backgroundTasks.ConfirmCompletionClaim(requestID); err != nil {
+				log.Printf("forwarder recover confirmed background completion claim failed request_id=%s err=%v", requestID, err)
+			}
+			continue
+		}
+		if err := service.backgroundTasks.ReleaseCompletionClaim(requestID); err != nil {
+			log.Printf("forwarder release interrupted background completion claim failed request_id=%s err=%v", requestID, err)
+		}
+	}
+}
+
+func (service *Service) backgroundCompletionConfirmationPersisted(parentConversationID string, requestID string) (bool, error) {
+	if service == nil || service.store == nil {
+		return false, nil
+	}
+	conversation, err := service.store.LoadConversation(strings.TrimSpace(parentConversationID))
+	if err != nil || conversation == nil {
+		return false, err
+	}
+	requestID = strings.TrimSpace(requestID)
+	for _, entry := range conversation.Entries {
+		if strings.TrimSpace(entry.RequestID) != requestID || strings.TrimSpace(entry.Kind) != "metadata" {
+			continue
+		}
+		var payload metadataPayload
+		if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+			continue
+		}
+		if strings.TrimSpace(payload.Type) == "background_completion_confirmed" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (service *Service) persistBackgroundCompletionConfirmation(stream *ActiveStream, conversationID string, requestID string) error {
+	if service == nil || service.backgroundTasks == nil || stream == nil {
+		return nil
+	}
+	hasClaim, err := service.backgroundTasks.HasCompletionClaim(requestID)
+	if err != nil || !hasClaim {
+		return err
+	}
+	entry := newMetadataEntry(stream.TurnSeq, requestID, "background_completion_confirmed", map[string]any{
+		"continuation_request_id": strings.TrimSpace(requestID),
+	})
+	entry.IdempotencyKey = "background-completion-confirmed:" + strings.TrimSpace(requestID)
+	_, err = service.appendConversationEntries(stream, conversationID, []HistoryEntry{entry})
+	return err
+}
+
+func (service *Service) resolveBackgroundCompletionParentConversation(completions []*agentv1.BackgroundTaskCompletion) (string, error) {
+	if service == nil || service.backgroundTasks == nil || len(completions) == 0 {
+		return "", nil
+	}
+	return service.backgroundTasks.ParentConversationIDForCompletions(completions)
+}
+
+func (service *Service) claimBackgroundCompletions(parentConversationID string, completions []*agentv1.BackgroundTaskCompletion, requestID string) ([]*agentv1.BackgroundTaskCompletion, int, error) {
+	if service == nil || service.backgroundTasks == nil || len(completions) == 0 {
+		return completions, 0, nil
+	}
+	claimed, claimedTaskCount, err := service.backgroundTasks.ClaimCompletions(parentConversationID, completions, requestID)
+	if err != nil {
+		return nil, 0, err
+	}
+	service.debug.LogRuntime(context.Background(), requestID, parentConversationID, "background_completions_claimed", map[string]any{
+		"client_completion_count":  len(completions),
+		"claimed_completion_count": len(claimed),
+		"claimed_ledger_count":     claimedTaskCount,
+	})
+	return claimed, claimedTaskCount, nil
+}
+
+func (service *Service) confirmBackgroundCompletionClaim(requestID string) {
+	if service == nil || service.backgroundTasks == nil {
+		return
+	}
+	if err := service.backgroundTasks.ConfirmCompletionClaim(requestID); err != nil {
+		log.Printf("forwarder confirm background completion claim failed request_id=%s err=%v", requestID, err)
+	}
+}
+
+func (service *Service) releaseBackgroundCompletionClaim(requestID string) {
+	if service == nil || service.backgroundTasks == nil {
+		return
+	}
+	if err := service.backgroundTasks.ReleaseCompletionClaim(requestID); err != nil {
+		log.Printf("forwarder release background completion claim failed request_id=%s err=%v", requestID, err)
+	}
+}

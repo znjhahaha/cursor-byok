@@ -17,6 +17,9 @@ const (
 )
 
 func initializePendingExecForTracking(pending runtimecore.PendingExec) runtimecore.PendingExec {
+	if strings.TrimSpace(pending.ExecKind) == "subagent" {
+		return initializePendingSubagentForTracking(pending)
+	}
 	if strings.TrimSpace(pending.ExecKind) != "shell" {
 		return pending
 	}

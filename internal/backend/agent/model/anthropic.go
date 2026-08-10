@@ -1501,7 +1501,7 @@ func anthropicProviderContentBlocks(message Message, thinkingEnabled bool) ([]ma
 		return nil, err
 	}
 	if !shouldIncludeAnthropicThinkingBlock(message, thinkingEnabled) {
-		return blocks, nil
+		return appendSalvagedReasoningTextBlock(blocks, message), nil
 	}
 
 	thinkingBlock := map[string]any{
@@ -1556,6 +1556,36 @@ func anthropicMessageHasLeadingThinking(message anthropicMessage, reasoning stri
 		return false
 	}
 	return strings.TrimSpace(anthropicStringField(first, "thinking")) == reasoning && strings.TrimSpace(anthropicStringField(first, "signature")) == signature
+}
+
+// appendSalvagedReasoningTextBlock 处理「有 ReasoningContent 但 thinking block 不可回放」的
+// assistant 消息。不可回放的成因有两类：
+//   - 跨 provider 格式切换：signature 来源是 openai_responses，对 Anthropic 无效（见
+//     anthropicThinkingSignature），此时 signature 必须丢弃，否则 Anthropic 会拒绝请求；
+//   - thinking 未启用，或消息本就没有 signature。
+//
+// 历史上这类消息会直接产出零个 block，随后被 normalizeAnthropicProviderMessages 的
+// `len(blocks) == 0 { continue }` 整条丢弃。对于「只有推理、没有正文、没有 tool_call」的
+// assistant 轮次（OpenAI Responses 常见形态），后果是该轮从回放里彻底消失，并让前后两条
+// user 消息变成连续同 role，触发 Anthropic 侧的显示/校验异常。
+//
+// 这里把推理内容降级为普通 text block 保留下来：signature 不可跨格式复用，但推理的语义内容
+// 可以。这样消息条数与角色交替结构保持稳定，历史不会因切换模型而丢失。
+func appendSalvagedReasoningTextBlock(blocks []map[string]any, message Message) []map[string]any {
+	if len(blocks) > 0 {
+		return blocks
+	}
+	if strings.TrimSpace(message.Role) != "assistant" || len(message.ToolCalls) > 0 {
+		return blocks
+	}
+	reasoning := strings.TrimSpace(message.ReasoningContent)
+	if reasoning == "" {
+		return blocks
+	}
+	return append(blocks, map[string]any{
+		"type": "text",
+		"text": reasoning,
+	})
 }
 
 func anthropicThinkingSignature(message Message) string {

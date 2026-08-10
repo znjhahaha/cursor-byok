@@ -39,7 +39,9 @@ type ExecApplyResult struct {
 // OpenExecContext 表示执行桥打开请求时需要的最小上下文。
 type OpenExecContext struct {
 	ConversationID         string
+	RootConversationID     string
 	ModelID                string
+	Mode                   agentv1.AgentMode
 	SubagentModelOverrides map[string]runtimecore.SubagentModelOverrideSelection
 }
 
@@ -791,6 +793,12 @@ func (bridge *Bridge) openTask(openContext OpenExecContext, toolCall runtimecore
 	if modelID == "" {
 		modelID = strings.TrimSpace(openContext.ModelID)
 	}
+	runInBackground, continuationConfig := taskBackgroundConfig(openContext.Mode)
+	directMetaParentChild := true
+	rootParentConversationID := strings.TrimSpace(openContext.RootConversationID)
+	if rootParentConversationID == "" {
+		rootParentConversationID = parentConversationID
+	}
 	serverMessage := &agentv1.AgentServerMessage{
 		Message: &agentv1.AgentServerMessage_ExecServerMessage{
 			ExecServerMessage: &agentv1.ExecServerMessage{
@@ -798,14 +806,18 @@ func (bridge *Bridge) openTask(openContext OpenExecContext, toolCall runtimecore
 				ExecId: execID,
 				Message: &agentv1.ExecServerMessage_SubagentArgs{
 					SubagentArgs: &agentv1.SubagentArgs{
-						ToolCallId:           toolCall.CallID,
-						SubagentType:         subagentType,
-						ModelId:              modelID,
-						Prompt:               strings.TrimSpace(readStringArg(args, "prompt")),
-						Readonly:             readonly,
-						ResumeAgentId:        stringPtr(strings.TrimSpace(readStringArg(args, "resume"))),
-						ParentConversationId: stringPtrIfNonEmpty(parentConversationID),
-						Mode:                 taskModeFromReadonly(readonly),
+						ToolCallId:                    toolCall.CallID,
+						SubagentType:                  subagentType,
+						ModelId:                       modelID,
+						Prompt:                        strings.TrimSpace(readStringArg(args, "prompt")),
+						Readonly:                      readonly,
+						ResumeAgentId:                 stringPtr(strings.TrimSpace(readStringArg(args, "resume"))),
+						RunInBackground:               runInBackground,
+						ContinuationConfig:            continuationConfig,
+						ParentConversationId:          stringPtrIfNonEmpty(parentConversationID),
+						RootParentConversationId:      stringPtrIfNonEmpty(rootParentConversationID),
+						DirectMetaParentChildSubagent: &directMetaParentChild,
+						Mode:                          taskModeFromReadonly(readonly),
 					},
 				},
 			},
@@ -820,6 +832,22 @@ func (bridge *Bridge) openTask(openContext OpenExecContext, toolCall runtimecore
 		StreamState: "opened",
 		OpenedAt:    now,
 	}, nil
+}
+
+func taskBackgroundConfig(mode agentv1.AgentMode) (*bool, *agentv1.ClientContinuationConfig) {
+	if mode != agentv1.AgentMode_AGENT_MODE_MULTITASK {
+		return nil, nil
+	}
+	runInBackground := true
+	return &runInBackground, &agentv1.ClientContinuationConfig{
+		IdleThreshold:             1,
+		MaxLoops:                  1,
+		NudgeMessage:              "Continue working until the delegated task is complete, then return a concise final result.",
+		EscapeMessageTemplate:     "No further tool work is required. Return the final result and include {escape_token} exactly once.",
+		CollectBackgroundChildren: true,
+		ChildrenCompletedMessageTemplate: "Background child agents completed. Integrate their results into your final response.\n\n" +
+			"{summaries}",
+	}
 }
 
 // openGrep 构造 Grep 对应的执行桥请求。

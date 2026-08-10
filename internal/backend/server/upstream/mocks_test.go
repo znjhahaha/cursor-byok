@@ -51,6 +51,34 @@ func TestEncodeCLIModelsUsesAgentModelDetailsWireFormat(t *testing.T) {
 	}
 }
 
+func TestBuildBootstrapStatsigConfigJSONEnablesMultitaskWakeupGates(t *testing.T) {
+	payload, err := buildBootstrapStatsigConfigJSON(12345, "test-auth-id")
+	if err != nil {
+		t.Fatalf("build bootstrap statsig config: %v", err)
+	}
+
+	var decoded statsigBootstrapTemplate
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decode bootstrap statsig config: %v", err)
+	}
+
+	for _, gateName := range []string{
+		bootstrapStatsigEnableMultitaskMode,
+		bootstrapStatsigLongRunningJobs,
+	} {
+		gate, ok := decoded.FeatureGates[gateName]
+		if !ok {
+			t.Fatalf("missing feature gate %q", gateName)
+		}
+		if value, _ := gate["value"].(bool); !value {
+			t.Fatalf("expected %q to be enabled", gateName)
+		}
+		if ruleID, _ := gate["rule_id"].(string); ruleID != "local_enabled" {
+			t.Fatalf("unexpected rule_id for %q: %q", gateName, ruleID)
+		}
+	}
+}
+
 func TestBuildBootstrapStatsigConfigJSONDisablesAlwaysLocalDecompositionGate(t *testing.T) {
 	payload, err := buildBootstrapStatsigConfigJSON(12345, "test-auth-id")
 	if err != nil {

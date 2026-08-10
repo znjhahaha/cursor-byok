@@ -378,19 +378,26 @@ func compactedPromptProjectionEntries(entries []HistoryEntry) []HistoryEntry {
 		preservedIndexes = autoCompactionPreservedEntryIndexes(entries, compactionPayload.CurrentTurnSeq, compactionPayload.CurrentRequestID, latestToolCallID)
 	}
 	filtered := make([]HistoryEntry, 0, len(entries)-compactionIndex)
-	for index, entry := range entries {
-		if index < compactionIndex && isPromptReplayEntryKind(entry.Kind) {
-			if _, ok := preservedIndexes[index]; !ok {
-				continue
-			}
-		}
-		if index < compactionIndex {
-			if rewritten, ok := compactedProjectionPreservedEntry(entry); ok {
-				entry = rewritten
-			}
+	for _, entry := range entries[:compactionIndex] {
+		if isPromptReplayEntryKind(entry.Kind) {
+			continue
 		}
 		filtered = append(filtered, entry)
 	}
+	filtered = append(filtered, entries[compactionIndex])
+	for index, entry := range entries[:compactionIndex] {
+		if !isPromptReplayEntryKind(entry.Kind) {
+			continue
+		}
+		if _, ok := preservedIndexes[index]; !ok {
+			continue
+		}
+		if rewritten, ok := compactedProjectionPreservedEntry(entry); ok {
+			entry = rewritten
+		}
+		filtered = append(filtered, entry)
+	}
+	filtered = append(filtered, entries[compactionIndex+1:]...)
 	return filtered
 }
 
