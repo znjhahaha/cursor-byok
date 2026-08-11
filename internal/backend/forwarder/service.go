@@ -647,6 +647,12 @@ func (service *Service) decodeInboundIntent(requestID string, message *agentv1.A
 		case *agentv1.ConversationAction_CancelAction:
 			intent.Kind = "cancel"
 			intent.CancelReason = strings.TrimSpace(item.CancelAction.GetReason())
+		case *agentv1.ConversationAction_CancelSubagentAction:
+			intent.Kind = "cancel_subagent"
+			intent.CancelSubagentID = strings.TrimSpace(item.CancelSubagentAction.GetSubagentId())
+			if intent.CancelSubagentID == "" {
+				return InboundIntent{}, fmt.Errorf("cancel_subagent_action subagent_id is required")
+			}
 		default:
 			if intent.StartsRun || intent.HasExplicitMode {
 				if stream, ok := service.broker.Get(intent.RequestID); ok && stream != nil {
@@ -967,7 +973,6 @@ func (service *Service) handleCancelIntent(intent InboundIntent) error {
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
 	service.setTurnPhase(stream, TurnPhaseCanceled)
-	service.completeBackgroundSubagentCanceled(stream.ConversationID, firstNonEmpty(intent.CancelReason, "subagent canceled"))
 	err := service.broker.Cancel(intent.RequestID, firstNonEmpty(intent.CancelReason, "[canceled] User aborted request"))
 	service.releaseBackgroundCompletionClaim(intent.RequestID)
 	return err
@@ -1099,6 +1104,11 @@ func (service *Service) handleExecResult(intent InboundIntent) error {
 			Message: buildShellOutputDeltaMessage(result.ShellOutputDelta),
 		}); err != nil {
 			return err
+		}
+		if message := buildShellToolCallDeltaMessage(pending.ToolCallID, pending.ModelCallID, result.ShellOutputDelta); message != nil {
+			if err := service.broker.Publish(intent.RequestID, StreamEvent{Message: message}); err != nil {
+				return err
+			}
 		}
 	}
 	if !result.IsTerminal {

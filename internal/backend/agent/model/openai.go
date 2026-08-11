@@ -92,10 +92,31 @@ type openAIContentPart struct {
 	Text string
 }
 
+type openAIReasoningSource uint8
+
+const (
+	openAIReasoningSourceNone openAIReasoningSource = iota
+	openAIReasoningSourceExplicit
+	openAIReasoningSourceTaggedContent
+)
+
 // openAIThinkTagParser 负责把某些 OpenAI 兼容 provider 放进 content 的 <think> 标签拆回 reasoning 流。
 type openAIThinkTagParser struct {
 	carry   string
 	inThink bool
+}
+
+func newOpenAIThinkTagParser(closeOnly bool) *openAIThinkTagParser {
+	return &openAIThinkTagParser{inThink: closeOnly}
+}
+
+func openAIModelUsesCloseOnlyThinkTag(modelID string) bool {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "cp_dsv4_flash_0731_pro5000":
+		return true
+	default:
+		return false
+	}
 }
 
 func (parser *openAIThinkTagParser) Consume(text string) []openAIContentPart {
@@ -580,7 +601,8 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 	turnFinishedPending := false
 	thinkingStarted := time.Time{}
 	thinkingActive := false
-	thinkParser := &openAIThinkTagParser{}
+	reasoningSource := openAIReasoningSourceNone
+	thinkParser := newOpenAIThinkTagParser(openAIModelUsesCloseOnlyThinkTag(modelID))
 	flushThinkingCompleted := func() error {
 		if !thinkingActive {
 			return nil
@@ -664,12 +686,19 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 					return err
 				}
 			case openAIContentPartReasoning:
-				if err := emitThinkingDelta(part.Text); err != nil {
-					return err
+				if reasoningSource == openAIReasoningSourceNone {
+					reasoningSource = openAIReasoningSourceTaggedContent
+				}
+				if reasoningSource == openAIReasoningSourceTaggedContent {
+					if err := emitThinkingDelta(part.Text); err != nil {
+						return err
+					}
 				}
 			case openAIContentPartThinkingCompleted:
-				if err := flushThinkingCompleted(); err != nil {
-					return err
+				if reasoningSource != openAIReasoningSourceExplicit {
+					if err := flushThinkingCompleted(); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -795,25 +824,22 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 		}
 		applyUsage(chunk.Usage)
 
+		if reasoning := choice.Delta.ReasoningContent; reasoning != "" {
+			if reasoningSource == openAIReasoningSourceNone {
+				reasoningSource = openAIReasoningSourceExplicit
+			}
+			if reasoningSource == openAIReasoningSourceExplicit {
+				if err := emitThinkingDelta(reasoning); err != nil {
+					return fail(err)
+				}
+			}
+		}
 		if text := choice.Delta.Content; text != "" {
 			if err := emitTaggedContentParts(thinkParser.Consume(text)); err != nil {
 				return fail(err)
 			}
 		}
-		if reasoning := choice.Delta.ReasoningContent; reasoning != "" {
-			if err := emitThinkingDelta(reasoning); err != nil {
-				return fail(err)
-			}
-		}
 
-		if len(choice.Delta.ToolCalls) > 0 && choice.Delta.Content == "" && choice.Delta.ReasoningContent == "" {
-			if err := flushTaggedContentTail(); err != nil {
-				return fail(err)
-			}
-			if err := flushThinkingCompleted(); err != nil {
-				return fail(err)
-			}
-		}
 		for _, item := range choice.Delta.ToolCalls {
 			streamIdle.MarkEffectiveContent()
 			accumulator, ok := tools[item.Index]

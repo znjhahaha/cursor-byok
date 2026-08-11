@@ -12,7 +12,11 @@ import (
 	runtimecore "cursor/internal/backend/agent/core"
 )
 
-const editReadBinaryContentLimit = 32 * 1024
+const (
+	editReadBinaryContentLimit     = 32 * 1024
+	patchEditHistoryDiffLimitBytes = 4 * 1024
+	writeHistoryDiffLimitBytes     = 32 * 1024
+)
 
 type editComputation struct {
 	BeforeContent string

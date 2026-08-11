@@ -194,6 +194,94 @@ func (store *BackgroundTaskFileStore) MarkRunning(parentRequestID string, parent
 	return task, found, err
 }
 
+func (store *BackgroundTaskFileStore) CancelSubagent(subagentID string, reason string) (BackgroundSubagentTask, bool, bool, error) {
+	subagentID = strings.TrimSpace(subagentID)
+	if subagentID == "" {
+		return BackgroundSubagentTask{}, false, false, nil
+	}
+	var found bool
+	var changed bool
+	task, err := store.mutate(func(document *backgroundTaskFileDocument) (BackgroundSubagentTask, error) {
+		bestID := ""
+		bestScore := 0
+		var candidate BackgroundSubagentTask
+		for id, item := range document.Tasks {
+			score := backgroundTaskCancellationMatchScore(item, subagentID)
+			if score == 0 || score < bestScore || (score == bestScore && bestID != "" && id >= bestID) {
+				continue
+			}
+			bestID = id
+			bestScore = score
+			candidate = item
+		}
+		if bestID == "" {
+			return BackgroundSubagentTask{}, nil
+		}
+		found = true
+		if isTerminalBackgroundTaskStatus(candidate.Status) {
+			return candidate, nil
+		}
+		now := time.Now().UTC()
+		candidate.Status = BackgroundTaskStatusCanceled
+		candidate.FinalMessage = ""
+		candidate.Error = firstNonEmpty(strings.TrimSpace(reason), "Background subagent was canceled by the user.")
+		candidate.CompletedAt = now
+		candidate.CompletionContinuationID = ""
+		candidate.CompletionInjectedAt = now
+		candidate.UpdatedAt = now
+		document.Tasks[bestID] = candidate
+		changed = true
+		return candidate, nil
+	})
+	return task, found, changed, err
+}
+
+func (store *BackgroundTaskFileStore) ActiveTasks(parentConversationID string) ([]BackgroundSubagentTask, error) {
+	parentConversationID = strings.TrimSpace(parentConversationID)
+	if store == nil || strings.TrimSpace(store.path) == "" {
+		return nil, nil
+	}
+	document, err := store.load()
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]BackgroundSubagentTask, 0)
+	for _, task := range document.Tasks {
+		if parentConversationID != "" && strings.TrimSpace(task.ParentConversationID) != parentConversationID {
+			continue
+		}
+		if task.Status == BackgroundTaskStatusAccepted || task.Status == BackgroundTaskStatusRunning {
+			tasks = append(tasks, task)
+		}
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].CreatedAt.Equal(tasks[j].CreatedAt) {
+			return tasks[i].ID < tasks[j].ID
+		}
+		return tasks[i].CreatedAt.Before(tasks[j].CreatedAt)
+	})
+	return tasks, nil
+}
+
+func backgroundTaskCancellationMatchScore(task BackgroundSubagentTask, subagentID string) int {
+	subagentID = strings.TrimSpace(subagentID)
+	if subagentID == "" {
+		return 0
+	}
+	switch {
+	case strings.TrimSpace(task.SubagentID) == subagentID:
+		return 500
+	case strings.TrimSpace(task.ChildConversationID) == subagentID:
+		return 400
+	case strings.TrimSpace(task.ChildRequestID) == subagentID:
+		return 300
+	case strings.TrimSpace(task.ID) == subagentID:
+		return 200
+	default:
+		return 0
+	}
+}
+
 func (store *BackgroundTaskFileStore) CompleteChild(conversationID string, status BackgroundTaskStatus, finalMessage string, errorText string) (BackgroundSubagentTask, bool, error) {
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" || !isTerminalBackgroundTaskStatus(status) {

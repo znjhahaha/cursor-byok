@@ -66,6 +66,8 @@ func MapClientMessageToCommandKind(message *agentv1.AgentClientMessage, clientKi
 		switch message.GetConversationAction().GetAction().(type) {
 		case *agentv1.ConversationAction_CancelAction:
 			return runtimecore.CommandKindCancelRequested, nil
+		case *agentv1.ConversationAction_CancelSubagentAction:
+			return runtimecore.CommandKindCancelSubagentRequested, nil
 		case *agentv1.ConversationAction_UserMessageAction,
 			*agentv1.ConversationAction_ResumeAction,
 			*agentv1.ConversationAction_SummarizeAction,
@@ -73,7 +75,6 @@ func MapClientMessageToCommandKind(message *agentv1.AgentClientMessage, clientKi
 			*agentv1.ConversationAction_StartPlanAction,
 			*agentv1.ConversationAction_ExecutePlanAction,
 			*agentv1.ConversationAction_AsyncAskQuestionCompletionAction,
-			*agentv1.ConversationAction_CancelSubagentAction,
 			*agentv1.ConversationAction_BackgroundShellAction,
 			*agentv1.ConversationAction_BackgroundTaskCompletionAction:
 			return runtimecore.CommandKindConversationActionRecordOnly, nil

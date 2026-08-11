@@ -92,6 +92,8 @@ const (
 	CommandKindPrewarmRequested CommandKind = "prewarm_requested"
 	// CommandKindCancelRequested 表示收到 `conversation_action.cancel_action`。
 	CommandKindCancelRequested CommandKind = "cancel_requested"
+	// CommandKindCancelSubagentRequested 表示收到指定后台子代理的业务取消请求。
+	CommandKindCancelSubagentRequested CommandKind = "cancel_subagent_requested"
 	// CommandKindConversationActionRecordOnly 表示收到非取消型的 `conversation_action`，当前阶段只记录不推进状态。
 	CommandKindConversationActionRecordOnly CommandKind = "conversation_action_record_only"
 	// CommandKindExecClientMessage 表示收到 `exec_client_message`。

@@ -50,6 +50,7 @@ type streamCommandKind string
 const (
 	streamCommandRun               streamCommandKind = "run"
 	streamCommandCancel            streamCommandKind = "cancel"
+	streamCommandCancelSubagent    streamCommandKind = "cancel_subagent"
 	streamCommandMetadata          streamCommandKind = "metadata"
 	streamCommandExecResult        streamCommandKind = "exec_result"
 	streamCommandExecControl       streamCommandKind = "exec_control"
@@ -115,6 +116,8 @@ func commandKindForIntent(intent InboundIntent) (streamCommandKind, error) {
 		return streamCommandRun, nil
 	case "cancel":
 		return streamCommandCancel, nil
+	case "cancel_subagent":
+		return streamCommandCancelSubagent, nil
 	case "metadata", "kv_result":
 		return streamCommandMetadata, nil
 	case "exec_result":
@@ -140,16 +143,19 @@ func (service *Service) dispatchInboundIntent(intent InboundIntent) error {
 }
 
 func (service *Service) dispatchInboundIntentLocked(intent InboundIntent) error {
+	commandKind, err := commandKindForIntent(intent)
+	if err != nil {
+		return err
+	}
+	if commandKind == streamCommandCancelSubagent {
+		return service.handleCancelSubagentIntent(intent)
+	}
 	stream, err := service.streamForIntent(intent)
 	if err != nil {
 		return err
 	}
 	if stream == nil {
 		return nil
-	}
-	commandKind, err := commandKindForIntent(intent)
-	if err != nil {
-		return err
 	}
 	return service.postStreamCommandWait(stream, streamCommand{
 		Kind:   commandKind,
@@ -328,6 +334,8 @@ func (service *Service) handleStreamCommand(stream *ActiveStream, command stream
 		return service.handleRunIntent(command.Intent)
 	case streamCommandCancel:
 		return service.handleCancelIntent(command.Intent)
+	case streamCommandCancelSubagent:
+		return service.handleCancelSubagentIntent(command.Intent)
 	case streamCommandMetadata:
 		if strings.TrimSpace(command.Intent.Kind) == "kv_result" {
 			return service.handleCheckpointBlobResult(stream, command.Intent.KVClientMessage)

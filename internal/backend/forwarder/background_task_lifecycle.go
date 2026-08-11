@@ -3,9 +3,12 @@ package forwarder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
+
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"cursor/gen/agentv1"
 	runtimecore "cursor/internal/backend/agent/core"
@@ -161,6 +164,111 @@ func (service *Service) completeBackgroundSubagent(conversationID string, status
 		"parent_tool_call_id":    task.ParentToolCallID,
 		"status":                 task.Status,
 	})
+}
+
+func (service *Service) handleCancelSubagentIntent(intent InboundIntent) error {
+	if service == nil || service.backgroundTasks == nil {
+		return nil
+	}
+	targetID := strings.TrimSpace(intent.CancelSubagentID)
+	if targetID == "" {
+		return nil
+	}
+	reason := firstNonEmpty(strings.TrimSpace(intent.CancelReason), "Background subagent was canceled by the user.")
+	task, found, changed, err := service.backgroundTasks.CancelSubagent(targetID, reason)
+	if err != nil || !found {
+		return err
+	}
+	if task.Status != BackgroundTaskStatusCanceled {
+		return nil
+	}
+	reason = firstNonEmpty(task.Error, reason)
+	var cancelErr error
+	if childStream, ok := service.broker.Get(task.ChildRequestID); ok && childStream != nil {
+		if err := service.postStreamCommandWait(childStream, streamCommand{
+			Kind: streamCommandCancel,
+			Intent: InboundIntent{
+				Kind:         "cancel",
+				RequestID:    task.ChildRequestID,
+				CancelReason: reason,
+			},
+		}); err != nil && !errors.Is(err, errProviderLoopInterrupted) {
+			cancelErr = err
+		}
+	}
+	persistErr := service.persistCanceledBackgroundTaskResult(task, reason)
+	service.debug.LogRuntime(context.Background(), task.ChildRequestID, task.ChildConversationID, "background_subagent_canceled", map[string]any{
+		"background_task_id":     task.ID,
+		"parent_conversation_id": task.ParentConversationID,
+		"parent_tool_call_id":    task.ParentToolCallID,
+		"subagent_id":            targetID,
+		"state_changed":          changed,
+	})
+	return errors.Join(cancelErr, persistErr)
+}
+
+func (service *Service) persistCanceledBackgroundTaskResult(task BackgroundSubagentTask, reason string) error {
+	if service == nil || service.store == nil || strings.TrimSpace(task.ParentConversationID) == "" {
+		return nil
+	}
+	updated, err := service.store.mutateConversation(task.ParentConversationID, false, func(conversation *ConversationFile) error {
+		for index := len(conversation.Entries) - 1; index >= 0; index-- {
+			entry := conversation.Entries[index]
+			if strings.TrimSpace(entry.Kind) != "tool_result" || strings.TrimSpace(entry.ToolCallID) != strings.TrimSpace(task.ParentToolCallID) {
+				continue
+			}
+			var payload toolResultEntryPayload
+			if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+				return err
+			}
+			toolCall := &agentv1.ToolCall{}
+			if len(payload.ToolCall) > 0 {
+				if err := protojson.Unmarshal(payload.ToolCall, toolCall); err != nil {
+					return err
+				}
+			}
+			if toolCall.GetTaskToolCall() == nil {
+				continue
+			}
+			toolCall.GetTaskToolCall().Result = &agentv1.TaskResult{
+				Result: &agentv1.TaskResult_Error{
+					Error: &agentv1.TaskError{Error: firstNonEmpty(strings.TrimSpace(reason), "Background subagent was canceled by the user.")},
+				},
+			}
+			encoded, err := protojson.Marshal(toolCall)
+			if err != nil {
+				return err
+			}
+			payload.ResultText = "background subagent canceled"
+			payload.ToolCall = encoded
+			entry.Payload, err = json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+			conversation.Entries[index] = entry
+			return nil
+		}
+		return nil
+	})
+	if err != nil || updated == nil {
+		return err
+	}
+	for _, requestID := range service.broker.OtherConversationRequestIDs(task.ParentConversationID, "") {
+		parentStream, ok := service.broker.Get(requestID)
+		if !ok || parentStream == nil {
+			continue
+		}
+		if err := service.replaceCheckpointConversation(parentStream, updated); err != nil {
+			return err
+		}
+		if isTerminalIntentStream(parentStream) {
+			continue
+		}
+		if err := service.publishCheckpoint(requestID, task.ParentConversationID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backgroundTaskCompletionFromLedger(task BackgroundSubagentTask) *agentv1.BackgroundTaskCompletion {

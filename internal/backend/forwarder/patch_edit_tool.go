@@ -663,14 +663,18 @@ func compactPatchEditHistoryEditResult(path string, result *agentv1.EditResult) 
 	return &agentv1.EditResult{
 		Result: &agentv1.EditResult_Success{
 			Success: &agentv1.EditSuccess{
-				Path: firstNonEmpty(success.GetPath(), path),
+				Path:         firstNonEmpty(success.GetPath(), path),
+				DiffString:   literalStringPtr(boundedPatchEditDiffString(success.GetDiffString())),
+				LinesAdded:   success.LinesAdded,
+				LinesRemoved: success.LinesRemoved,
+				Message:      success.Message,
 			},
 		},
 	}
 }
 
 func boundedPatchEditDiffString(diffString string) string {
-	return truncateProjectedReplayText(patchEditToolName, diffString, projectedPatchEditReplayLimit)
+	return truncateProjectedReplayText(patchEditToolName, diffString, patchEditHistoryDiffLimitBytes)
 }
 
 func (args patchEditArgs) MarshalJSON() ([]byte, error) {

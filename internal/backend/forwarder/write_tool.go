@@ -422,14 +422,18 @@ func compactWriteHistoryEditResult(path string, result *agentv1.EditResult) *age
 	return &agentv1.EditResult{
 		Result: &agentv1.EditResult_Success{
 			Success: &agentv1.EditSuccess{
-				Path: firstNonEmpty(success.GetPath(), path),
+				Path:         firstNonEmpty(success.GetPath(), path),
+				DiffString:   literalStringPtr(boundedWriteDiffString(success.GetDiffString())),
+				LinesAdded:   success.LinesAdded,
+				LinesRemoved: success.LinesRemoved,
+				Message:      success.Message,
 			},
 		},
 	}
 }
 
 func boundedWriteDiffString(diffString string) string {
-	return truncateProjectedReplayText("Write", diffString, projectedEditReplayLimit)
+	return truncateProjectedReplayText("Write", diffString, writeHistoryDiffLimitBytes)
 }
 
 func resultPath(result *agentv1.EditResult) string {

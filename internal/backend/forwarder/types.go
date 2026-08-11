@@ -448,6 +448,7 @@ type InboundIntent struct {
 	InteractionResponse       *agentv1.InteractionResponse
 	KVClientMessage           *agentv1.KvClientMessage
 	CancelReason              string
+	CancelSubagentID          string
 	IgnoredReason             string
 	Prewarm                   bool
 }
