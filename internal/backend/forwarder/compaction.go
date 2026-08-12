@@ -335,9 +335,9 @@ func (service *Service) startPendingCompactionSummary(stream *ActiveStream, plan
 		return nil
 	}
 	summaryModelCallID := uuid.NewString()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(streamInterruptContext(stream))
 	stream.mu.Lock()
-	if stream.Status == StreamStatusCanceled || stream.Status == StreamStatusCompleted || stream.Status == StreamStatusFailed {
+	if ctx.Err() != nil || stream.Status == StreamStatusCanceled || stream.Status == StreamStatusCompleted || stream.Status == StreamStatusFailed {
 		stream.PendingCompaction = nil
 		stream.mu.Unlock()
 		cancel()

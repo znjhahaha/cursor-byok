@@ -161,7 +161,9 @@ func (store *ConversationFileStore) AppendEntries(conversationID string, entries
 	if err := store.writeConversationLocked(normalizedConversationID, conversation); err != nil {
 		return nil, nil, err
 	}
-	return cloneConversationFile(conversation), assigned, nil
+	// conversation 是本函数从磁盘重建出来的局部对象，store 不再持有引用，
+	// 直接把所有权移交调用方即可；再深拷贝一遍整条历史是纯浪费。
+	return conversation, assigned, nil
 }
 
 func (store *ConversationFileStore) SaveConversationWithEntries(conversationID string, source *ConversationFile, entries []HistoryEntry) (*ConversationFile, error) {
@@ -289,6 +291,36 @@ func (store *ConversationFileStore) UpdateConversationMeta(conversationID string
 		return nil, err
 	}
 	return cloneConversationFile(conversation), nil
+}
+
+// WriteConversationMetaFrom 用调用方已持有的会话快照直接写 state.json。
+//
+// UpdateConversationMeta 必须先从磁盘读回整个 context.json 才能重算派生字段，
+// 这在长历史下是每次调用都要付的 O(历史长度) 成本。当调用方本身就握着
+// 权威快照时，这次读取纯属重复劳动，直接复用即可。
+// 语义与 UpdateConversationMeta 一致：只写 state.json，不触碰 context.json。
+// source 被视为只读，派生过程不会修改调用方持有的快照。
+func (store *ConversationFileStore) WriteConversationMetaFrom(conversationID string, source *ConversationFile) error {
+	if store == nil {
+		return fmt.Errorf("conversation file store is nil")
+	}
+	if source == nil {
+		return fmt.Errorf("conversation snapshot is required")
+	}
+	normalizedConversationID, err := validateConversationID(conversationID)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(store.conversationDir(normalizedConversationID), 0o755); err != nil {
+		return fmt.Errorf("create conversation directory: %w", err)
+	}
+	release, err := acquireConversationLock(store.lockPath(normalizedConversationID))
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	return store.writeConversationMetaLocked(normalizedConversationID, borrowConversationForMeta(source))
 }
 
 // ReplaceEntries 原子替换 context.json，并同步 state.json 中的 sequence/version 状态。
@@ -514,11 +546,12 @@ func (store *ConversationFileStore) writeConversationMetaLocked(conversationID s
 	if err := refreshConversationRuntimeState(conversation); err != nil {
 		return err
 	}
-	metadata := cloneConversationFile(conversation)
+	metadata := cloneConversationMeta(conversation)
 	metadata.SchemaVersion = conversationSchemaVersion
 	metadata.ContextVersion = contextVersionForEntries(conversation.Entries)
-	metadata.Entries = nil
-	return writeJSONFileAtomic(store.statePath(conversationID), metadata)
+	// state.json 是 context.json 的派生投影：readConversationLocked 在它缺失或损坏时
+	// 会退回零值并从 entries 重建，因此这里不需要为它支付 fsync。
+	return writeJSONFileAtomicWithoutSync(store.statePath(conversationID), metadata)
 }
 
 func (store *ConversationFileStore) writeContextLocked(conversationID string, conversation *ConversationFile) error {
@@ -822,7 +855,20 @@ func validateConversationID(conversationID string) (string, error) {
 	return normalized, nil
 }
 
+// writeJSONFileAtomic 原子写入并保证内容已落盘，用于崩溃后必须可恢复的权威数据。
 func writeJSONFileAtomic(path string, payload any) error {
+	return writeJSONFile(path, payload, true)
+}
+
+// writeJSONFileAtomicWithoutSync 原子替换文件，但不为内容做 fsync。
+// 只允许用于可从权威数据重建的派生文件：rename 本身仍保证读到的不是半截内容，
+// 崩溃后最坏情况是这份文件停留在上一个版本，由重建逻辑纠正。
+// fsync 在热路径上是毫秒级成本，对派生数据支付这个成本没有收益。
+func writeJSONFileAtomicWithoutSync(path string, payload any) error {
+	return writeJSONFile(path, payload, false)
+}
+
+func writeJSONFile(path string, payload any, durable bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create parent directory: %w", err)
 	}
@@ -850,9 +896,11 @@ func writeJSONFileAtomic(path string, payload any) error {
 	}
 	// rename 之前必须把内容刷到磁盘：否则崩溃或强杀后 rename 可能已生效，
 	// 而目标文件仍是空的或半截的，读取时整条会话都会变得不可用。
-	if err := file.Sync(); err != nil {
-		file.Close()
-		return fmt.Errorf("sync temp file: %w", err)
+	if durable {
+		if err := file.Sync(); err != nil {
+			file.Close()
+			return fmt.Errorf("sync temp file: %w", err)
+		}
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
@@ -861,6 +909,9 @@ func writeJSONFileAtomic(path string, payload any) error {
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 	renamed = true
+	if !durable {
+		return nil
+	}
 	return syncDirectory(filepath.Dir(path))
 }
 
@@ -876,6 +927,17 @@ func fileExists(path string) (bool, error) {
 }
 
 func cloneConversationFile(conversation *ConversationFile) *ConversationFile {
+	cloned := cloneConversationMeta(conversation)
+	if cloned == nil {
+		return nil
+	}
+	cloned.Entries = append([]HistoryEntry(nil), conversation.Entries...)
+	return cloned
+}
+
+// cloneConversationMeta 复制除 entries 之外的全部字段。
+// 写 state.json 时 entries 会被丢弃，为它深拷贝整条历史是 O(历史长度) 的纯浪费。
+func cloneConversationMeta(conversation *ConversationFile) *ConversationFile {
 	if conversation == nil {
 		return nil
 	}
@@ -884,8 +946,20 @@ func cloneConversationFile(conversation *ConversationFile) *ConversationFile {
 	cloned.CurrentTodos = cloneTodoItems(conversation.CurrentTodos)
 	cloned.LatestRequestPrefix = cloneConversationRequestPrefix(conversation.LatestRequestPrefix)
 	cloned.LastProviderCall = cloneConversationProviderCall(conversation.LastProviderCall)
-	cloned.Entries = append([]HistoryEntry(nil), conversation.Entries...)
+	cloned.Entries = nil
 	return &cloned
+}
+
+// borrowConversationForMeta 返回一份只用于派生 state.json 的副本：
+// meta 字段复制，entries 以只读方式借用。派生逻辑只读 entries，
+// 容量封顶到 len 保证即使意外 append 也写不到调用方的底层数组上。
+func borrowConversationForMeta(conversation *ConversationFile) *ConversationFile {
+	borrowed := cloneConversationMeta(conversation)
+	if borrowed == nil {
+		return nil
+	}
+	borrowed.Entries = conversation.Entries[:len(conversation.Entries):len(conversation.Entries)]
+	return borrowed
 }
 
 func cloneConversationRequestPrefix(prefix *ConversationRequestPrefix) *ConversationRequestPrefix {

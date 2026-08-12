@@ -132,20 +132,72 @@ func estimatePromptContentPartsTokens(content string, parts []promptengine.Conte
 	return total
 }
 
-func estimateCheckpointPromptTokenBreakdown(compiled CompiledConversation, hasCompiled bool, usedTokens uint32, maxTokens uint32) *agentv1.PromptTokenBreakdownSnapshot {
+// promptTokenSnapshot 记录一次真实编译得到的 prompt 规模。
+// 生产者只有 driveProvider —— 那里的 compiled 本来就要发给模型，取它的规模是零额外成本；
+// 消费者是 checkpoint 展示路径，它不再为了显示一个数字而重新编译整个对话。
+//
+// 四个分类之和恒等于 estimateCompiledPromptTokens 的结果，
+// 因此总量与分类只需一次遍历，而不是原先各扫一遍全部 messages。
+type promptTokenSnapshot struct {
+	ContextVersion     int64
+	EntryCount         int
+	SystemTokens       int64
+	ToolsTokens        int64
+	SummaryTokens      int64
+	ConversationTokens int64
+}
+
+func newPromptTokenSnapshot(compiled CompiledConversation, contextVersion int64, entryCount int) promptTokenSnapshot {
+	systemTokens, summaryTokens, conversationTokens := estimateMessageBreakdownTokens(compiled.Messages)
+	return promptTokenSnapshot{
+		ContextVersion:     contextVersion,
+		EntryCount:         entryCount,
+		SystemTokens:       systemTokens,
+		ToolsTokens:        estimateToolDescriptorsTokens(compiled.Tools),
+		SummaryTokens:      summaryTokens,
+		ConversationTokens: conversationTokens,
+	}
+}
+
+func (snapshot promptTokenSnapshot) totalTokens() int64 {
+	return snapshot.SystemTokens + snapshot.ToolsTokens + snapshot.SummaryTokens + snapshot.ConversationTokens
+}
+
+// withExtraConversationTokens 把快照之后新增 entries 的估算叠加到会话分类上，
+// 让展示值保持单调增长，而不是等到下一次真实编译才跳变。
+func (snapshot promptTokenSnapshot) withExtraConversationTokens(extra int64) promptTokenSnapshot {
+	if extra > 0 {
+		snapshot.ConversationTokens += extra
+	}
+	return snapshot
+}
+
+func (snapshot promptTokenSnapshot) breakdown(usedTokens uint32, maxTokens uint32) *agentv1.PromptTokenBreakdownSnapshot {
 	if maxTokens == 0 {
 		return nil
 	}
 	categories := make([]*agentv1.PromptTokenBreakdownCategory, 0, 4)
-	if hasCompiled {
-		systemTokens, summaryTokens, conversationTokens := estimateMessageBreakdownTokens(compiled.Messages)
-		categories = appendPromptTokenBreakdownCategory(categories, "system_prompt", "System Prompt", systemTokens)
-		categories = appendPromptTokenBreakdownCategory(categories, "tools", "Tools", estimateToolDescriptorsTokens(compiled.Tools))
-		categories = appendPromptTokenBreakdownCategory(categories, "summarized_conversation", "Summarized Conversation", summaryTokens)
-		categories = appendPromptTokenBreakdownCategory(categories, "conversation", "Conversation", conversationTokens)
-	} else if usedTokens > 0 {
+	categories = appendPromptTokenBreakdownCategory(categories, "system_prompt", "System Prompt", snapshot.SystemTokens)
+	categories = appendPromptTokenBreakdownCategory(categories, "tools", "Tools", snapshot.ToolsTokens)
+	categories = appendPromptTokenBreakdownCategory(categories, "summarized_conversation", "Summarized Conversation", snapshot.SummaryTokens)
+	categories = appendPromptTokenBreakdownCategory(categories, "conversation", "Conversation", snapshot.ConversationTokens)
+	return buildPromptTokenBreakdownSnapshot(categories, usedTokens, maxTokens)
+}
+
+// fallbackPromptTokenBreakdown 用于还没有任何真实编译快照的时刻（回合刚开始）：
+// 只能给出一个笼统的会话分类，但代价是常量级。
+func fallbackPromptTokenBreakdown(usedTokens uint32, maxTokens uint32) *agentv1.PromptTokenBreakdownSnapshot {
+	if maxTokens == 0 {
+		return nil
+	}
+	categories := make([]*agentv1.PromptTokenBreakdownCategory, 0, 1)
+	if usedTokens > 0 {
 		categories = appendPromptTokenBreakdownCategory(categories, "conversation", "Conversation", int64(usedTokens))
 	}
+	return buildPromptTokenBreakdownSnapshot(categories, usedTokens, maxTokens)
+}
+
+func buildPromptTokenBreakdownSnapshot(categories []*agentv1.PromptTokenBreakdownCategory, usedTokens uint32, maxTokens uint32) *agentv1.PromptTokenBreakdownSnapshot {
 	categoryTotal := int64(0)
 	for _, category := range categories {
 		categoryTotal += int64(category.GetEstimatedTokens())

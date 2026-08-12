@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"cursor/gen/agentv1"
 	modeladapter "cursor/internal/backend/agent/model"
 )
 
@@ -54,29 +55,56 @@ func TestTransientRecoveryDirectiveDoesNotChangeStablePrefix(t *testing.T) {
 	}
 }
 
-func TestActionCommitmentShortStopDetection(t *testing.T) {
-	positive := []string{
-		"I found the issue. I'll now update the retry loop.",
-		"问题已经定位。接下来我会修改流终止检测。",
-		"我现在来执行这个修复：",
-	}
-	for _, text := range positive {
-		if !isActionCommitmentShortStop(text) {
-			t.Fatalf("expected commitment: %q", text)
-		}
-	}
-	negative := []string{
-		"OK",
-		"修复已经完成并通过测试。",
-		"You can continue manually if needed.",
-		string(make([]rune, 601)),
-	}
-	for _, text := range negative {
-		if isActionCommitmentShortStop(text) {
-			t.Fatalf("unexpected commitment: %q", text)
-		}
-	}
-	if !isNormalShortStopFinishReason("completed") || isNormalShortStopFinishReason("tool_calls") {
-		t.Fatal("finish reason guard mismatch")
+// 正常 provider stop 具有权威性。后端曾按模型措辞推断「只承诺没干活」并强制
+// 再跑一趟 provider，于是出现「UI 已结束本轮、模型却接着改口」。
+// 现在只有协议层面的续跑理由（工具结果、待办完成）才能推进回合。
+func TestNormalStopDoesNotResumeProviderInAnyMode(t *testing.T) {
+	for _, mode := range []agentv1.AgentMode{
+		agentv1.AgentMode_AGENT_MODE_AGENT,
+		agentv1.AgentMode_AGENT_MODE_MULTITASK,
+	} {
+		t.Run(mode.String(), func(t *testing.T) {
+			provider := &backgroundCompletionTestProvider{seen: make(chan ProviderRequest, 1)}
+			service := newBackgroundCompletionTestService(t, provider)
+			conversation, err := service.store.CreateConversation(
+				"conversation-1", mode, "", "", "conversation-1",
+			)
+			if err != nil {
+				t.Fatalf("CreateConversation() error = %v", err)
+			}
+			stream, err := service.broker.OpenStream(
+				"request-1", "conversation-1", 1, "model", "model", mode, "hello",
+			)
+			if err != nil {
+				t.Fatalf("OpenStream() error = %v", err)
+			}
+			if err := service.replaceCheckpointConversation(stream, conversation); err != nil {
+				t.Fatalf("replaceCheckpointConversation() error = %v", err)
+			}
+			stream.mu.Lock()
+			stream.Status = StreamStatusStreaming
+			stream.Phase = TurnPhaseProviderRunning
+			stream.CurrentModelCallID = "model-call-1"
+			stream.CurrentProviderToken = 7
+			stream.ProviderActive = true
+			// 典型的「行动承诺」收尾：旧实现正是在这种措辞上强制 resume。
+			stream.ProviderAccumulatedText = "问题已经定位。接下来我会修改流终止检测。"
+			stream.ProviderFinishReason = "stop"
+			stream.mu.Unlock()
+
+			if err := service.handleProviderEvent(stream, &streamProviderEvent{Token: 7, Done: true}); err != nil {
+				t.Fatalf("handleProviderEvent() error = %v", err)
+			}
+
+			stream.mu.Lock()
+			pendingAction := stream.PendingProviderAction
+			stream.mu.Unlock()
+			if pendingAction != providerActionNone {
+				t.Fatalf("正常 stop 触发了续跑：pending action = %q", pendingAction)
+			}
+			if provider.requestCount() != 0 {
+				t.Fatalf("正常 stop 之后又向模型发出了 %d 次请求", provider.requestCount())
+			}
+		})
 	}
 }

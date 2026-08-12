@@ -246,7 +246,7 @@ type PendingExec struct {
 	LastShellActivityAt time.Time
 	// LastShellHeartbeatAt 记录最近一次 shell heartbeat 到达时间。
 	LastShellHeartbeatAt time.Time
-	// ShellForegroundDeadline 表示前台 shell 预计最晚应收到终态的时间点。
+	// ShellForegroundDeadline 表示前台 shell 在持续静默时的回收时间点；收到活动会顺延，但不超过绝对上限。
 	ShellForegroundDeadline time.Time
 	// ShellRecoveryScheduled 标记是否已经为该 shell 安排了异常收口协程。
 	ShellRecoveryScheduled bool

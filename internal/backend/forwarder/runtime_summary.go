@@ -104,53 +104,22 @@ func (service *Service) bootstrapRuntimeConversation(intent InboundIntent) (*Con
 	return conversation, effectiveMode, turnSeq, append(importedEntries, entries...), nil
 }
 
+// syncConversationRecord 把内存快照里的 meta 字段落到 state.json。
+//
+// 这里之前是 CreateConversation + UpdateConversationMeta 两次调用：
+// 各自加文件锁、各自把整个 context.json 读回来反序列化、CreateConversation
+// 还会连带把整条历史原样重写一遍（含 fsync），而它真正要做的只是
+// “会话不存在时补一条记录、mode 为空时补上 mode”。
+// state.json 的每个字段要么就在这份快照里，要么能从 entries 派生，
+// 所以直接用快照写一次 meta 即可；context.json 由 AppendEntries 负责。
 func (service *Service) syncConversationRecord(conversationID string, conversation *ConversationFile) error {
 	if service == nil || service.store == nil || conversation == nil {
 		return nil
 	}
-	mode, err := parseModeAlias(conversation.Mode)
-	if err != nil {
+	if _, err := parseModeAlias(conversation.Mode); err != nil {
 		return err
 	}
-	if _, err := service.store.CreateConversation(
-		conversationID,
-		mode,
-		conversation.ParentConversationID,
-		conversation.ParentToolCallID,
-		conversation.RootConversationID,
-	); err != nil {
-		return err
-	}
-	_, err = service.store.UpdateConversationMeta(conversationID, func(item *ConversationFile) error {
-		if item == nil {
-			return nil
-		}
-		item.ConversationID = conversation.ConversationID
-		item.RootConversationID = conversation.RootConversationID
-		item.ParentConversationID = conversation.ParentConversationID
-		item.ParentToolCallID = conversation.ParentToolCallID
-		item.SubagentTypeName = conversation.SubagentTypeName
-		item.Mode = conversation.Mode
-		item.TokenDetailsUsedTokens = conversation.TokenDetailsUsedTokens
-		item.TokenDetailsMaxTokens = conversation.TokenDetailsMaxTokens
-		item.AutoCompactionPending = conversation.AutoCompactionPending
-		item.AutoCompactionPromptTokens = conversation.AutoCompactionPromptTokens
-		item.AutoCompactionReserveTokens = conversation.AutoCompactionReserveTokens
-		item.AutoCompactionTriggeredAt = conversation.AutoCompactionTriggeredAt
-		item.AutoCompactionSourceModelCallID = conversation.AutoCompactionSourceModelCallID
-		item.LatestRequestPrefix = cloneConversationRequestPrefix(conversation.LatestRequestPrefix)
-		item.LastProviderCall = cloneConversationProviderCall(conversation.LastProviderCall)
-		item.CreatedAt = conversation.CreatedAt
-		item.UpdatedAt = conversation.UpdatedAt
-		item.NextTurnSeq = conversation.NextTurnSeq
-		item.NextEntrySeq = conversation.NextEntrySeq
-		item.CurrentLoopID = conversation.CurrentLoopID
-		item.CurrentLoopStatus = conversation.CurrentLoopStatus
-		item.CurrentRequestID = conversation.CurrentRequestID
-		item.CurrentTurnSeq = conversation.CurrentTurnSeq
-		return nil
-	})
-	return err
+	return service.store.WriteConversationMetaFrom(conversationID, conversation)
 }
 
 func (service *Service) syncSummaryCarryForward(_ string, requestID string, modelCallID string) error {

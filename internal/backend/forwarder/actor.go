@@ -110,6 +110,29 @@ type streamCommandEnvelope struct {
 	result  chan error
 }
 
+// streamActorChannels 把 actor 的两条投递队列和退出信号打包在一起，
+// 避免每个调用方各自传递三个裸 channel。
+type streamActorChannels struct {
+	normal chan streamCommandEnvelope
+	urgent chan streamCommandEnvelope
+	done   chan struct{}
+}
+
+// 只有与流内数据不存在因果顺序约束的控制类命令才允许插队，
+// 目的是让停止请求不被 delta / exec 输出洪流饿死。
+//
+// 其余命令必须留在 normal 队列保持到达顺序：
+//   - provider 事件：终态若插队到同源 delta 之前，会丢掉尾部文本；
+//   - timer 事件：超时收口若插队到 exec 输出之前，会把仍在活动的命令误判为空闲超时。
+func isUrgentStreamCommand(kind streamCommandKind) bool {
+	switch kind {
+	case streamCommandCancel, streamCommandCancelSubagent:
+		return true
+	default:
+		return false
+	}
+}
+
 func commandKindForIntent(intent InboundIntent) (streamCommandKind, error) {
 	switch strings.TrimSpace(intent.Kind) {
 	case "run":
@@ -152,15 +175,35 @@ func (service *Service) dispatchInboundIntentLocked(intent InboundIntent) error 
 	}
 	stream, err := service.streamForIntent(intent)
 	if err != nil {
+		if commandKind == streamCommandCancel {
+			// 流已收口或已被清理，停止请求没有作用对象，等同于已经停下。
+			// 把它当成错误上报只会让客户端在停止后再弹一次失败提示。
+			return nil
+		}
 		return err
 	}
 	if stream == nil {
 		return nil
 	}
-	return service.postStreamCommandWait(stream, streamCommand{
+	// 控制平面先于数据平面：中断只改内存状态，立即生效；
+	// 写历史、发终态事件这些善后动作仍排进 actor，保持与流内事件的顺序关系。
+	switch commandKind {
+	case streamCommandRun:
+		armStreamInterrupt(stream)
+	case streamCommandCancel:
+		interruptStream(stream)
+	}
+	if err := service.postStreamCommandWait(stream, streamCommand{
 		Kind:   commandKind,
 		Intent: intent,
-	})
+	}); err != nil {
+		if commandKind == streamCommandCancel && errors.Is(err, errProviderLoopInterrupted) {
+			// actor 已经退出说明回合早已收口，中断本身已在上面完成。
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (service *Service) streamForIntent(intent InboundIntent) (*ActiveStream, error) {
@@ -210,34 +253,48 @@ func isTerminalIntentStream(stream *ActiveStream) bool {
 	if stream == nil {
 		return true
 	}
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-	if isTerminalStreamStatus(stream.Status) {
-		return true
-	}
-	switch stream.Phase {
-	case TurnPhaseCanceled, TurnPhaseCompleted, TurnPhaseFailed:
-		return true
-	default:
+	return streamReachedTerminal(stream)
+}
+
+// streamActorAlive 判断 actor goroutine 是否仍在消费命令。
+func streamActorAlive(done chan struct{}) bool {
+	if done == nil {
 		return false
+	}
+	select {
+	case <-done:
+		return false
+	default:
+		return true
 	}
 }
 
-func (service *Service) ensureStreamActor(stream *ActiveStream) (chan streamCommandEnvelope, chan struct{}, error) {
+func (service *Service) ensureStreamActor(stream *ActiveStream) (streamActorChannels, error) {
 	if stream == nil {
-		return nil, nil, fmt.Errorf("active stream is required")
+		return streamActorChannels{}, fmt.Errorf("active stream is required")
 	}
 	stream.mu.Lock()
-	if stream.ActorMailbox != nil && stream.ActorDone != nil {
-		mailbox := stream.ActorMailbox
-		done := stream.ActorDone
-		stream.mu.Unlock()
-		return mailbox, done, nil
+	if stream.ActorMailbox != nil && stream.ActorUrgentMailbox != nil && stream.ActorDone != nil {
+		// actor 退出即回合收口。终态流保留这套已关闭的 channels，让迟到命令直接得到
+		// 中断错误而不是被重新处理；只有同一个 stream 被复用于新回合时才需要重建 actor。
+		if streamActorAlive(stream.ActorDone) || streamReachedTerminalLocked(stream) {
+			channels := streamActorChannels{
+				normal: stream.ActorMailbox,
+				urgent: stream.ActorUrgentMailbox,
+				done:   stream.ActorDone,
+			}
+			stream.mu.Unlock()
+			return channels, nil
+		}
 	}
-	mailbox := make(chan streamCommandEnvelope, 128)
-	done := make(chan struct{})
-	stream.ActorMailbox = mailbox
-	stream.ActorDone = done
+	channels := streamActorChannels{
+		normal: make(chan streamCommandEnvelope, 128),
+		urgent: make(chan streamCommandEnvelope, 32),
+		done:   make(chan struct{}),
+	}
+	stream.ActorMailbox = channels.normal
+	stream.ActorUrgentMailbox = channels.urgent
+	stream.ActorDone = channels.done
 	if stream.TimerTokens == nil {
 		stream.TimerTokens = make(map[string]uint64)
 	}
@@ -245,15 +302,15 @@ func (service *Service) ensureStreamActor(stream *ActiveStream) (chan streamComm
 		stream.Phase = TurnPhaseIdle
 	}
 	stream.mu.Unlock()
-	go service.runStreamActor(stream, mailbox, done)
-	return mailbox, done, nil
+	go service.runStreamActor(stream, channels)
+	return channels, nil
 }
 
 func (service *Service) postStreamCommandWait(stream *ActiveStream, command streamCommand) error {
 	if stream == nil {
 		return nil
 	}
-	mailbox, done, err := service.ensureStreamActor(stream)
+	channels, err := service.ensureStreamActor(stream)
 	if err != nil {
 		return err
 	}
@@ -262,13 +319,11 @@ func (service *Service) postStreamCommandWait(stream *ActiveStream, command stre
 		command: command,
 		result:  result,
 	}
-	select {
-	case <-done:
-		return errProviderLoopInterrupted
-	case mailbox <- envelope:
+	if err := deliverStreamCommand(channels, envelope); err != nil {
+		return err
 	}
 	select {
-	case <-done:
+	case <-channels.done:
 		return errProviderLoopInterrupted
 	case err := <-result:
 		return err
@@ -279,23 +334,50 @@ func (service *Service) postStreamCommandAsync(stream *ActiveStream, command str
 	if stream == nil {
 		return nil
 	}
-	mailbox, done, err := service.ensureStreamActor(stream)
+	channels, err := service.ensureStreamActor(stream)
 	if err != nil {
 		return err
 	}
-	envelope := streamCommandEnvelope{command: command}
+	return deliverStreamCommand(channels, streamCommandEnvelope{command: command})
+}
+
+func deliverStreamCommand(channels streamActorChannels, envelope streamCommandEnvelope) error {
+	mailbox := channels.normal
+	if isUrgentStreamCommand(envelope.command.Kind) {
+		mailbox = channels.urgent
+	}
+	if mailbox == nil {
+		return errProviderLoopInterrupted
+	}
 	select {
-	case <-done:
+	case <-channels.done:
 		return errProviderLoopInterrupted
 	case mailbox <- envelope:
 		return nil
 	}
 }
 
-func (service *Service) runStreamActor(stream *ActiveStream, mailbox <-chan streamCommandEnvelope, done chan struct{}) {
-	defer close(done)
+// receiveStreamCommand 让 urgent 队列严格优先：先非阻塞地把已排队的控制命令取干，
+// 再同时等待两条队列，这样普通事件洪流无法把停止请求压在队尾。
+func receiveStreamCommand(channels streamActorChannels) (streamCommandEnvelope, bool) {
+	select {
+	case envelope, ok := <-channels.urgent:
+		return envelope, ok
+	default:
+	}
+	select {
+	case envelope, ok := <-channels.urgent:
+		return envelope, ok
+	case envelope, ok := <-channels.normal:
+		return envelope, ok
+	}
+}
+
+func (service *Service) runStreamActor(stream *ActiveStream, channels streamActorChannels) {
+	defer close(channels.done)
+	defer releaseStreamInterrupt(stream)
 	for {
-		envelope, ok := <-mailbox
+		envelope, ok := receiveStreamCommand(channels)
 		if !ok {
 			return
 		}
@@ -315,17 +397,7 @@ func shouldStopStreamActor(stream *ActiveStream) bool {
 	if stream == nil {
 		return true
 	}
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-	if isTerminalStreamStatus(stream.Status) {
-		return true
-	}
-	switch stream.Phase {
-	case TurnPhaseCompleted, TurnPhaseFailed, TurnPhaseCanceled:
-		return true
-	default:
-		return false
-	}
+	return streamReachedTerminal(stream)
 }
 
 func (service *Service) handleStreamCommand(stream *ActiveStream, command streamCommand) error {
@@ -748,8 +820,6 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 	hadPartialToolCall := len(stream.PartialToolCallIDs) > 0
 	terminalToolInvocation := stream.ProviderTerminalToolInvocation
 	streamRecoveryAttempts := stream.ProviderStreamRecoveryAttempts
-	shortStopRecoveryAttempts := stream.ProviderShortStopRecoveryAttempts
-	mode := stream.Mode
 	existingCompletion := stream.PendingProviderCompletion
 	stream.ProviderActive = false
 	stream.ProviderCancel = nil
@@ -897,25 +967,6 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		return nil
 	}
 
-	if mode == agentv1.AgentMode_AGENT_MODE_AGENT &&
-		!hadToolInvocation && !hadPartialToolCall && !terminalToolInvocation &&
-		shortStopRecoveryAttempts < 1 &&
-		isNormalShortStopFinishReason(finishReason) &&
-		isActionCommitmentShortStop(accumulatedText) {
-		stream.mu.Lock()
-		stream.ProviderShortStopRecoveryAttempts++
-		stream.ProviderRecoveryDirective = "Continue now and perform the concrete next action you just committed to. Do not merely restate the plan or promise another next step."
-		stream.UpdatedAt = time.Now().UTC()
-		stream.mu.Unlock()
-		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
-			return service.failStreamIfNonTerminal(stream, "unknown", err)
-		}
-		if err := service.requestProviderAction(stream, providerActionResume); err != nil {
-			return service.failStreamIfNonTerminal(stream, "unknown", err)
-		}
-		return nil
-	}
-
 	if (hadToolInvocation || shouldResumeAfterToolResults(finishReason)) && !terminalToolInvocation {
 		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
 			return service.failStreamIfNonTerminal(stream, "unknown", err)
@@ -950,34 +1001,6 @@ func shouldRecoverIncompleteProviderStream(err error, hadToolInvocation bool, ha
 		return incomplete, false
 	}
 	return incomplete, true
-}
-
-func isNormalShortStopFinishReason(reason string) bool {
-	switch strings.ToLower(strings.TrimSpace(reason)) {
-	case "stop", "end_turn", "completed", "message_stop":
-		return true
-	default:
-		return false
-	}
-}
-
-func isActionCommitmentShortStop(text string) bool {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" || len([]rune(trimmed)) > 600 {
-		return false
-	}
-	lowered := strings.ToLower(trimmed)
-	for _, marker := range []string{
-		"i'll now ", "i will now ", "let me now ", "next, i'll ", "next i'll ",
-		"starting now", "i'll proceed to ", "i will proceed to ",
-		"现在开始", "接下来我会", "接下来我将", "下一步我会", "下一步我将",
-		"我现在来", "我马上开始", "下面我会", "下面我将",
-	} {
-		if strings.Contains(lowered, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 const subagentEmptyStopErrorText = "subagent returned empty response after tool result"

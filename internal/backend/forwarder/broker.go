@@ -52,7 +52,6 @@ func (broker *StreamBroker) OpenStream(requestID string, conversationID string, 
 		existing.LatestUserText = strings.TrimSpace(latestUserText)
 		if newTurn {
 			existing.ProviderStreamRecoveryAttempts = 0
-			existing.ProviderShortStopRecoveryAttempts = 0
 			existing.ProviderRecoveryDirective = ""
 			existing.PartialToolCallIDs = make(map[string]struct{})
 		}
@@ -362,22 +361,77 @@ func (broker *StreamBroker) ReadFromCursor(requestID string, cursor int) ([]Stre
 	return append([]StreamEvent(nil), stream.Backlog[cursor:]...), nil
 }
 
-// Complete 把活动流标记为成功完成，并发布一个成功 endstream 事件。
-func (broker *StreamBroker) Complete(requestID string, terminalCode string, terminalMessage string) error {
+// retireStreamExecutionLocked 使 provider/compaction worker 在任何终态发布前失活。
+//
+// UI 的 EndStream 与后端 worker 必须是同一件事的两面：只要终态已经发布，
+// 就不能再有任何一个 worker 有能力继续产出。因此三条终态路径
+// （Complete / Fail / Cancel）共用这一次退休动作，而不是各自处理一部分状态。
+//
+// 退休包含三件事，缺一不可：
+//   - 掐断执行体：本回合中断闩 + 当前 pass 的 cancel；
+//   - 作废 generation：provider/compaction token 递增，使迟到事件必然失配被丢弃；
+//   - 清掉待办：pending action 与 provider resume timer，避免终态后又起一趟。
+//
+// 调用方必须持有 stream.mu，并在解锁后调用返回函数，避免取消回调反向进入流锁。
+func retireStreamExecutionLocked(stream *ActiveStream) func() {
+	if stream == nil {
+		return nil
+	}
+	passCancel := stream.ProviderCancel
+	var turnCancel func()
+	if stream.Interrupt != nil {
+		turnCancel = stream.Interrupt.cancel
+	}
+	stream.ProviderCancel = nil
+	stream.ProviderActive = false
+	stream.PendingProviderAction = providerActionNone
+	stream.PendingCompaction = nil
+	// 终态之后到达的 provider/compaction 事件必须与当前 generation 失配，
+	// 不能在 EndStream 后继续向 backlog 追加文本或工具事件。
+	stream.CurrentProviderToken++
+	stream.CurrentCompactionToken++
+	delete(stream.TimerTokens, providerTimerKey(streamTimerProviderResume, ""))
+	if passCancel == nil && turnCancel == nil {
+		return nil
+	}
+	return func() {
+		if turnCancel != nil {
+			turnCancel()
+		}
+		if passCancel != nil {
+			passCancel()
+		}
+	}
+}
+
+// finishStream 是三条终态路径唯一的收口实现。
+//
+// 把 Complete / Fail / Cancel 收敛到同一个序列，是因为它们真正的区别只有终态标签
+// 和错误文案；其余动作必须完全一致，否则先退休 worker、再发 EndStream 这个顺序
+// 就会在某一条路径上被漏掉，表现为「UI 已经结束，模型还在说话」。
+//
+// 第一个到达的终态即为最终结果：后续终态一律是空操作，不会二次发布 EndStream。
+func (broker *StreamBroker) finishStream(requestID string, status StreamStatus, terminalCode string, terminalMessage string) error {
 	stream, ok := broker.Get(requestID)
 	if !ok || stream == nil {
 		return fmt.Errorf("request is not active: %s", strings.TrimSpace(requestID))
 	}
 	stream.mu.Lock()
-	if stream.Status == StreamStatusCanceled || stream.Status == StreamStatusFailed || stream.Status == StreamStatusCompleted {
+	if isTerminalStreamStatus(stream.Status) {
 		stream.mu.Unlock()
 		return nil
 	}
 	broker.stopTerminalCleanupTimerLocked(stream)
-	stream.Status = StreamStatusCompleted
+	// 退休必须发生在 Status 变更的同一个临界区内：一旦解锁，后台 worker 就可能
+	// 拿着旧 generation 抢在 EndStream 之前把事件投进 backlog。
+	cancelWorker := retireStreamExecutionLocked(stream)
+	stream.Status = status
 	subscriberCount := len(stream.Subscribers)
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
+	if cancelWorker != nil {
+		cancelWorker()
+	}
 	if err := broker.Publish(requestID, StreamEvent{
 		End:                  true,
 		TerminalErrorCode:    strings.TrimSpace(terminalCode),
@@ -389,61 +443,26 @@ func (broker *StreamBroker) Complete(requestID string, terminalCode string, term
 		broker.scheduleTerminalCleanup(requestID)
 	}
 	return nil
+}
+
+// Complete 把活动流标记为成功完成，并发布一个成功 endstream 事件。
+func (broker *StreamBroker) Complete(requestID string, terminalCode string, terminalMessage string) error {
+	return broker.finishStream(requestID, StreamStatusCompleted, terminalCode, terminalMessage)
 }
 
 // Fail 把活动流标记为失败，并发布一个失败 endstream 事件。
 func (broker *StreamBroker) Fail(requestID string, terminalCode string, terminalMessage string) error {
-	stream, ok := broker.Get(requestID)
-	if !ok || stream == nil {
-		return fmt.Errorf("request is not active: %s", strings.TrimSpace(requestID))
-	}
-	stream.mu.Lock()
-	broker.stopTerminalCleanupTimerLocked(stream)
-	stream.Status = StreamStatusFailed
-	subscriberCount := len(stream.Subscribers)
-	stream.UpdatedAt = time.Now().UTC()
-	stream.mu.Unlock()
-	if err := broker.Publish(requestID, StreamEvent{
-		End:                  true,
-		TerminalErrorCode:    strings.TrimSpace(terminalCode),
-		TerminalErrorMessage: strings.TrimSpace(terminalMessage),
-	}); err != nil {
-		return err
-	}
-	if subscriberCount == 0 {
-		broker.scheduleTerminalCleanup(requestID)
-	}
-	return nil
+	return broker.finishStream(requestID, StreamStatusFailed, terminalCode, terminalMessage)
 }
 
 // Cancel 主动取消活动流，并发布 canceled endstream。
 func (broker *StreamBroker) Cancel(requestID string, terminalMessage string) error {
-	stream, ok := broker.Get(requestID)
-	if !ok || stream == nil {
-		return fmt.Errorf("request is not active: %s", strings.TrimSpace(requestID))
-	}
-	stream.mu.Lock()
-	broker.stopTerminalCleanupTimerLocked(stream)
-	if stream.ProviderCancel != nil {
-		stream.ProviderCancel()
-		stream.ProviderCancel = nil
-	}
-	stream.ProviderActive = false
-	stream.Status = StreamStatusCanceled
-	subscriberCount := len(stream.Subscribers)
-	stream.UpdatedAt = time.Now().UTC()
-	stream.mu.Unlock()
-	if err := broker.Publish(requestID, StreamEvent{
-		End:                  true,
-		TerminalErrorCode:    "canceled",
-		TerminalErrorMessage: firstNonEmpty(strings.TrimSpace(terminalMessage), "[canceled] User aborted request"),
-	}); err != nil {
-		return err
-	}
-	if subscriberCount == 0 {
-		broker.scheduleTerminalCleanup(requestID)
-	}
-	return nil
+	return broker.finishStream(
+		requestID,
+		StreamStatusCanceled,
+		"canceled",
+		firstNonEmpty(strings.TrimSpace(terminalMessage), "[canceled] User aborted request"),
+	)
 }
 
 // firstNonEmpty 返回第一个非空白字符串。

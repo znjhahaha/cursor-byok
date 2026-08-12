@@ -637,7 +637,7 @@ func (bridge *Bridge) openShell(toolCall runtimecore.ToolInvocation) (*agentv1.A
 						ParsingResult:            buildShellParsingResultProto(args.Command),
 						FileOutputThresholdBytes: uint64Ptr(40000),
 						TimeoutBehavior:          agentv1.TimeoutBehavior_TIMEOUT_BEHAVIOR_BACKGROUND,
-						HardTimeout:              int32Ptr(86400000),
+						HardTimeout:              int32Ptr(shellHardTimeoutFromArgs(args)),
 						Description:              stringPtr(args.Description),
 						OutputNotification:       buildShellOutputNotificationConfig(args.NotifyOnOutput),
 					},
@@ -1831,6 +1831,11 @@ func subagentTypeProtoFromString(raw string) *agentv1.SubagentType {
 	}
 }
 
+// BuildShellCompletedToolCall 构造 Shell 异常收口时可渲染的完成态 ToolCall。
+func BuildShellCompletedToolCall(toolCallID string, argsJSON []byte, stdout string, stderr string, exit *agentv1.ShellStreamExit) *agentv1.ToolCall {
+	return buildShellCompletedToolCall(toolCallID, argsJSON, stdout, stderr, exit)
+}
+
 // buildShellCompletedToolCall 构造 Shell 对应的完成态 ToolCall。
 func buildShellCompletedToolCall(toolCallID string, argsJSON []byte, stdout string, stderr string, exit *agentv1.ShellStreamExit) *agentv1.ToolCall {
 	args := decodeShellArgsForResult(argsJSON)
@@ -2127,6 +2132,8 @@ func decodeShellArgsForResult(argsJSON []byte) shellResultArgs {
 	return args
 }
 
+const defaultShellHardTimeoutMS int32 = 24 * 60 * 60 * 1000
+
 // shellTimeoutFromArgs 把工具 JSON 中的 block_until_ms 映射回 proto timeout。
 func shellTimeoutFromArgs(args shellResultArgs) int32 {
 	if !args.BlockUntilMSSet {
@@ -2135,7 +2142,20 @@ func shellTimeoutFromArgs(args shellResultArgs) int32 {
 	if args.BlockUntilMS <= 0 {
 		return 0
 	}
+	if args.BlockUntilMS >= float64(^uint32(0)>>1) {
+		return int32(^uint32(0) >> 1)
+	}
 	return int32(args.BlockUntilMS)
+}
+
+// hard_timeout 是客户端进程的总寿命上限，不是前台等待窗口。
+// 保留默认 24 小时以支持主动后台任务，但显式更长的前台等待不能被它提前截断。
+func shellHardTimeoutFromArgs(args shellResultArgs) int32 {
+	foregroundTimeout := shellTimeoutFromArgs(args)
+	if foregroundTimeout > defaultShellHardTimeoutMS {
+		return foregroundTimeout
+	}
+	return defaultShellHardTimeoutMS
 }
 
 // buildWriteShellStdinCompletedToolCall 构造 WriteShellStdin 对应的完成态 ToolCall。

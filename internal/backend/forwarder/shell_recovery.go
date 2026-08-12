@@ -6,10 +6,15 @@ import (
 	"strings"
 	"time"
 
+	"cursor/gen/agentv1"
+	execbridge "cursor/internal/backend/agent/bridge/exec"
 	runtimecore "cursor/internal/backend/agent/core"
 )
 
-const shellTerminalRecoveryGrace = 1500 * time.Millisecond
+const (
+	shellTerminalRecoveryGrace = 1500 * time.Millisecond
+	shellAbsoluteRecoveryLimit = 10 * time.Minute
+)
 
 const (
 	shellRecoveryReasonForegroundDeadline = "foreground_deadline_exceeded"
@@ -31,8 +36,45 @@ func initializePendingExecForTracking(pending runtimecore.PendingExec) runtimeco
 		pending.LastShellActivityAt = pending.OpenedAt
 	}
 	if pending.ShellForegroundDeadline.IsZero() {
-		pending.ShellForegroundDeadline = pending.OpenedAt.Add(shellForegroundTimeoutDuration(pending.ArgsJSON) + shellTerminalRecoveryGrace)
+		pending.ShellForegroundDeadline = shellForegroundRecoveryDeadline(pending)
 	}
+	return pending
+}
+
+func shellForegroundRecoveryDeadline(pending runtimecore.PendingExec) time.Time {
+	openedAt := pending.OpenedAt
+	if openedAt.IsZero() {
+		openedAt = time.Now().UTC()
+	}
+	lastActivityAt := pending.LastShellActivityAt
+	if lastActivityAt.IsZero() || lastActivityAt.Before(openedAt) {
+		lastActivityAt = openedAt
+	}
+	idleWindow := shellForegroundTimeoutDuration(pending.ArgsJSON) + shellTerminalRecoveryGrace
+	absoluteWindow := shellAbsoluteRecoveryLimit
+	if idleWindow > absoluteWindow {
+		absoluteWindow = idleWindow
+	}
+	idleDeadline := lastActivityAt.Add(idleWindow)
+	absoluteDeadline := openedAt.Add(absoluteWindow)
+	if idleDeadline.After(absoluteDeadline) {
+		return absoluteDeadline
+	}
+	return idleDeadline
+}
+
+func refreshShellForegroundRecoveryDeadline(pending runtimecore.PendingExec, activityAt time.Time) runtimecore.PendingExec {
+	if strings.TrimSpace(pending.ExecKind) != "shell" {
+		return pending
+	}
+	if activityAt.IsZero() {
+		activityAt = time.Now().UTC()
+	}
+	if pending.OpenedAt.IsZero() {
+		pending.OpenedAt = activityAt
+	}
+	pending.LastShellActivityAt = activityAt
+	pending.ShellForegroundDeadline = shellForegroundRecoveryDeadline(pending)
 	return pending
 }
 
@@ -64,7 +106,7 @@ func (service *Service) scheduleShellForegroundRecovery(requestID string, pendin
 	}
 	deadline := pending.ShellForegroundDeadline
 	if deadline.IsZero() {
-		deadline = time.Now().UTC().Add(shellForegroundTimeoutDuration(pending.ArgsJSON) + shellTerminalRecoveryGrace)
+		deadline = shellForegroundRecoveryDeadline(pending)
 	}
 	service.scheduleStreamTimer(
 		stream,
@@ -151,6 +193,16 @@ func (service *Service) recoverShellWithoutTerminal(stream *ActiveStream, pendin
 		return nil
 	}
 	pending.ShellRecoveryScheduled = true
+	abortRequested := shellRecoveryRequestsAbort(reason)
+	if abortRequested {
+		// 只有仍处于前台等待的 PendingExec 才会走到这里；后台 Shell 已经从
+		// PendingExecs 移入 BackgroundShells，不会被这个 abort 影响。
+		if err := service.broker.Publish(stream.RequestID, StreamEvent{
+			Message: buildExecAbortMessage(pending),
+		}); err != nil {
+			return err
+		}
+	}
 	markExecCompleted(stream, pending)
 	resultPayload := buildSyntheticShellResultPayload(pending, reason)
 	log.Printf(
@@ -172,6 +224,7 @@ func (service *Service) recoverShellWithoutTerminal(stream *ActiveStream, pendin
 			"exec_id":                  pending.ExecID,
 			"exec_kind":                pending.ExecKind,
 			"reason":                   strings.TrimSpace(reason),
+			"abort_requested":          abortRequested,
 			"recent_stream_state":      pending.StreamState,
 			"chunk_count":              pending.ChunkCount,
 			"first_chunk_at":           pending.FirstChunkAt,
@@ -189,13 +242,35 @@ func (service *Service) recoverShellWithoutTerminal(stream *ActiveStream, pendin
 	if err := service.syncSummaryCarryForward(stream.ConversationID, stream.RequestID, pending.ModelCallID); err != nil {
 		return err
 	}
-	if err := service.publishToolCallCompleted(stream.RequestID, pending.ToolCallID, pending.ModelCallID, nil); err != nil {
+	syntheticToolCall := execbridge.BuildShellCompletedToolCall(
+		pending.ToolCallID,
+		pending.ArgsJSON,
+		pending.StdoutBuffer,
+		pending.StderrBuffer,
+		buildSyntheticShellRecoveryExit(reason),
+	)
+	if err := service.publishToolCallCompleted(stream.RequestID, pending.ToolCallID, pending.ModelCallID, syntheticToolCall); err != nil {
 		return err
 	}
 	if err := service.publishCheckpoint(stream.RequestID, stream.ConversationID); err != nil {
 		return err
 	}
 	return service.reconcileStream(stream)
+}
+
+func shellRecoveryRequestsAbort(reason string) bool {
+	return strings.TrimSpace(reason) == shellRecoveryReasonForegroundDeadline
+}
+
+func buildSyntheticShellRecoveryExit(reason string) *agentv1.ShellStreamExit {
+	exit := &agentv1.ShellStreamExit{Code: 1}
+	if !shellRecoveryRequestsAbort(reason) {
+		return exit
+	}
+	abortReason := agentv1.ShellAbortReason_SHELL_ABORT_REASON_TIMEOUT
+	exit.Aborted = true
+	exit.AbortReason = &abortReason
+	return exit
 }
 
 func buildSyntheticShellResultPayload(pending runtimecore.PendingExec, reason string) string {
@@ -209,16 +284,23 @@ func buildSyntheticShellResultPayload(pending runtimecore.PendingExec, reason st
 	}
 	switch strings.TrimSpace(reason) {
 	case shellRecoveryReasonTransportClosed:
-		noteLines = append(noteLines, "The shell transport closed before a terminal event arrived.")
+		noteLines = append(noteLines,
+			"The shell transport closed before a terminal event arrived.",
+			"The command may still be running in the Cursor app client.",
+		)
 	case shellRecoveryReasonForegroundDeadline:
-		noteLines = append(noteLines, fmt.Sprintf("The foreground wait window expired after %dms without a terminal event.", shellForegroundTimeoutMS(pending.ArgsJSON)))
+		noteLines = append(noteLines,
+			fmt.Sprintf("The foreground wait window expired after %dms without a terminal event.", shellForegroundTimeoutMS(pending.ArgsJSON)),
+			"An abort request was sent to the Cursor app client before this recovery result was finalized.",
+			"Process termination is controlled by the client; this result does not claim that the process has already exited.",
+		)
 	default:
-		noteLines = append(noteLines, "The shell stream stopped progressing before a terminal event arrived.")
+		noteLines = append(noteLines,
+			"The shell stream stopped progressing before a terminal event arrived.",
+			"The command may still be running in the Cursor app client.",
+		)
 	}
-	noteLines = append(noteLines,
-		"The command may still be running in the Cursor app client.",
-		"</shell-incomplete>",
-	)
+	noteLines = append(noteLines, "</shell-incomplete>")
 	sections = append(sections, strings.Join(noteLines, "\n"))
 	return strings.Join(sections, "\n\n")
 }

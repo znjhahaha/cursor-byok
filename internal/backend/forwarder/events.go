@@ -4,6 +4,7 @@ package forwarder
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -586,6 +587,33 @@ func buildStartedToolCall(invocation runtimecore.ToolInvocation) *agentv1.ToolCa
 	default:
 		return nil
 	}
+}
+
+func buildFailedToolCall(invocation runtimecore.ToolInvocation, errorText string) *agentv1.ToolCall {
+	toolCall := buildStartedToolCall(invocation)
+	if toolCall == nil {
+		toolCall = &agentv1.ToolCall{}
+	}
+	toolCall.ToolCallId = stringPtr(invocation.CallID)
+	completedAt := uint64(time.Now().UnixMilli())
+	toolCall.CompletedAtMs = &completedAt
+
+	errorText = firstNonEmpty(strings.TrimSpace(errorText), "tool execution failed")
+	if readCall := toolCall.GetReadToolCall(); readCall != nil {
+		readCall.Result = &agentv1.ReadToolResult{
+			Result: &agentv1.ReadToolResult_Error{
+				Error: &agentv1.ReadToolError{ErrorMessage: errorText},
+			},
+		}
+	}
+	if taskCall := toolCall.GetTaskToolCall(); taskCall != nil {
+		taskCall.Result = &agentv1.TaskResult{
+			Result: &agentv1.TaskResult_Error{
+				Error: &agentv1.TaskError{Error: errorText},
+			},
+		}
+	}
+	return toolCall
 }
 
 func forwarderCanonicalMCPToolLookupName(server string, toolName string) string {

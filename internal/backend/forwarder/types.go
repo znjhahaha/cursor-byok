@@ -128,6 +128,11 @@ type manualCompactionDirective struct {
 type ActiveStream struct {
 	mu sync.Mutex
 
+	// persistMu 只串行化会话落盘，与 mu 是两个独立职责：
+	// mu 保护内存可见性，persistMu 保证磁盘写入顺序。
+	// 锁序固定为 persistMu → mu，禁止反向获取。
+	persistMu sync.Mutex
+
 	RequestID              string
 	RequestMetadata        backgroundTaskRequestMetadata
 	ConversationID         string
@@ -144,9 +149,13 @@ type ActiveStream struct {
 	CurrentModelCallID                          string
 	ProviderActive                              bool
 	ProviderCancel                              func()
+	Interrupt                                   *streamInterrupt
 	ProviderPassCount                           int
 	ToolInvocationCount                         int
+	PromptTokens                                promptTokenSnapshot
+	HasPromptTokens                             bool
 	ActorMailbox                                chan streamCommandEnvelope
+	ActorUrgentMailbox                          chan streamCommandEnvelope
 	ActorDone                                   chan struct{}
 	Phase                                       TurnPhase
 	PendingProviderAction                       providerAction
@@ -168,7 +177,6 @@ type ActiveStream struct {
 	ProviderEstimatedInputTokens                int64
 	ProviderTerminalToolInvocation              bool
 	ProviderStreamRecoveryAttempts              int
-	ProviderShortStopRecoveryAttempts           int
 	ProviderRecoveryDirective                   string
 	PendingCompaction                           *PendingCompaction
 	PendingCheckpointBlobWrites                 map[uint32]string

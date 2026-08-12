@@ -861,8 +861,9 @@ func (service *Service) handleRunIntent(intent InboundIntent) (runErr error) {
 	stream.BackgroundShellsByMessageID = make(map[uint32]string)
 	stream.BackgroundShellsByExecID = make(map[string]string)
 	stream.TimerTokens = make(map[string]uint64)
-	stream.CurrentProviderToken = 0
-	stream.CurrentCompactionToken = 0
+	// provider/compaction generation 在 stream 的整个生命周期内单调递增，绝不归零。
+	// 同一个 requestID 被复用于新回合时若把它清零，上一回合迟到的 pass-1 事件
+	// 就会与新回合的 pass-1 撞号，被当成本回合的输出重新发布。
 	stream.ProviderAccumulatedText = ""
 	stream.ProviderAccumulatedReasoning = ""
 	stream.ProviderAccumulatedReasoningSignature = ""
@@ -929,7 +930,25 @@ func (service *Service) snapshotVisibleTurns(conversation *ConversationFile) ([]
 func (service *Service) handleCancelIntent(intent InboundIntent) error {
 	stream, ok := service.broker.Get(intent.RequestID)
 	if !ok || stream == nil {
-		return fmt.Errorf("request is not active: %s", intent.RequestID)
+		// 请求已经收口并被清理，没有可停止的对象，等同于已经停下。
+		return nil
+	}
+	// 这里的顺序本身就是语义：先掐断仍在运行的执行体，再做善后。
+	// 反过来先落盘，停止延迟就正比于历史长度 —— 那正是长会话里「点了停止没反应」的来源。
+	interruptStream(stream)
+	stream.mu.Lock()
+	pendingExecs := make([]runtimecore.PendingExec, 0, len(stream.PendingExecs))
+	for _, pending := range stream.PendingExecs {
+		pendingExecs = append(pendingExecs, pending)
+	}
+	stream.mu.Unlock()
+	for _, pending := range pendingExecs {
+		_ = service.broker.Publish(intent.RequestID, StreamEvent{
+			Message: buildExecAbortMessage(pending),
+		})
+		// abort 是发给客户端执行桥的终止请求，不会自动清理服务端状态。
+		// 先写 tombstone 再进入持久化善后，避免长会话里 PendingExecs 在取消后继续存活。
+		markExecCompleted(stream, pending)
 	}
 	hasCheckpoint := checkpointConversationInitialized(stream)
 	if hasCheckpoint {
@@ -952,17 +971,6 @@ func (service *Service) handleCancelIntent(intent InboundIntent) error {
 		if err != nil {
 			return err
 		}
-	}
-	stream.mu.Lock()
-	pendingExecs := make([]runtimecore.PendingExec, 0, len(stream.PendingExecs))
-	for _, pending := range stream.PendingExecs {
-		pendingExecs = append(pendingExecs, pending)
-	}
-	stream.mu.Unlock()
-	for _, pending := range pendingExecs {
-		_ = service.broker.Publish(intent.RequestID, StreamEvent{
-			Message: buildExecAbortMessage(pending),
-		})
 	}
 	if hasCheckpoint {
 		service.discardPendingCheckpoint(stream, "checkpoint superseded by cancellation")
@@ -1476,6 +1484,12 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 	if stream == nil {
 		return nil
 	}
+	// 停止是带外送达的：本函数在 actor 里独占执行，cancel 命令此刻还排在队列里，
+	// Status 与 Phase 都尚未变化，只有中断闩能反映用户已经按下停止。
+	// 这里提前退出，省掉后面整套随历史长度增长的快照、编译与落盘。
+	if streamInterrupted(stream) {
+		return nil
+	}
 	stream.mu.Lock()
 	if stream.ProviderActive || stream.Status == StreamStatusCanceled || stream.Status == StreamStatusCompleted || stream.Status == StreamStatusFailed {
 		stream.mu.Unlock()
@@ -1537,6 +1551,7 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 	}
 	compiled = appendTransientProviderRecoveryDirective(compiled, recoveryDirective)
 	compiled = guardCompiledConversationForProvider(compiled)
+	promptTokens := service.recordPromptTokenSnapshot(stream, conversation, compiled)
 	if compacted, compactErr := service.maybeCompactBeforeProvider(stream, conversation, compiled); compactErr != nil {
 		service.setTurnPhase(stream, TurnPhaseFailed)
 		return service.failStream(stream, "unknown", compactErr)
@@ -1569,10 +1584,16 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 		service.setTurnPhase(stream, TurnPhaseFailed)
 		return service.failStream(stream, "unknown", err)
 	}
-	maxTokens, requestKnobs := service.resolveProviderOutputBudget(modelID, conversation, compiled)
+	maxTokens, requestKnobs := service.resolveProviderOutputBudget(modelID, conversation, promptTokens)
 	estimatedInputTokens, _ := requestKnobs["compiled_prompt_tokens_estimate"].(int64)
 	service.maybeSaveLastAgentModelHash(conversation, modelID, mode, currentPass)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(streamInterruptContext(stream))
+	if ctx.Err() != nil {
+		// 中断在本次 pass 的准备期间到达。请求还没发出，直接放弃这一趟，
+		// 终态与历史落盘由排在 actor 队列里的 cancel 命令完成。
+		cancel()
+		return nil
+	}
 	stream.mu.Lock()
 	stream.ProviderActive = true
 	stream.ProviderCancel = cancel
@@ -1623,10 +1644,10 @@ func appendTransientProviderRecoveryDirective(compiled CompiledConversation, dir
 	return compiled
 }
 
-func (service *Service) resolveProviderOutputBudget(modelID string, conversation *ConversationFile, compiled CompiledConversation) (int, map[string]any) {
+func (service *Service) resolveProviderOutputBudget(modelID string, conversation *ConversationFile, promptTokens promptTokenSnapshot) (int, map[string]any) {
 	configuredMaxTokens := service.resolveConfiguredProviderMaxOutputTokens(modelID)
 	contextWindowTokens := compactionContextWindowSize(conversation)
-	estimatedPromptTokens := estimateCompiledPromptTokens(compiled)
+	estimatedPromptTokens := promptTokens.totalTokens()
 	if conversation != nil && int64(conversation.TokenDetailsUsedTokens) > estimatedPromptTokens {
 		estimatedPromptTokens = int64(conversation.TokenDetailsUsedTokens)
 	}
@@ -2135,12 +2156,13 @@ func (service *Service) applyExecProgress(stream *ActiveStream, pending runtimec
 	}
 
 	stream.mu.Lock()
-	defer stream.mu.Unlock()
 	current, ok := stream.PendingExecs[pending.ExecID]
 	if !ok {
+		stream.mu.Unlock()
 		return pending
 	}
 	now := time.Now().UTC()
+	refreshForegroundRecovery := false
 	switch event := shellStream.GetEvent().(type) {
 	case *agentv1.ShellStream_Stdout:
 		if current.FirstChunkAt.IsZero() {
@@ -2148,22 +2170,22 @@ func (service *Service) applyExecProgress(stream *ActiveStream, pending runtimec
 		}
 		current.ChunkCount++
 		current.StreamState = "streaming"
-		current.LastShellActivityAt = now
 		current.StdoutBuffer += execbridge.DecodeShellStdout(event.Stdout)
+		refreshForegroundRecovery = true
 	case *agentv1.ShellStream_Stderr:
 		if current.FirstChunkAt.IsZero() {
 			current.FirstChunkAt = now
 		}
 		current.ChunkCount++
 		current.StreamState = "streaming"
-		current.LastShellActivityAt = now
 		current.StderrBuffer += event.Stderr.GetData()
+		refreshForegroundRecovery = true
 	case *agentv1.ShellStream_Start:
 		if current.FirstChunkAt.IsZero() {
 			current.FirstChunkAt = now
 		}
 		current.StreamState = "started"
-		current.LastShellActivityAt = now
+		refreshForegroundRecovery = true
 	case *agentv1.ShellStream_Backgrounded:
 		current.StreamState = "backgrounded"
 		current.LastShellActivityAt = now
@@ -2177,7 +2199,15 @@ func (service *Service) applyExecProgress(stream *ActiveStream, pending runtimec
 		current.StreamState = "permission_denied"
 		current.LastShellActivityAt = now
 	}
+	if refreshForegroundRecovery {
+		current = refreshShellForegroundRecoveryDeadline(current, now)
+	}
 	stream.PendingExecs[pending.ExecID] = current
+	stream.mu.Unlock()
+
+	if refreshForegroundRecovery {
+		service.scheduleShellForegroundRecovery(stream.RequestID, current)
+	}
 	return current
 }
 
@@ -2196,23 +2226,32 @@ func (service *Service) applyExecControlProgress(stream *ActiveStream, pending r
 		return pending
 	}
 	stream.mu.Lock()
-	defer stream.mu.Unlock()
 	current, ok := stream.PendingExecs[pending.ExecID]
 	if !ok {
+		stream.mu.Unlock()
 		return pending
 	}
 	now := time.Now().UTC()
+	refreshForegroundRecovery := false
 	switch message.GetMessage().(type) {
 	case *agentv1.ExecClientControlMessage_Heartbeat:
-		current.LastShellActivityAt = now
 		current.LastShellHeartbeatAt = now
+		refreshForegroundRecovery = true
 	case *agentv1.ExecClientControlMessage_StreamClose:
 		current.LastShellActivityAt = now
 	case *agentv1.ExecClientControlMessage_Throw:
 		current.LastShellActivityAt = now
 		current.StreamState = "throw"
 	}
+	if refreshForegroundRecovery {
+		current = refreshShellForegroundRecoveryDeadline(current, now)
+	}
 	stream.PendingExecs[pending.ExecID] = current
+	stream.mu.Unlock()
+
+	if refreshForegroundRecovery {
+		service.scheduleShellForegroundRecovery(stream.RequestID, current)
+	}
 	return current
 }
 
@@ -2423,22 +2462,61 @@ func (service *Service) rewriteCheckpointTokenDetailsForClient(stream *ActiveStr
 		state.TokenDetails = &agentv1.ConversationTokenDetails{}
 	}
 	state.TokenDetails.MaxTokens = clampInt64ToUint32(service.checkpointDisplayMaxTokens(stream, conversation))
-	compiled, hasCompiled := service.checkpointCompiledConversation(stream, conversation)
-	state.TokenDetails.UsedTokens = clampInt64ToUint32(service.checkpointDisplayUsedTokens(conversation, state, compiled, hasCompiled))
-	state.TokenDetails.Breakdown = estimateCheckpointPromptTokenBreakdown(compiled, hasCompiled, state.TokenDetails.UsedTokens, state.TokenDetails.MaxTokens)
+	snapshot, hasSnapshot := checkpointPromptTokenEstimate(stream, conversation)
+	state.TokenDetails.UsedTokens = clampInt64ToUint32(checkpointDisplayUsedTokens(conversation, state, snapshot, hasSnapshot))
+	if hasSnapshot {
+		state.TokenDetails.Breakdown = snapshot.breakdown(state.TokenDetails.UsedTokens, state.TokenDetails.MaxTokens)
+		return
+	}
+	state.TokenDetails.Breakdown = fallbackPromptTokenBreakdown(state.TokenDetails.UsedTokens, state.TokenDetails.MaxTokens)
 }
 
-func (service *Service) checkpointCompiledConversation(stream *ActiveStream, conversation *ConversationFile) (CompiledConversation, bool) {
-	if service == nil || service.compiler == nil || conversation == nil {
-		return CompiledConversation{}, false
+// recordPromptTokenSnapshot 记录真实要发给模型的 prompt 规模，并把它交还调用方。
+// 这是展示路径与输出预算计算的唯一数据来源：compiled 已经在手，
+// 一次遍历同时得到总量和分类，不必再各扫一遍全部 messages。
+func (service *Service) recordPromptTokenSnapshot(stream *ActiveStream, conversation *ConversationFile, compiled CompiledConversation) promptTokenSnapshot {
+	var entries []HistoryEntry
+	if conversation != nil {
+		entries = conversation.Entries
 	}
-	_, modelName, latestUserText, mode := checkpointPromptContext(stream)
-	compiled, err := service.compiler.Compile(conversation, mode, latestUserText, modelName)
-	if err != nil {
-		log.Printf("forwarder checkpoint token estimate failed request_id=%s conversation_id=%s err=%v", strings.TrimSpace(activeStreamRequestID(stream)), strings.TrimSpace(conversation.ConversationID), err)
-		return CompiledConversation{}, false
+	snapshot := newPromptTokenSnapshot(compiled, contextVersionForEntries(entries), len(entries))
+	if stream == nil {
+		return snapshot
 	}
-	return guardCompiledConversationForProvider(compiled), true
+	stream.mu.Lock()
+	stream.PromptTokens = snapshot
+	stream.HasPromptTokens = true
+	stream.mu.Unlock()
+	return snapshot
+}
+
+// checkpointPromptTokenEstimate 用最近一次真实编译的快照加上之后新增 entries 的估算，
+// 取代原先「为了在 UI 显示一个数字而把整个对话重新编译一遍」的做法：
+// 那次编译和真正调用模型等价，却每个工具结果都要跑一次。
+// entries 变少说明发生过压缩，此时快照作废，退回常量级的兜底展示。
+func checkpointPromptTokenEstimate(stream *ActiveStream, conversation *ConversationFile) (promptTokenSnapshot, bool) {
+	if stream == nil || conversation == nil {
+		return promptTokenSnapshot{}, false
+	}
+	stream.mu.Lock()
+	snapshot := stream.PromptTokens
+	hasSnapshot := stream.HasPromptTokens
+	stream.mu.Unlock()
+	if !hasSnapshot || len(conversation.Entries) < snapshot.EntryCount {
+		return promptTokenSnapshot{}, false
+	}
+	return snapshot.withExtraConversationTokens(estimateEntriesTokensAfter(conversation.Entries, snapshot.ContextVersion)), true
+}
+
+func estimateEntriesTokensAfter(entries []HistoryEntry, contextVersion int64) int64 {
+	total := int64(0)
+	for _, entry := range entries {
+		if entry.Seq <= contextVersion {
+			continue
+		}
+		total += estimatedTokensPerMessageOverhead + estimateTextTokens(string(entry.Payload))
+	}
+	return total
 }
 
 func (service *Service) checkpointDisplayMaxTokens(stream *ActiveStream, conversation *ConversationFile) int64 {
@@ -2450,7 +2528,7 @@ func (service *Service) checkpointDisplayMaxTokens(stream *ActiveStream, convers
 	return maxTokens
 }
 
-func (service *Service) checkpointDisplayUsedTokens(conversation *ConversationFile, state *agentv1.ConversationStateStructure, compiled CompiledConversation, hasCompiled bool) int64 {
+func checkpointDisplayUsedTokens(conversation *ConversationFile, state *agentv1.ConversationStateStructure, snapshot promptTokenSnapshot, hasSnapshot bool) int64 {
 	usedTokens := int64(0)
 	if state != nil && state.TokenDetails != nil {
 		usedTokens = int64(state.TokenDetails.GetUsedTokens())
@@ -2458,30 +2536,12 @@ func (service *Service) checkpointDisplayUsedTokens(conversation *ConversationFi
 	if conversation != nil && int64(conversation.TokenDetailsUsedTokens) > usedTokens {
 		usedTokens = int64(conversation.TokenDetailsUsedTokens)
 	}
-	if hasCompiled {
-		if estimatedTokens := estimateCompiledPromptTokens(compiled); estimatedTokens > usedTokens {
+	if hasSnapshot {
+		if estimatedTokens := snapshot.totalTokens(); estimatedTokens > usedTokens {
 			usedTokens = estimatedTokens
 		}
 	}
 	return usedTokens
-}
-
-func checkpointPromptContext(stream *ActiveStream) (string, string, string, agentv1.AgentMode) {
-	if stream == nil {
-		return "", "", "", agentv1.AgentMode_AGENT_MODE_AGENT
-	}
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-	return stream.ModelID, stream.ModelName, stream.LatestUserText, stream.Mode
-}
-
-func activeStreamRequestID(stream *ActiveStream) string {
-	if stream == nil {
-		return ""
-	}
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-	return stream.RequestID
 }
 
 // flushAssistantText 把本轮累计的 assistant 文本一次性写回 history。
