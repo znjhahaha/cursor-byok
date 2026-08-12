@@ -237,6 +237,18 @@ func buildShellToolCallDeltaMessage(callID string, modelCallID string, output *a
 	})
 }
 
+func buildUserMessageAppendedMessage(userMessage *agentv1.UserMessage) *agentv1.AgentServerMessage {
+	return &agentv1.AgentServerMessage{
+		Message: &agentv1.AgentServerMessage_InteractionUpdate{
+			InteractionUpdate: &agentv1.InteractionUpdate{
+				Message: &agentv1.InteractionUpdate_UserMessageAppended{
+					UserMessageAppended: &agentv1.UserMessageAppendedUpdate{UserMessage: userMessage},
+				},
+			},
+		},
+	}
+}
+
 // buildTurnEndedMessage 构造 turn 结束消息，并携带标准化后的 token 统计。
 func buildTurnEndedMessage(inputTokens int64, outputTokens int64, cacheReadTokens int64, cacheWriteTokens int64) *agentv1.AgentServerMessage {
 	inputTokensValue := inputTokens

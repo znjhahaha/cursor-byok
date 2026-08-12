@@ -40,6 +40,7 @@ type BackgroundSubagentTask struct {
 	ChildRequestID           string               `json:"child_request_id,omitempty"`
 	ChildConversationID      string               `json:"child_conversation_id,omitempty"`
 	SubagentID               string               `json:"subagent_id,omitempty"`
+	ClientTaskID             string               `json:"client_task_id,omitempty"`
 	SubagentTypeName         string               `json:"subagent_type_name,omitempty"`
 	Description              string               `json:"description,omitempty"`
 	Prompt                   string               `json:"prompt,omitempty"`
@@ -184,6 +185,7 @@ func (store *BackgroundTaskFileStore) MarkRunning(parentRequestID string, parent
 		}
 		found = true
 		candidate.SubagentID = firstNonEmpty(strings.TrimSpace(subagentID), candidate.SubagentID)
+		candidate.ClientTaskID = firstNonEmpty(strings.TrimSpace(subagentID), candidate.ClientTaskID, candidate.ID)
 		if !isTerminalBackgroundTaskStatus(candidate.Status) {
 			candidate.Status = BackgroundTaskStatusRunning
 		}
@@ -263,6 +265,41 @@ func (store *BackgroundTaskFileStore) ActiveTasks(parentConversationID string) (
 	return tasks, nil
 }
 
+func (store *BackgroundTaskFileStore) AwaitableTasksForRequest(parentConversationID string, parentRequestID string) ([]BackgroundSubagentTask, error) {
+	parentConversationID = strings.TrimSpace(parentConversationID)
+	parentRequestID = strings.TrimSpace(parentRequestID)
+	if store == nil || strings.TrimSpace(store.path) == "" || parentConversationID == "" || parentRequestID == "" {
+		return nil, nil
+	}
+	document, err := store.load()
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]BackgroundSubagentTask, 0)
+	for _, task := range document.Tasks {
+		if strings.TrimSpace(task.ParentConversationID) != parentConversationID || strings.TrimSpace(task.ParentRequestID) != parentRequestID {
+			continue
+		}
+		if !task.CompletionInjectedAt.IsZero() {
+			continue
+		}
+		claimID := strings.TrimSpace(task.CompletionContinuationID)
+		if claimID != "" && claimID != parentRequestID {
+			continue
+		}
+		if task.Status == BackgroundTaskStatusAccepted || task.Status == BackgroundTaskStatusRunning || isTerminalBackgroundTaskStatus(task.Status) {
+			tasks = append(tasks, task)
+		}
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].CreatedAt.Equal(tasks[j].CreatedAt) {
+			return tasks[i].ID < tasks[j].ID
+		}
+		return tasks[i].CreatedAt.Before(tasks[j].CreatedAt)
+	})
+	return tasks, nil
+}
+
 func backgroundTaskCancellationMatchScore(task BackgroundSubagentTask, subagentID string) int {
 	subagentID = strings.TrimSpace(subagentID)
 	if subagentID == "" {
@@ -307,6 +344,31 @@ func (store *BackgroundTaskFileStore) CompleteChild(conversationID string, statu
 			return candidate, nil
 		}
 		return BackgroundSubagentTask{}, nil
+	})
+	return task, changed, err
+}
+
+func (store *BackgroundTaskFileStore) ReopenCanceledCompletionForAwait(taskID string, parentRequestID string) (BackgroundSubagentTask, bool, error) {
+	taskID = strings.TrimSpace(taskID)
+	parentRequestID = strings.TrimSpace(parentRequestID)
+	if store == nil || taskID == "" || parentRequestID == "" {
+		return BackgroundSubagentTask{}, false, nil
+	}
+	var changed bool
+	task, err := store.mutate(func(document *backgroundTaskFileDocument) (BackgroundSubagentTask, error) {
+		candidate, ok := document.Tasks[taskID]
+		if !ok || strings.TrimSpace(candidate.ParentRequestID) != parentRequestID || candidate.Status != BackgroundTaskStatusCanceled {
+			return BackgroundSubagentTask{}, nil
+		}
+		if candidate.CompletionInjectedAt.IsZero() {
+			return candidate, nil
+		}
+		candidate.CompletionInjectedAt = time.Time{}
+		candidate.CompletionContinuationID = ""
+		candidate.UpdatedAt = time.Now().UTC()
+		document.Tasks[taskID] = candidate
+		changed = true
+		return candidate, nil
 	})
 	return task, changed, err
 }
@@ -415,6 +477,29 @@ func (store *BackgroundTaskFileStore) ConfirmCompletionClaim(continuationRequest
 			document.Tasks[id] = task
 		}
 		return BackgroundSubagentTask{}, nil
+	})
+	return err
+}
+
+// ConfirmCompletionClaimForTask 只闭合单个任务的注入声明。父流内联等待时结果是逐个注入的，
+// 必须在写入 canonical 消息后立刻闭合，否则父流稍后被取消时 ReleaseCompletionClaim
+// 会把已注入的结果回滚成待派发，客户端再派发一次重复 completion。
+func (store *BackgroundTaskFileStore) ConfirmCompletionClaimForTask(taskID string, continuationRequestID string) error {
+	taskID = strings.TrimSpace(taskID)
+	continuationRequestID = strings.TrimSpace(continuationRequestID)
+	if store == nil || taskID == "" || continuationRequestID == "" {
+		return nil
+	}
+	_, err := store.mutate(func(document *backgroundTaskFileDocument) (BackgroundSubagentTask, error) {
+		task, ok := document.Tasks[taskID]
+		if !ok || strings.TrimSpace(task.CompletionContinuationID) != continuationRequestID || !task.CompletionInjectedAt.IsZero() {
+			return BackgroundSubagentTask{}, nil
+		}
+		now := time.Now().UTC()
+		task.CompletionInjectedAt = now
+		task.UpdatedAt = now
+		document.Tasks[taskID] = task
+		return task, nil
 	})
 	return err
 }
@@ -557,6 +642,7 @@ func mergeBackgroundSubagentTask(existing BackgroundSubagentTask, incoming Backg
 	incoming.ChildRequestID = firstNonEmpty(incoming.ChildRequestID, existing.ChildRequestID)
 	incoming.ChildConversationID = firstNonEmpty(incoming.ChildConversationID, existing.ChildConversationID)
 	incoming.SubagentID = firstNonEmpty(incoming.SubagentID, existing.SubagentID)
+	incoming.ClientTaskID = firstNonEmpty(incoming.ClientTaskID, existing.ClientTaskID, incoming.SubagentID, existing.SubagentID)
 	incoming.SubagentTypeName = firstNonEmpty(incoming.SubagentTypeName, existing.SubagentTypeName)
 	incoming.Description = firstNonEmpty(incoming.Description, existing.Description)
 	incoming.Prompt = firstNonEmpty(incoming.Prompt, existing.Prompt)

@@ -184,27 +184,42 @@ type ActiveStream struct {
 	NextCheckpointBlobRequestID                 uint32
 	PendingCheckpoint                           *pendingCheckpointPublish
 
-	Backlog                     []StreamEvent
-	Subscribers                 map[string]*StreamSubscriber
-	CheckpointConversation      *ConversationFile
-	PendingExecs                map[string]runtimecore.PendingExec
-	PendingInteractions         map[string]runtimecore.PendingInteraction
-	PartialToolCallIDs          map[string]struct{}
-	PatchEditQueues             map[string][]queuedPatchEditOperation
-	MCPToolServers              map[string]string
-	WorkspacePaths              []string
-	TerminalsFolder             string
-	RequestFileContents         map[string]string
-	RecentCompletedExecs        map[uint32]time.Time
-	BackgroundShells            map[string]*BackgroundShellState
-	BackgroundShellsByMessageID map[uint32]string
-	BackgroundShellsByExecID    map[string]string
-	BackgroundShellActions      map[string]time.Time
-	TerminalCleanupTimer        *time.Timer
-	TerminalCleanupSeq          atomic.Uint64
+	Backlog                         []StreamEvent
+	Subscribers                     map[string]*StreamSubscriber
+	CheckpointConversation          *ConversationFile
+	PendingExecs                    map[string]runtimecore.PendingExec
+	PendingInteractions             map[string]runtimecore.PendingInteraction
+	PartialToolCallIDs              map[string]struct{}
+	PatchEditQueues                 map[string][]queuedPatchEditOperation
+	MCPToolServers                  map[string]string
+	WorkspacePaths                  []string
+	TerminalsFolder                 string
+	RequestFileContents             map[string]string
+	RecentCompletedExecs            map[uint32]time.Time
+	BackgroundShells                map[string]*BackgroundShellState
+	BackgroundShellsByMessageID     map[uint32]string
+	BackgroundShellsByExecID        map[string]string
+	BackgroundShellActions          map[string]time.Time
+	BackgroundTaskWaits             map[string]*BackgroundTaskWaitState
+	BackgroundTaskPendingCompletion *pendingTurnCompletion
+	TerminalCleanupTimer            *time.Timer
+	TerminalCleanupSeq              atomic.Uint64
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type BackgroundTaskWaitState struct {
+	TaskID          string
+	LedgerTaskID    string
+	AwaitToolCallID string
+	ModelCallID     string
+	StartedAt       time.Time
+	Completed       bool
+}
+
+type backgroundTaskCompletionEvent struct {
+	Task BackgroundSubagentTask
 }
 
 type BackgroundShellState struct {

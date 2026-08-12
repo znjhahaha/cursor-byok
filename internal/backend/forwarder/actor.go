@@ -48,17 +48,18 @@ const (
 type streamCommandKind string
 
 const (
-	streamCommandRun               streamCommandKind = "run"
-	streamCommandCancel            streamCommandKind = "cancel"
-	streamCommandCancelSubagent    streamCommandKind = "cancel_subagent"
-	streamCommandMetadata          streamCommandKind = "metadata"
-	streamCommandExecResult        streamCommandKind = "exec_result"
-	streamCommandExecControl       streamCommandKind = "exec_control"
-	streamCommandInteractionResult streamCommandKind = "interaction_result"
-	streamCommandProviderEvent     streamCommandKind = "provider_event"
-	streamCommandTimerFired        streamCommandKind = "timer_fired"
-	streamCommandCompactionEvent   streamCommandKind = "compaction_event"
-	streamCommandMaybeOrphaned     streamCommandKind = "maybe_orphaned"
+	streamCommandRun                     streamCommandKind = "run"
+	streamCommandCancel                  streamCommandKind = "cancel"
+	streamCommandCancelSubagent          streamCommandKind = "cancel_subagent"
+	streamCommandMetadata                streamCommandKind = "metadata"
+	streamCommandExecResult              streamCommandKind = "exec_result"
+	streamCommandExecControl             streamCommandKind = "exec_control"
+	streamCommandInteractionResult       streamCommandKind = "interaction_result"
+	streamCommandProviderEvent           streamCommandKind = "provider_event"
+	streamCommandTimerFired              streamCommandKind = "timer_fired"
+	streamCommandCompactionEvent         streamCommandKind = "compaction_event"
+	streamCommandBackgroundTaskCompleted streamCommandKind = "background_task_completed"
+	streamCommandMaybeOrphaned           streamCommandKind = "maybe_orphaned"
 )
 
 type streamTimerKind string
@@ -102,6 +103,7 @@ type streamCommand struct {
 	Provider   *streamProviderEvent
 	Timer      *streamTimerEvent
 	Compaction *streamCompactionEvent
+	Background *backgroundTaskCompletionEvent
 	Reason     string
 }
 
@@ -425,6 +427,8 @@ func (service *Service) handleStreamCommand(stream *ActiveStream, command stream
 		return service.handleTimerEvent(stream, command.Timer)
 	case streamCommandCompactionEvent:
 		return service.handleCompactionEvent(stream, command.Compaction)
+	case streamCommandBackgroundTaskCompleted:
+		return service.handleBackgroundTaskCompletionEvent(stream, command.Background)
 	case streamCommandMaybeOrphaned:
 		if stream == nil {
 			return nil
@@ -463,6 +467,18 @@ func (service *Service) requestProviderAction(stream *ActiveStream, action provi
 	return service.reconcileStream(stream)
 }
 
+func hasPendingBackgroundTaskWaitsLocked(stream *ActiveStream) bool {
+	if stream == nil {
+		return false
+	}
+	for _, wait := range stream.BackgroundTaskWaits {
+		if wait != nil && !wait.Completed {
+			return true
+		}
+	}
+	return false
+}
+
 func (service *Service) reconcileStream(stream *ActiveStream) error {
 	if stream == nil {
 		return nil
@@ -477,6 +493,7 @@ func (service *Service) reconcileStream(stream *ActiveStream) error {
 	pendingExecCount := len(stream.PendingExecs)
 	pendingInteractionCount := len(stream.PendingInteractions)
 	hasPendingCompaction := stream.PendingCompaction != nil
+	hasBackgroundTaskWaits := hasPendingBackgroundTaskWaitsLocked(stream)
 	action := stream.PendingProviderAction
 	completion := stream.PendingProviderCompletion
 	stream.mu.Unlock()
@@ -497,6 +514,13 @@ func (service *Service) reconcileStream(stream *ActiveStream) error {
 	if hasPendingCompaction {
 		service.setTurnPhase(stream, TurnPhaseCompacting)
 		return nil
+	}
+	if hasBackgroundTaskWaits && action != providerActionResume && completion == nil {
+		service.setTurnPhase(stream, TurnPhaseWaitingExternal)
+		return nil
+	}
+	if hasBackgroundTaskWaits {
+		service.setTurnPhase(stream, TurnPhaseWaitingExternal)
 	}
 
 	if completion != nil {
@@ -821,6 +845,7 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 	terminalToolInvocation := stream.ProviderTerminalToolInvocation
 	streamRecoveryAttempts := stream.ProviderStreamRecoveryAttempts
 	existingCompletion := stream.PendingProviderCompletion
+	queuedProviderAction := stream.PendingProviderAction
 	stream.ProviderActive = false
 	stream.ProviderCancel = nil
 	stream.PendingProviderAction = providerActionNone
@@ -937,6 +962,16 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		if handled {
 			return nil
 		}
+	}
+
+	if queuedProviderAction == providerActionResume {
+		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
+			return service.failStreamIfNonTerminal(stream, "unknown", err)
+		}
+		if err := service.requestProviderAction(stream, providerActionResume); err != nil {
+			return service.failStreamIfNonTerminal(stream, "unknown", err)
+		}
+		return nil
 	}
 
 	if existingCompletion != nil {

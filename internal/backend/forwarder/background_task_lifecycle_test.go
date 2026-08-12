@@ -1,6 +1,8 @@
 package forwarder
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 
 	"cursor/gen/agentv1"
 	execbridge "cursor/internal/backend/agent/bridge/exec"
+	modeladapter "cursor/internal/backend/agent/model"
 	runtimecore "cursor/internal/backend/agent/core"
 )
 
@@ -599,5 +602,424 @@ func TestBackgroundTaskDuplicateTerminalPreservesFirstResult(t *testing.T) {
 	}
 	if second.Status != BackgroundTaskStatusCompleted || second.FinalMessage != "first final message" || second.Error != "" {
 		t.Fatalf("duplicate terminal overwrote first result: %#v", second)
+	}
+}
+
+type controlledBackgroundWaitProvider struct {
+	mu        sync.Mutex
+	requests  []ProviderRequest
+	active    int
+	maxActive int
+	seen      chan ProviderRequest
+	release   chan struct{}
+}
+
+func (provider *controlledBackgroundWaitProvider) StartStream(ctx context.Context, request ProviderRequest, sink func(modeladapter.ModelEvent) error) error {
+	provider.mu.Lock()
+	provider.requests = append(provider.requests, request)
+	provider.active++
+	if provider.active > provider.maxActive {
+		provider.maxActive = provider.active
+	}
+	provider.mu.Unlock()
+	defer func() {
+		provider.mu.Lock()
+		provider.active--
+		provider.mu.Unlock()
+	}()
+
+	provider.seen <- request
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-provider.release:
+	}
+	if err := sink(modeladapter.ModelEvent{
+		Kind:     modeladapter.ModelEventKindTextDelta,
+		Provider: "test",
+		Model:    request.ModelID,
+		Text:     "background completion acknowledged",
+	}); err != nil {
+		return err
+	}
+	return sink(modeladapter.ModelEvent{
+		Kind:         modeladapter.ModelEventKindTurnFinished,
+		Provider:     "test",
+		Model:        request.ModelID,
+		FinishReason: "stop",
+	})
+}
+
+func (provider *controlledBackgroundWaitProvider) stats() (int, int) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return len(provider.requests), provider.maxActive
+}
+
+func openBackgroundWaitParent(t *testing.T, service *Service, taskCount int) (*ActiveStream, []BackgroundSubagentTask) {
+	t.Helper()
+	seedBackgroundTaskParent(t, service, "parent-conversation")
+	tasks := make([]BackgroundSubagentTask, 0, taskCount)
+	for index := 1; index <= taskCount; index++ {
+		suffix := fmt.Sprintf("-%d", index)
+		registerLinkedBackgroundTask(
+			t,
+			service,
+			"parent-conversation",
+			"parent-request",
+			"task-call"+suffix,
+			"child-request"+suffix,
+			"child-conversation"+suffix,
+		)
+		running, found, err := service.backgroundTasks.MarkRunning("parent-request", "task-call"+suffix, "agent"+suffix)
+		if err != nil || !found {
+			t.Fatalf("MarkRunning(%s) task=%#v found=%v err=%v", suffix, running, found, err)
+		}
+		tasks = append(tasks, running)
+	}
+	conversation, err := service.store.LoadConversation("parent-conversation")
+	if err != nil {
+		t.Fatalf("LoadConversation(parent) error = %v", err)
+	}
+	stream, err := service.broker.OpenStream(
+		"parent-request",
+		"parent-conversation",
+		1,
+		"parent-model",
+		"Parent Model",
+		agentv1.AgentMode_AGENT_MODE_MULTITASK,
+		"delegate work",
+	)
+	if err != nil {
+		t.Fatalf("OpenStream(parent) error = %v", err)
+	}
+	if err := service.replaceCheckpointConversation(stream, conversation); err != nil {
+		t.Fatalf("replaceCheckpointConversation(parent) error = %v", err)
+	}
+	stream.mu.Lock()
+	stream.Status = StreamStatusStreaming
+	stream.Phase = TurnPhaseProviderRunning
+	stream.CurrentModelCallID = "parent-model-call"
+	stream.mu.Unlock()
+	return stream, tasks
+}
+
+func deferParentForBackgroundWait(t *testing.T, service *Service, stream *ActiveStream) {
+	t.Helper()
+	if err := service.completeSuccessfulTurn(stream, pendingTurnCompletion{
+		ConversationID: "parent-conversation",
+		RequestID:      "parent-request",
+		TurnSeq:        1,
+		ModelCallID:    "parent-model-call",
+		ProviderPass:   1,
+		FinalMessage:   "delegated background work",
+	}); err != nil {
+		t.Fatalf("completeSuccessfulTurn(parent) error = %v", err)
+	}
+}
+
+func backgroundWaitEvents(t *testing.T, service *Service) []StreamEvent {
+	t.Helper()
+	events, err := service.broker.ReadFromCursor("parent-request", 0)
+	if err != nil {
+		t.Fatalf("ReadFromCursor(parent) error = %v", err)
+	}
+	return events
+}
+
+// 父流在等待后台子任务时的稳定态：provider 空闲后仍必须停留在 waiting_external，
+// 而不是回落 idle 或收口 turn。注入结果会短暂进入 provider_running，因此这里轮询稳定态。
+func assertParentStillWaitingWithoutEnd(t *testing.T, service *Service, stream *ActiveStream, wantWaits int) {
+	t.Helper()
+	var status StreamStatus
+	var phase TurnPhase
+	var waitCount int
+	var hasCompletion bool
+	var providerActive bool
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		stream.mu.Lock()
+		status = stream.Status
+		phase = stream.Phase
+		waitCount = len(stream.BackgroundTaskWaits)
+		hasCompletion = stream.BackgroundTaskPendingCompletion != nil
+		providerActive = stream.ProviderActive
+		stream.mu.Unlock()
+		settled := !providerActive && status == StreamStatusStreaming && phase == TurnPhaseWaitingExternal && waitCount == wantWaits && hasCompletion
+		if settled || !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if status != StreamStatusStreaming || phase != TurnPhaseWaitingExternal || waitCount != wantWaits || !hasCompletion {
+		t.Fatalf("parent wait state status=%s phase=%s waits=%d pending_completion=%v provider_active=%v", status, phase, waitCount, hasCompletion, providerActive)
+	}
+	for _, event := range backgroundWaitEvents(t, service) {
+		if event.End || (event.Message != nil && event.Message.GetInteractionUpdate().GetTurnEnded() != nil) {
+			t.Fatalf("parent emitted terminal event while background tasks were pending: %#v", event)
+		}
+	}
+}
+
+func waitForBackgroundWaitsCompleted(t *testing.T, stream *ActiveStream, want int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		stream.mu.Lock()
+		completed := 0
+		for _, wait := range stream.BackgroundTaskWaits {
+			if wait != nil && wait.Completed {
+				completed++
+			}
+		}
+		stream.mu.Unlock()
+		if completed >= want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("background wait completion count did not reach %d", want)
+}
+
+func TestMultitaskParentDefersEndWithNativeAwait(t *testing.T) {
+	provider := &backgroundCompletionTestProvider{seen: make(chan ProviderRequest, 2)}
+	service := newBackgroundCompletionTestService(t, provider)
+	stream, tasks := openBackgroundWaitParent(t, service, 1)
+
+	deferParentForBackgroundWait(t, service, stream)
+	assertParentStillWaitingWithoutEnd(t, service, stream, 1)
+
+	startedCount := 0
+	for _, event := range backgroundWaitEvents(t, service) {
+		if event.Message == nil {
+			continue
+		}
+		started := event.Message.GetInteractionUpdate().GetToolCallStarted()
+		if started == nil || started.GetToolCall().GetAwaitToolCall() == nil {
+			continue
+		}
+		startedCount++
+		if got := started.GetToolCall().GetAwaitToolCall().GetArgs().GetTaskId(); got != tasks[0].ClientTaskID {
+			t.Fatalf("await started task_id=%q, want %q", got, tasks[0].ClientTaskID)
+		}
+	}
+	if startedCount != 1 {
+		t.Fatalf("await started count=%d, want 1", startedCount)
+	}
+}
+
+func TestMultitaskBackgroundCompletionsResumeSameParentStream(t *testing.T) {
+	provider := &backgroundCompletionTestProvider{seen: make(chan ProviderRequest, 4)}
+	service := newBackgroundCompletionTestService(t, provider)
+	stream, tasks := openBackgroundWaitParent(t, service, 2)
+	deferParentForBackgroundWait(t, service, stream)
+	assertParentStillWaitingWithoutEnd(t, service, stream, 2)
+
+	service.completeBackgroundSubagentSuccess(tasks[0].ChildConversationID, "first canonical result")
+	select {
+	case request := <-provider.seen:
+		if request.RequestID != "parent-request" {
+			t.Fatalf("first resume request_id=%q, want parent-request", request.RequestID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("first background completion did not resume parent provider")
+	}
+	waitForBackgroundWaitsCompleted(t, stream, 1)
+	assertParentStillWaitingWithoutEnd(t, service, stream, 2)
+
+	service.completeBackgroundSubagentSuccess(tasks[1].ChildConversationID, "second canonical result")
+	select {
+	case request := <-provider.seen:
+		if request.RequestID != "parent-request" {
+			t.Fatalf("second resume request_id=%q, want parent-request", request.RequestID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("second background completion did not resume parent provider")
+	}
+	waitForBackgroundCompletionTerminal(t, service, "parent-request")
+
+	conversation, err := service.store.LoadConversation("parent-conversation")
+	if err != nil {
+		t.Fatalf("LoadConversation(parent) error = %v", err)
+	}
+	messages := backgroundCompletionUserMessages(conversation.Entries)
+	if len(messages) != 2 {
+		t.Fatalf("canonical completion message count=%d, want 2", len(messages))
+	}
+	joined := messages[0].GetText() + "\n" + messages[1].GetText()
+	if !strings.Contains(joined, "first canonical result") || !strings.Contains(joined, "second canonical result") {
+		t.Fatalf("canonical completion messages=%q", joined)
+	}
+
+	startedIDs := make(map[string]int)
+	completedIDs := make(map[string]int)
+	for _, event := range backgroundWaitEvents(t, service) {
+		if event.Message == nil {
+			continue
+		}
+		update := event.Message.GetInteractionUpdate()
+		if started := update.GetToolCallStarted(); started != nil && started.GetToolCall().GetAwaitToolCall() != nil {
+			startedIDs[started.GetToolCall().GetAwaitToolCall().GetArgs().GetTaskId()]++
+		}
+		if completed := update.GetToolCallCompleted(); completed != nil && completed.GetToolCall().GetAwaitToolCall() != nil {
+			completedIDs[completed.GetToolCall().GetAwaitToolCall().GetArgs().GetTaskId()]++
+		}
+	}
+	for _, task := range tasks {
+		if startedIDs[task.ClientTaskID] != 1 || completedIDs[task.ClientTaskID] != 1 {
+			t.Fatalf("await lifecycle task_id=%q started=%d completed=%d", task.ClientTaskID, startedIDs[task.ClientTaskID], completedIDs[task.ClientTaskID])
+		}
+	}
+}
+
+func TestMultitaskCompletionQueuedWhileProviderActiveIsNotLost(t *testing.T) {
+	provider := &controlledBackgroundWaitProvider{
+		seen:    make(chan ProviderRequest, 4),
+		release: make(chan struct{}, 4),
+	}
+	service := newBackgroundCompletionTestService(t, provider)
+	stream, tasks := openBackgroundWaitParent(t, service, 2)
+	deferParentForBackgroundWait(t, service, stream)
+
+	service.completeBackgroundSubagentSuccess(tasks[0].ChildConversationID, "first result")
+	select {
+	case <-provider.seen:
+	case <-time.After(3 * time.Second):
+		t.Fatal("first completion did not start provider")
+	}
+	service.completeBackgroundSubagentSuccess(tasks[1].ChildConversationID, "second result while provider active")
+	waitForBackgroundWaitsCompleted(t, stream, 2)
+	select {
+	case request := <-provider.seen:
+		t.Fatalf("provider resumed concurrently before first pass ended: %#v", request)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	provider.release <- struct{}{}
+	select {
+	case request := <-provider.seen:
+		if request.RequestID != "parent-request" {
+			t.Fatalf("queued resume request_id=%q, want parent-request", request.RequestID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("queued completion resume was lost after provider finished")
+	}
+	provider.release <- struct{}{}
+	waitForBackgroundCompletionTerminal(t, service, "parent-request")
+
+	requestCount, maxActive := provider.stats()
+	if requestCount != 2 || maxActive != 1 {
+		t.Fatalf("provider stats requests=%d max_active=%d, want 2 and 1", requestCount, maxActive)
+	}
+}
+
+// 父流在等待期间被取消：未完成的 await 必须收口成 error，已注入的 canonical 结果
+// 不能因为按 requestID 释放 claim 而回滚成待派发。
+func TestMultitaskCancelDuringBackgroundWaitClosesAwaitAndKeepsInjectedResult(t *testing.T) {
+	provider := &backgroundCompletionTestProvider{seen: make(chan ProviderRequest, 4)}
+	service := newBackgroundCompletionTestService(t, provider)
+	stream, tasks := openBackgroundWaitParent(t, service, 2)
+	deferParentForBackgroundWait(t, service, stream)
+
+	service.completeBackgroundSubagentSuccess(tasks[0].ChildConversationID, "injected before cancel")
+	select {
+	case <-provider.seen:
+	case <-time.After(3 * time.Second):
+		t.Fatal("first completion did not resume parent provider")
+	}
+	waitForBackgroundWaitsCompleted(t, stream, 1)
+	assertParentStillWaitingWithoutEnd(t, service, stream, 2)
+
+	if err := service.handleCancelIntent(InboundIntent{
+		Kind:         "cancel",
+		RequestID:    "parent-request",
+		CancelReason: "user aborted",
+	}); err != nil {
+		t.Fatalf("handleCancelIntent(parent) error = %v", err)
+	}
+
+	stream.mu.Lock()
+	waitCount := len(stream.BackgroundTaskWaits)
+	hasCompletion := stream.BackgroundTaskPendingCompletion != nil
+	stream.mu.Unlock()
+	if waitCount != 0 || hasCompletion {
+		t.Fatalf("cancel left background wait state waits=%d pending_completion=%v", waitCount, hasCompletion)
+	}
+
+	document, err := service.backgroundTasks.load()
+	if err != nil {
+		t.Fatalf("load background ledger error = %v", err)
+	}
+	injected, ok := document.Tasks[tasks[0].ID]
+	if !ok {
+		t.Fatalf("injected task %q missing from ledger", tasks[0].ID)
+	}
+	if injected.CompletionInjectedAt.IsZero() {
+		t.Fatalf("cancel rolled back an already injected completion: %#v", injected)
+	}
+
+	completedIDs := make(map[string]int)
+	for _, event := range backgroundWaitEvents(t, service) {
+		if event.Message == nil {
+			continue
+		}
+		completed := event.Message.GetInteractionUpdate().GetToolCallCompleted()
+		if completed == nil || completed.GetToolCall().GetAwaitToolCall() == nil {
+			continue
+		}
+		completedIDs[completed.GetToolCall().GetAwaitToolCall().GetArgs().GetTaskId()]++
+	}
+	for _, task := range tasks {
+		if completedIDs[task.ClientTaskID] != 1 {
+			t.Fatalf("await completed count task_id=%q count=%d, want 1", task.ClientTaskID, completedIDs[task.ClientTaskID])
+		}
+	}
+}
+
+// 父流内联注入并收口后，客户端若仍按旧路径为同一任务派发一次 completion 续跑，
+// ledger claim 与历史去重必须同时挡住它，不能产生第二条 canonical 消息。
+func TestMultitaskInlineInjectionMakesClientCompletionRunIdempotent(t *testing.T) {
+	provider := &backgroundCompletionTestProvider{seen: make(chan ProviderRequest, 4)}
+	service := newBackgroundCompletionTestService(t, provider)
+	stream, tasks := openBackgroundWaitParent(t, service, 1)
+	deferParentForBackgroundWait(t, service, stream)
+
+	service.completeBackgroundSubagentSuccess(tasks[0].ChildConversationID, "canonical inline result")
+	select {
+	case <-provider.seen:
+	case <-time.After(3 * time.Second):
+		t.Fatal("inline completion did not resume parent provider")
+	}
+	waitForBackgroundCompletionTerminal(t, service, "parent-request")
+
+	conversation, err := service.store.LoadConversation("parent-conversation")
+	if err != nil {
+		t.Fatalf("LoadConversation(parent) error = %v", err)
+	}
+	if got := len(backgroundCompletionUserMessages(conversation.Entries)); got != 1 {
+		t.Fatalf("canonical completion message count after inline injection=%d, want 1", got)
+	}
+
+	replay := backgroundTaskCompletionFromLedger(tasks[0])
+	replay.Detail = stringPtr("client replayed detail")
+	if err := runIntentWithBackgroundCompletion(t, service, "client-replay-request", "parent-conversation", replay); err != nil {
+		t.Fatalf("client replay run error = %v", err)
+	}
+	select {
+	case request := <-provider.seen:
+		t.Fatalf("duplicate client completion started a provider pass: %#v", request)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	conversation, err = service.store.LoadConversation("parent-conversation")
+	if err != nil {
+		t.Fatalf("LoadConversation(parent) after replay error = %v", err)
+	}
+	messages := backgroundCompletionUserMessages(conversation.Entries)
+	if len(messages) != 1 {
+		t.Fatalf("canonical completion message count after replay=%d, want 1", len(messages))
+	}
+	if strings.Contains(messages[0].GetText(), "client replayed detail") {
+		t.Fatalf("client reported detail replaced canonical result: %q", messages[0].GetText())
 	}
 }

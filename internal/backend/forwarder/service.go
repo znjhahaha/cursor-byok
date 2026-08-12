@@ -860,6 +860,8 @@ func (service *Service) handleRunIntent(intent InboundIntent) (runErr error) {
 	stream.BackgroundShells = make(map[string]*BackgroundShellState)
 	stream.BackgroundShellsByMessageID = make(map[uint32]string)
 	stream.BackgroundShellsByExecID = make(map[string]string)
+	stream.BackgroundTaskWaits = make(map[string]*BackgroundTaskWaitState)
+	stream.BackgroundTaskPendingCompletion = nil
 	stream.TimerTokens = make(map[string]uint64)
 	// provider/compaction generation 在 stream 的整个生命周期内单调递增，绝不归零。
 	// 同一个 requestID 被复用于新回合时若把它清零，上一回合迟到的 pass-1 事件
@@ -976,6 +978,7 @@ func (service *Service) handleCancelIntent(intent InboundIntent) error {
 		service.discardPendingCheckpoint(stream, "checkpoint superseded by cancellation")
 	}
 	clearPendingProviderCompletion(stream)
+	waitCloseErr := service.closeBackgroundTaskWaits(stream, firstNonEmpty(intent.CancelReason, "parent turn canceled"))
 	stream.mu.Lock()
 	stream.PendingProviderAction = providerActionNone
 	stream.UpdatedAt = time.Now().UTC()
@@ -983,7 +986,7 @@ func (service *Service) handleCancelIntent(intent InboundIntent) error {
 	service.setTurnPhase(stream, TurnPhaseCanceled)
 	err := service.broker.Cancel(intent.RequestID, firstNonEmpty(intent.CancelReason, "[canceled] User aborted request"))
 	service.releaseBackgroundCompletionClaim(intent.RequestID)
-	return err
+	return errors.Join(waitCloseErr, err)
 }
 
 func checkpointTurnHasReplayActivity(stream *ActiveStream) bool {
@@ -2360,6 +2363,14 @@ func (service *Service) completeSuccessfulTurn(stream *ActiveStream, completion 
 	if stream == nil {
 		return nil
 	}
+	deferredCompletion, waiting, err := service.deferSuccessfulTurnForBackgroundTasks(stream, completion)
+	if err != nil {
+		return err
+	}
+	if waiting {
+		return nil
+	}
+	completion = deferredCompletion
 	requestID := firstNonEmpty(strings.TrimSpace(completion.RequestID), strings.TrimSpace(stream.RequestID))
 	conversationID := firstNonEmpty(strings.TrimSpace(completion.ConversationID), strings.TrimSpace(stream.ConversationID))
 	modelCallID := firstNonEmpty(strings.TrimSpace(completion.ModelCallID), strings.TrimSpace(stream.CurrentModelCallID))
@@ -2608,6 +2619,7 @@ func (service *Service) failActiveStream(stream *ActiveStream, conversationID st
 		return nil
 	}
 	clearPendingProviderCompletion(stream)
+	waitCloseErr := service.closeBackgroundTaskWaits(stream, firstNonEmpty(terminalMessage, "parent turn failed"))
 	stream.mu.Lock()
 	cancel := stream.ProviderCancel
 	stream.ProviderActive = false
@@ -2620,6 +2632,9 @@ func (service *Service) failActiveStream(stream *ActiveStream, conversationID st
 	}
 	service.setTurnPhase(stream, TurnPhaseFailed)
 	var firstErr error
+	if waitCloseErr != nil {
+		firstErr = waitCloseErr
+	}
 	if err := service.syncSummaryCarryForward(conversationID, requestID, modelCallID); err != nil && firstErr == nil {
 		firstErr = err
 	}

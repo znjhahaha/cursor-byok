@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -164,6 +165,23 @@ func (service *Service) completeBackgroundSubagent(conversationID string, status
 		"parent_tool_call_id":    task.ParentToolCallID,
 		"status":                 task.Status,
 	})
+	service.notifyBackgroundTaskCompletion(task)
+}
+
+func (service *Service) notifyBackgroundTaskCompletion(task BackgroundSubagentTask) {
+	if service == nil || service.broker == nil || strings.TrimSpace(task.ParentRequestID) == "" {
+		return
+	}
+	parentStream, ok := service.broker.Get(task.ParentRequestID)
+	if !ok || parentStream == nil || isTerminalIntentStream(parentStream) {
+		return
+	}
+	if err := service.postStreamCommandAsync(parentStream, streamCommand{
+		Kind:       streamCommandBackgroundTaskCompleted,
+		Background: &backgroundTaskCompletionEvent{Task: task},
+	}); err != nil && !errors.Is(err, errProviderLoopInterrupted) {
+		log.Printf("forwarder post background completion failed parent_request_id=%s task_id=%s err=%v", strings.TrimSpace(task.ParentRequestID), strings.TrimSpace(task.ID), err)
+	}
 }
 
 func (service *Service) handleCancelSubagentIntent(intent InboundIntent) error {
@@ -183,6 +201,15 @@ func (service *Service) handleCancelSubagentIntent(intent InboundIntent) error {
 		return nil
 	}
 	reason = firstNonEmpty(task.Error, reason)
+	parentAwaiting := service.parentStreamAwaitsBackgroundTask(task)
+	var reopenErr error
+	if parentAwaiting {
+		if reopened, _, err := service.backgroundTasks.ReopenCanceledCompletionForAwait(task.ID, task.ParentRequestID); err != nil {
+			reopenErr = err
+		} else if strings.TrimSpace(reopened.ID) != "" {
+			task = reopened
+		}
+	}
 	var cancelErr error
 	if childStream, ok := service.broker.Get(task.ChildRequestID); ok && childStream != nil {
 		if err := service.postStreamCommandWait(childStream, streamCommand{
@@ -197,6 +224,9 @@ func (service *Service) handleCancelSubagentIntent(intent InboundIntent) error {
 		}
 	}
 	persistErr := service.persistCanceledBackgroundTaskResult(task, reason)
+	if parentAwaiting && reopenErr == nil {
+		service.notifyBackgroundTaskCompletion(task)
+	}
 	service.debug.LogRuntime(context.Background(), task.ChildRequestID, task.ChildConversationID, "background_subagent_canceled", map[string]any{
 		"background_task_id":     task.ID,
 		"parent_conversation_id": task.ParentConversationID,
@@ -204,7 +234,28 @@ func (service *Service) handleCancelSubagentIntent(intent InboundIntent) error {
 		"subagent_id":            targetID,
 		"state_changed":          changed,
 	})
-	return errors.Join(cancelErr, persistErr)
+	return errors.Join(cancelErr, persistErr, reopenErr)
+}
+
+func (service *Service) parentStreamAwaitsBackgroundTask(task BackgroundSubagentTask) bool {
+	if service == nil || service.broker == nil || strings.TrimSpace(task.ParentRequestID) == "" || strings.TrimSpace(task.ID) == "" {
+		return false
+	}
+	parentStream, ok := service.broker.Get(task.ParentRequestID)
+	if !ok || parentStream == nil {
+		return false
+	}
+	parentStream.mu.Lock()
+	defer parentStream.mu.Unlock()
+	if isTerminalStreamStatus(parentStream.Status) {
+		return false
+	}
+	for _, wait := range parentStream.BackgroundTaskWaits {
+		if wait != nil && !wait.Completed && strings.TrimSpace(wait.LedgerTaskID) == strings.TrimSpace(task.ID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (service *Service) persistCanceledBackgroundTaskResult(task BackgroundSubagentTask, reason string) error {
@@ -271,6 +322,10 @@ func (service *Service) persistCanceledBackgroundTaskResult(task BackgroundSubag
 	return nil
 }
 
+func backgroundTaskClientID(task BackgroundSubagentTask) string {
+	return firstNonEmpty(task.ClientTaskID, task.SubagentID, task.ID)
+}
+
 func backgroundTaskCompletionFromLedger(task BackgroundSubagentTask) *agentv1.BackgroundTaskCompletion {
 	status := agentv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_SUCCESS
 	detail := strings.TrimSpace(task.FinalMessage)
@@ -286,7 +341,7 @@ func backgroundTaskCompletionFromLedger(task BackgroundSubagentTask) *agentv1.Ba
 			detail = "(The subagent returned no final message.)"
 		}
 	}
-	taskID := firstNonEmpty(task.SubagentID, task.ID)
+	taskID := backgroundTaskClientID(task)
 	subagentID := firstNonEmpty(task.SubagentID, task.ChildConversationID, task.ID)
 	threadID := firstNonEmpty(task.ChildConversationID, subagentID)
 	return &agentv1.BackgroundTaskCompletion{
@@ -300,6 +355,234 @@ func backgroundTaskCompletionFromLedger(task BackgroundSubagentTask) *agentv1.Ba
 		SubagentId: stringPtr(subagentID),
 		ToolCallId: stringPtr(task.ParentToolCallID),
 	}
+}
+
+func (service *Service) deferSuccessfulTurnForBackgroundTasks(stream *ActiveStream, completion pendingTurnCompletion) (pendingTurnCompletion, bool, error) {
+	if service == nil || service.backgroundTasks == nil || stream == nil {
+		return completion, false, nil
+	}
+	stream.mu.Lock()
+	mode := stream.Mode
+	conversationID := strings.TrimSpace(stream.ConversationID)
+	requestID := strings.TrimSpace(stream.RequestID)
+	modelCallID := firstNonEmpty(strings.TrimSpace(completion.ModelCallID), strings.TrimSpace(stream.CurrentModelCallID))
+	stream.mu.Unlock()
+	if mode != agentv1.AgentMode_AGENT_MODE_MULTITASK || conversationID == "" || requestID == "" {
+		return completion, false, nil
+	}
+
+	tasks, err := service.backgroundTasks.AwaitableTasksForRequest(conversationID, requestID)
+	if err != nil {
+		return completion, false, err
+	}
+	now := time.Now().UTC()
+	started := make([]*BackgroundTaskWaitState, 0, len(tasks))
+	terminal := make([]BackgroundSubagentTask, 0, len(tasks))
+	outstanding := false
+
+	stream.mu.Lock()
+	if stream.BackgroundTaskWaits == nil {
+		stream.BackgroundTaskWaits = make(map[string]*BackgroundTaskWaitState)
+	}
+	mergedCompletion := mergePendingProviderCompletion(stream.BackgroundTaskPendingCompletion, completion)
+	for _, task := range tasks {
+		taskID := backgroundTaskClientID(task)
+		wait := stream.BackgroundTaskWaits[taskID]
+		if wait == nil {
+			for _, candidate := range stream.BackgroundTaskWaits {
+				if candidate != nil && strings.TrimSpace(candidate.LedgerTaskID) == strings.TrimSpace(task.ID) {
+					wait = candidate
+					break
+				}
+			}
+		}
+		if wait == nil {
+			wait = &BackgroundTaskWaitState{
+				TaskID:          taskID,
+				LedgerTaskID:    strings.TrimSpace(task.ID),
+				AwaitToolCallID: "background-await-" + strings.TrimSpace(task.ID),
+				ModelCallID:     modelCallID,
+				StartedAt:       now,
+			}
+			stream.BackgroundTaskWaits[taskID] = wait
+			started = append(started, wait)
+		}
+		if wait.Completed {
+			continue
+		}
+		outstanding = true
+		if isTerminalBackgroundTaskStatus(task.Status) {
+			terminal = append(terminal, task)
+		}
+	}
+	if !outstanding {
+		for _, wait := range stream.BackgroundTaskWaits {
+			if wait != nil && !wait.Completed {
+				outstanding = true
+				break
+			}
+		}
+	}
+	if !outstanding && len(started) == 0 && len(terminal) == 0 {
+		stream.BackgroundTaskPendingCompletion = nil
+		stream.BackgroundTaskWaits = make(map[string]*BackgroundTaskWaitState)
+		stream.UpdatedAt = now
+		stream.mu.Unlock()
+		return mergedCompletion, false, nil
+	}
+	stream.BackgroundTaskPendingCompletion = &mergedCompletion
+	stream.Phase = TurnPhaseWaitingExternal
+	stream.UpdatedAt = now
+	stream.mu.Unlock()
+
+	for _, wait := range started {
+		if err := service.broker.Publish(requestID, StreamEvent{
+			Message: buildToolCallStartedMessage(wait.AwaitToolCallID, wait.ModelCallID, buildAwaitTaskToolCall(wait.TaskID, nil)),
+		}); err != nil {
+			return mergedCompletion, true, err
+		}
+	}
+	if len(started) > 0 {
+		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
+			return mergedCompletion, true, err
+		}
+	}
+	processedTerminal := false
+	for _, task := range terminal {
+		if err := service.handleBackgroundTaskCompletionEvent(stream, &backgroundTaskCompletionEvent{Task: task}); err != nil {
+			return mergedCompletion, true, err
+		}
+		processedTerminal = true
+	}
+	return mergedCompletion, outstanding || processedTerminal, nil
+}
+
+func (service *Service) handleBackgroundTaskCompletionEvent(stream *ActiveStream, event *backgroundTaskCompletionEvent) error {
+	if service == nil || service.backgroundTasks == nil || stream == nil || event == nil {
+		return nil
+	}
+	task := event.Task
+	if !isTerminalBackgroundTaskStatus(task.Status) {
+		return nil
+	}
+	clientTaskID := backgroundTaskClientID(task)
+	stream.mu.Lock()
+	wait := stream.BackgroundTaskWaits[clientTaskID]
+	if wait == nil {
+		for _, candidate := range stream.BackgroundTaskWaits {
+			if candidate != nil && strings.TrimSpace(candidate.LedgerTaskID) == strings.TrimSpace(task.ID) {
+				wait = candidate
+				break
+			}
+		}
+	}
+	if wait == nil || wait.Completed {
+		stream.mu.Unlock()
+		return nil
+	}
+	requestID := strings.TrimSpace(stream.RequestID)
+	conversationID := strings.TrimSpace(stream.ConversationID)
+	turnSeq := stream.TurnSeq
+	awaitToolCallID := strings.TrimSpace(wait.AwaitToolCallID)
+	awaitTaskID := strings.TrimSpace(wait.TaskID)
+	modelCallID := firstNonEmpty(strings.TrimSpace(wait.ModelCallID), strings.TrimSpace(stream.CurrentModelCallID))
+	startedAt := wait.StartedAt
+	stream.mu.Unlock()
+
+	completion := backgroundTaskCompletionFromLedger(task)
+	claimed, claimedCount, err := service.claimBackgroundCompletions(conversationID, []*agentv1.BackgroundTaskCompletion{completion}, requestID)
+	if err != nil {
+		return err
+	}
+	if claimedCount == 0 || len(claimed) == 0 {
+		return nil
+	}
+	completion = claimed[0]
+	completion.TaskId = awaitTaskID
+	entry, ok, err := newBackgroundSubagentCompletionEntry(turnSeq, requestID, completion)
+	if err != nil || !ok {
+		return err
+	}
+	assigned, err := service.appendConversationEntries(stream, conversationID, []HistoryEntry{entry})
+	if err != nil {
+		return err
+	}
+
+	stream.mu.Lock()
+	if current := stream.BackgroundTaskWaits[clientTaskID]; current != nil {
+		current.Completed = true
+	} else {
+		wait.Completed = true
+	}
+	stream.UpdatedAt = time.Now().UTC()
+	stream.mu.Unlock()
+
+	// canonical 结果已入历史，立即在 ledger 上闭合这一条，避免父流后续取消/失败时
+	// 按 requestID 释放 claim 把它回滚成待派发。
+	if err := service.backgroundTasks.ConfirmCompletionClaimForTask(strings.TrimSpace(task.ID), requestID); err != nil {
+		return err
+	}
+
+	if len(assigned) > 0 {
+		if err := service.broker.Publish(requestID, StreamEvent{
+			Message: buildUserMessageAppendedMessage(newBackgroundSubagentCompletionUserMessage(completion)),
+		}); err != nil {
+			return err
+		}
+	}
+	var awaitResult *agentv1.AwaitResult
+	if strings.TrimSpace(awaitTaskID) == "" {
+		awaitTaskID = clientTaskID
+	}
+	if task.Status == BackgroundTaskStatusCompleted {
+		awaitResult = buildAwaitTaskCompleteResult(awaitTaskID, startedAt, len(strings.TrimSpace(completion.GetDetail())))
+	} else {
+		awaitResult = buildAwaitTaskErrorResult(firstNonEmpty(strings.TrimSpace(task.Error), strings.TrimSpace(completion.GetDetail())))
+	}
+	if err := service.publishToolCallCompleted(requestID, awaitToolCallID, modelCallID, buildAwaitTaskToolCall(awaitTaskID, awaitResult)); err != nil {
+		return err
+	}
+	if err := service.syncSummaryCarryForward(conversationID, requestID, modelCallID); err != nil {
+		return err
+	}
+	if err := service.publishCheckpoint(requestID, conversationID); err != nil {
+		return err
+	}
+	return service.requestProviderAction(stream, providerActionResume)
+}
+
+func (service *Service) closeBackgroundTaskWaits(stream *ActiveStream, reason string) error {
+	if service == nil || stream == nil {
+		return nil
+	}
+	reason = firstNonEmpty(strings.TrimSpace(reason), "parent turn stopped")
+	stream.mu.Lock()
+	requestID := strings.TrimSpace(stream.RequestID)
+	waits := make([]BackgroundTaskWaitState, 0, len(stream.BackgroundTaskWaits))
+	for _, wait := range stream.BackgroundTaskWaits {
+		if wait == nil || wait.Completed {
+			continue
+		}
+		waits = append(waits, *wait)
+	}
+	stream.BackgroundTaskWaits = make(map[string]*BackgroundTaskWaitState)
+	stream.BackgroundTaskPendingCompletion = nil
+	stream.UpdatedAt = time.Now().UTC()
+	stream.mu.Unlock()
+
+	var closeErr error
+	for _, wait := range waits {
+		taskID := strings.TrimSpace(wait.TaskID)
+		if err := service.publishToolCallCompleted(
+			requestID,
+			strings.TrimSpace(wait.AwaitToolCallID),
+			strings.TrimSpace(wait.ModelCallID),
+			buildAwaitTaskToolCall(taskID, buildAwaitTaskErrorResult(reason)),
+		); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		}
+	}
+	return closeErr
 }
 
 func (service *Service) startBackgroundTaskRecovery() {

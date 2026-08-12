@@ -190,13 +190,45 @@ func buildAwaitArgsFromAwaitShellArgs(args awaitShellArgs) *agentv1.AwaitArgs {
 	return awaitArgs
 }
 
-func buildAwaitShellToolCall(args *agentv1.AwaitArgs, result *agentv1.AwaitResult) *agentv1.ToolCall {
+func buildAwaitToolCall(args *agentv1.AwaitArgs, result *agentv1.AwaitResult) *agentv1.ToolCall {
 	return &agentv1.ToolCall{
 		Tool: &agentv1.ToolCall_AwaitToolCall{
 			AwaitToolCall: &agentv1.AwaitToolCall{
 				Args:   args,
 				Result: result,
 			},
+		},
+	}
+}
+
+func buildAwaitShellToolCall(args *agentv1.AwaitArgs, result *agentv1.AwaitResult) *agentv1.ToolCall {
+	return buildAwaitToolCall(args, result)
+}
+
+func buildAwaitTaskToolCall(taskID string, result *agentv1.AwaitResult) *agentv1.ToolCall {
+	return buildAwaitToolCall(&agentv1.AwaitArgs{TaskId: strings.TrimSpace(taskID)}, result)
+}
+
+func buildAwaitTaskCompleteResult(taskID string, startedAt time.Time, outputLength int) *agentv1.AwaitResult {
+	runtimeMS := uint64(0)
+	if !startedAt.IsZero() {
+		runtimeMS = uint64(time.Since(startedAt).Milliseconds())
+	}
+	return &agentv1.AwaitResult{
+		Result: &agentv1.AwaitResult_Complete{
+			Complete: &agentv1.AwaitTaskComplete{
+				TaskId:       strings.TrimSpace(taskID),
+				RuntimeMs:    runtimeMS,
+				OutputLength: uint64(max(outputLength, 0)),
+			},
+		},
+	}
+}
+
+func buildAwaitTaskErrorResult(message string) *agentv1.AwaitResult {
+	return &agentv1.AwaitResult{
+		Result: &agentv1.AwaitResult_Error{
+			Error: &agentv1.AwaitError{Error: firstNonEmpty(strings.TrimSpace(message), "background task stopped")},
 		},
 	}
 }
