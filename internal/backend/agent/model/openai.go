@@ -517,7 +517,7 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 		return err
 	}
 
-	streamCtx, streamIdle := newProviderStreamIdleWatchdog(ctx, req.ProviderStreamIdleTimeout)
+	streamCtx, streamIdle := newProviderStreamIdleWatchdog(ctx, req.ProviderFirstTokenTimeout, req.ProviderStreamIdleTimeout)
 	defer streamIdle.Stop()
 
 	buildHTTPRequest := func(requestContext context.Context) (*http.Request, error) {
@@ -1002,7 +1002,7 @@ func (adapter *OpenAIAdapter) streamResponses(ctx context.Context, req StreamReq
 		return err
 	}
 
-	streamCtx, streamIdle := newProviderStreamIdleWatchdog(ctx, req.ProviderStreamIdleTimeout)
+	streamCtx, streamIdle := newProviderStreamIdleWatchdog(ctx, req.ProviderFirstTokenTimeout, req.ProviderStreamIdleTimeout)
 	defer streamIdle.Stop()
 
 	buildHTTPRequest := func(requestContext context.Context) (*http.Request, error) {

@@ -346,7 +346,7 @@ func (adapter *AnthropicAdapter) Stream(ctx context.Context, req StreamRequest, 
 		return err
 	}
 
-	streamCtx, streamIdle := newProviderStreamIdleWatchdog(ctx, req.ProviderStreamIdleTimeout)
+	streamCtx, streamIdle := newProviderStreamIdleWatchdog(ctx, req.ProviderFirstTokenTimeout, req.ProviderStreamIdleTimeout)
 	defer streamIdle.Stop()
 
 	buildHTTPRequest := func(requestContext context.Context) (*http.Request, error) {

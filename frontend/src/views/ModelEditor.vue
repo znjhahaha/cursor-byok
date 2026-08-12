@@ -191,6 +191,7 @@ const fieldTips = {
   apiKey: "调用该模型服务需要使用的访问密钥。",
   clientProfile: "选择该模型出站请求使用的客户端兼容指纹。模型自身的选择优先于所属中转站，自定义请求头仍可覆盖指纹中的同名值。",
   anthropic1MContext: "启用后本地上下文至少按 1,000,000 Token 计算；仅在 Claude Code 模式下为出站模型 ID 派生 [1m] 并发送 1M beta，不会修改持久化模型标识。",
+  textOnly: "针对不支持图片的纯文本模型。启用后历史回放中的粘贴图片与 Read 工具图片降级为文本占位（如 [image: 文件名]），不再向该渠道发送 base64 图片数据。",
   contextWindowTokens: "模型单次可接受的最大上下文 Token 数。留空时使用默认值。",
   reasoningEffort: "推理强度仅对部分支持 reasoning_effort 的模型生效，并不是所有模型都支持。越高通常越稳，但也可能更慢。",
   maxCompletionTokens: "单次回复允许生成的最大 Token 数。留空时使用默认值。",
@@ -770,6 +771,23 @@ onMounted(async () => {
             spellcheck="false"
             class="mt-3 min-h-[120px] w-full resize-none rounded-[6px] border border-[#3f3f3f] bg-[#1f1f1f] px-3 py-2 font-mono text-xs text-[#e5e5e5] outline-none transition-colors focus:border-[#10AD5D]"
           />
+        </div>
+
+        <div class="rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+          <label class="flex items-center justify-between gap-3">
+            <span class="center-row justify-start gap-1.5 text-sm text-[#d4d4d4]">
+              <Tooltip :content="fieldTips.textOnly" />
+              <span>纯文本模型（图片降级为文本占位）</span>
+            </span>
+            <input
+              v-model="draft.textOnlyEnabled"
+              type="checkbox"
+              class="size-4 shrink-0 accent-[#10AD5D]"
+            />
+          </label>
+          <p class="mt-2 text-xs leading-5 text-[#8a8a8a]">
+            适用于不支持多模态的模型：历史中的图片以 [image: 文件名] 占位发送，避免文本模型每轮提示无法读取图片。
+          </p>
         </div>
 
         <label class="flex flex-col gap-1">

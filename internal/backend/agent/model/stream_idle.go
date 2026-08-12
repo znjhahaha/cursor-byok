@@ -2,6 +2,7 @@ package modeladapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -13,32 +14,66 @@ const (
 	minProviderStreamIdleTimeout     = 30 * time.Second
 )
 
-type providerStreamIdleWatchdog struct {
-	ctx     context.Context
-	cancel  context.CancelCauseFunc
-	timeout time.Duration
-	timer   *time.Timer
-
-	mu       sync.Mutex
-	body     io.Closer
-	stopped  bool
-	timedOut bool
-	err      error
+// ProviderFirstTokenTimeoutError 表示 provider 在首个有效内容前超时。
+// 此时尚未向上层发出任何模型事件，调用方可以安全地整体重试。
+type ProviderFirstTokenTimeoutError struct {
+	Timeout time.Duration
 }
 
-func newProviderStreamIdleWatchdog(parent context.Context, timeout time.Duration) (context.Context, *providerStreamIdleWatchdog) {
+func (err *ProviderFirstTokenTimeoutError) Error() string {
+	seconds := int(err.Timeout / time.Second)
+	if seconds > 0 && err.Timeout == time.Duration(seconds)*time.Second {
+		return fmt.Sprintf("provider first token timeout after %ds without any content", seconds)
+	}
+	return fmt.Sprintf("provider first token timeout after %s without any content", err.Timeout)
+}
+
+// IsProviderFirstTokenTimeout 判断错误链中是否包含首 token 超时。
+func IsProviderFirstTokenTimeout(err error) bool {
+	var target *ProviderFirstTokenTimeoutError
+	return errors.As(err, &target)
+}
+
+type providerStreamIdleWatchdog struct {
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+	// firstTokenTimeout 是首个有效内容前的独立超时；0 表示禁用两段模式。
+	firstTokenTimeout time.Duration
+	timeout           time.Duration
+	timer             *time.Timer
+
+	mu               sync.Mutex
+	body             io.Closer
+	firstContentSeen bool
+	stopped          bool
+	timedOut         bool
+	err              error
+}
+
+func newProviderStreamIdleWatchdog(parent context.Context, firstTokenTimeout time.Duration, timeout time.Duration) (context.Context, *providerStreamIdleWatchdog) {
 	if parent == nil {
 		parent = context.Background()
 	}
 	timeout = normalizeProviderStreamIdleTimeoutDuration(timeout)
+	if firstTokenTimeout < 0 {
+		firstTokenTimeout = 0
+	}
+	// 首段超时不应长于整体空闲超时，否则退化为单段模式。
+	if firstTokenTimeout >= timeout {
+		firstTokenTimeout = 0
+	}
 	ctx, cancel := context.WithCancelCause(parent)
 	watchdog := &providerStreamIdleWatchdog{
-		ctx:     ctx,
-		cancel:  cancel,
-		timeout: timeout,
-		err:     providerStreamIdleTimeoutError(timeout),
+		ctx:               ctx,
+		cancel:            cancel,
+		firstTokenTimeout: firstTokenTimeout,
+		timeout:           timeout,
 	}
-	watchdog.timer = time.AfterFunc(watchdog.timeout, watchdog.expire)
+	initial := timeout
+	if firstTokenTimeout > 0 {
+		initial = firstTokenTimeout
+	}
+	watchdog.timer = time.AfterFunc(initial, watchdog.expire)
 	return ctx, watchdog
 }
 
@@ -61,6 +96,7 @@ func (watchdog *providerStreamIdleWatchdog) MarkEffectiveContent() {
 	}
 	watchdog.mu.Lock()
 	defer watchdog.mu.Unlock()
+	watchdog.firstContentSeen = true
 	if watchdog.stopped || watchdog.timedOut || watchdog.timer == nil {
 		return
 	}
@@ -104,6 +140,11 @@ func (watchdog *providerStreamIdleWatchdog) expire() {
 		return
 	}
 	watchdog.timedOut = true
+	if !watchdog.firstContentSeen && watchdog.firstTokenTimeout > 0 {
+		watchdog.err = &ProviderFirstTokenTimeoutError{Timeout: watchdog.firstTokenTimeout}
+	} else {
+		watchdog.err = providerStreamIdleTimeoutError(watchdog.timeout)
+	}
 	body := watchdog.body
 	err := watchdog.err
 	watchdog.mu.Unlock()

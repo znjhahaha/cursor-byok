@@ -19,6 +19,10 @@ const (
 	DefaultRoutingMode                      = "local"
 	DefaultProviderStreamIdleTimeoutSeconds = 240
 	MinProviderStreamIdleTimeoutSeconds     = 30
+	// DefaultProviderFirstTokenTimeoutSeconds 是首个有效内容前的默认超时。
+	// 中转站排队黑洞在此之后转化为可重试错误，而不是干等整个空闲超时。
+	DefaultProviderFirstTokenTimeoutSeconds = 90
+	MinProviderFirstTokenTimeoutSeconds     = 15
 )
 
 type ModelAdapterConfig struct {
@@ -35,6 +39,7 @@ type ModelAdapterConfig struct {
 	ModelID                     string `json:"modelID" yaml:"modelID"`
 	ClientProfile               string `json:"clientProfile,omitempty" yaml:"clientProfile,omitempty"`
 	Anthropic1MContextEnabled   bool   `json:"anthropic1MContextEnabled,omitempty" yaml:"anthropic1MContextEnabled,omitempty"`
+	TextOnlyEnabled             bool   `json:"textOnlyEnabled,omitempty" yaml:"textOnlyEnabled,omitempty"`
 	ReasoningEffort             string `json:"reasoningEffort" yaml:"reasoningEffort"`
 	OpenAIEndpoint              string `json:"openAIEndpoint" yaml:"openAIEndpoint"`
 	OpenAIExtraParamsEnabled    bool   `json:"openAIExtraParamsEnabled" yaml:"openAIExtraParamsEnabled"`
@@ -61,6 +66,8 @@ type HomeMetricsConfig struct {
 type Config struct {
 	Log                       bool                 `json:"log" yaml:"log"`
 	ProviderStreamIdleTimeout int                  `json:"providerStreamIdleTimeout" yaml:"providerStreamIdleTimeout"`
+	// ProviderFirstTokenTimeout 单位秒；0/缺省用默认值，负数禁用首 token 独立超时。
+	ProviderFirstTokenTimeout int `json:"providerFirstTokenTimeout,omitempty" yaml:"providerFirstTokenTimeout,omitempty"`
 	BackendListenAddr         string               `json:"backendListenAddr" yaml:"backendListenAddr"`
 	ProxyListenAddr           string               `json:"proxyListenAddr" yaml:"proxyListenAddr"`
 	Providers                 []ProviderConfig     `json:"providers" yaml:"providers"`
@@ -74,6 +81,7 @@ func DefaultConfig() Config {
 	return Config{
 		Log:                       false,
 		ProviderStreamIdleTimeout: DefaultProviderStreamIdleTimeoutSeconds,
+		ProviderFirstTokenTimeout: DefaultProviderFirstTokenTimeoutSeconds,
 		BackendListenAddr:         DefaultBackendListenAddr,
 		ProxyListenAddr:           DefaultProxyListenAddr,
 		Providers:                 append([]ProviderConfig{}, BuiltinProviders...),
@@ -88,6 +96,7 @@ func NormalizeConfig(input Config) (Config, error) {
 	output := DefaultConfig()
 	output.Log = input.Log
 	output.ProviderStreamIdleTimeout = normalizeProviderStreamIdleTimeout(input.ProviderStreamIdleTimeout)
+	output.ProviderFirstTokenTimeout = normalizeProviderFirstTokenTimeout(input.ProviderFirstTokenTimeout)
 	backendListenAddr, err := normalizeListenAddr(input.BackendListenAddr, DefaultBackendListenAddr, "backendListenAddr")
 	if err != nil {
 		return Config{}, err
@@ -164,6 +173,7 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 		}
 		next.CustomHeadersEnabled = item.CustomHeadersEnabled
 		next.CustomHeadersJSON = strings.TrimSpace(item.CustomHeadersJSON)
+		next.TextOnlyEnabled = item.TextOnlyEnabled
 		switch {
 		case next.DisplayName == "":
 			return nil, errors.New("模型适配器 displayName 不能为空")
@@ -334,6 +344,21 @@ func normalizeProviderStreamIdleTimeout(value int) int {
 	}
 	if value < MinProviderStreamIdleTimeoutSeconds {
 		return MinProviderStreamIdleTimeoutSeconds
+	}
+	return value
+}
+
+// normalizeProviderFirstTokenTimeout 归一化首 token 超时：
+// 0/缺省回落到默认值，负数保留 -1 表示显式禁用，过小值提升到下限。
+func normalizeProviderFirstTokenTimeout(value int) int {
+	if value == 0 {
+		return DefaultProviderFirstTokenTimeoutSeconds
+	}
+	if value < 0 {
+		return -1
+	}
+	if value < MinProviderFirstTokenTimeoutSeconds {
+		return MinProviderFirstTokenTimeoutSeconds
 	}
 	return value
 }

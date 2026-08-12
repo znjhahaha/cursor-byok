@@ -763,6 +763,10 @@ func mergeConversationMetadata(target *ConversationFile, source *ConversationFil
 	target.ParentConversationID = strings.TrimSpace(source.ParentConversationID)
 	target.ParentToolCallID = strings.TrimSpace(source.ParentToolCallID)
 	target.SubagentTypeName = strings.TrimSpace(source.SubagentTypeName)
+	// 标题由 UpdateConversationMetadata 单独写入；内存快照没带标题时保留磁盘值。
+	if strings.TrimSpace(source.Name) != "" {
+		target.Name = strings.TrimSpace(source.Name)
+	}
 	if strings.TrimSpace(source.Mode) != "" {
 		target.Mode = strings.TrimSpace(source.Mode)
 	}

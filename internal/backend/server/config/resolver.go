@@ -63,6 +63,7 @@ func resolveModelAdapterChannel(adapters []ModelAdapterConfig, providers []Provi
 		Model:                       strings.TrimSpace(matched.ModelID),
 		ClientProfile:               normalizeClientProfile(matched.ClientProfile),
 		Anthropic1MContextEnabled:   matched.Anthropic1MContextEnabled,
+		TextOnlyEnabled:             matched.TextOnlyEnabled,
 		OpenAIEndpoint:              strings.TrimSpace(matched.OpenAIEndpoint),
 		OpenAIExtraParamsEnabled:    matched.OpenAIExtraParamsEnabled,
 		OpenAIExtraParamsJSON:       strings.TrimSpace(matched.OpenAIExtraParamsJSON),

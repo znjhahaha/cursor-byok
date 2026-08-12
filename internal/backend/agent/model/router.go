@@ -23,6 +23,7 @@ type Router struct {
 type ChannelResolver interface {
 	SelectChannelForModel(context.Context, string) (*legacyruntime.ResolvedChannel, error)
 	ProviderStreamIdleTimeout(context.Context) time.Duration
+	ProviderFirstTokenTimeout(context.Context) time.Duration
 }
 
 // NewRouter 创建模型适配路由器。
@@ -54,6 +55,7 @@ func (router *Router) Stream(ctx context.Context, req StreamRequest, sink func(M
 	resolved.ProviderModelID = strings.TrimSpace(channel.Model)
 	resolved.ClientProfile = NormalizeClientProfile(channel.ClientProfile)
 	resolved.Anthropic1MContextEnabled = channel.Anthropic1MContextEnabled
+	resolved.TextOnlyEnabled = channel.TextOnlyEnabled
 	resolved.ResolvedChannelID = strings.TrimSpace(channel.ID)
 	resolved.ResolvedChannelName = strings.TrimSpace(channel.Name)
 	resolved.ResolvedContextWindowTokens = channel.ContextWindowTokens
@@ -69,6 +71,7 @@ func (router *Router) Stream(ctx context.Context, req StreamRequest, sink func(M
 	resolved.AnthropicThinkingEffort = strings.TrimSpace(channel.AnthropicThinkingEffort)
 	resolved.ThinkingBudgetTokens = channel.ThinkingBudgetTokens
 	resolved.ProviderStreamIdleTimeout = router.resolver.ProviderStreamIdleTimeout(ctx)
+	resolved.ProviderFirstTokenTimeout = router.resolver.ProviderFirstTokenTimeout(ctx)
 	runtimeThinkingEffort := normalizeRuntimeThinkingEffort(req.ThinkingEffort)
 	if runtimeThinkingEffort != "" {
 		resolved.ThinkingEffort = runtimeThinkingEffort
@@ -95,6 +98,11 @@ func (router *Router) Stream(ctx context.Context, req StreamRequest, sink func(M
 		resolved.ProviderModelID = strings.TrimSpace(req.ModelID)
 	}
 	resolved.Messages = sanitizeProviderMessages(req.Messages)
+	if resolved.TextOnlyEnabled {
+		// 纯文本渠道：历史回放中的图片（粘贴图、Read 工具图）统一降级为文本占位，
+		// 避免文本模型每轮都感知到无法读取的 image 块。
+		resolved.Messages = downgradeImageContentParts(resolved.Messages)
+	}
 	if resolved.RequestKnobs != nil {
 		resolved.RequestKnobs["max_tokens"] = resolved.MaxTokens
 		if runtimeThinkingEffort != "" {
@@ -135,14 +143,44 @@ func (router *Router) Stream(ctx context.Context, req StreamRequest, sink func(M
 		return sink(event)
 	}
 
+	var adapter ModelAdapter
 	switch resolved.Provider {
 	case "anthropic":
-		return router.anthropic.Stream(ctx, resolved, resolvedSink)
+		adapter = router.anthropic
 	case "openai":
-		return router.openai.Stream(ctx, resolved, resolvedSink)
+		adapter = router.openai
 	default:
 		return fmt.Errorf("unsupported provider %q", resolved.Provider)
 	}
+	return streamWithFirstTokenRetry(ctx, adapter, resolved, resolvedSink)
+}
+
+// firstTokenRetryAttempts 是首 token 超时场景的总尝试次数（含首次）。
+const firstTokenRetryAttempts = 2
+
+// streamWithFirstTokenRetry 在首 token 超时且尚未向上层发出任何事件时透明重试。
+// 看门狗超时已关闭旧连接，重试不会额外占用中转站的 pending 队列。
+func streamWithFirstTokenRetry(ctx context.Context, adapter ModelAdapter, req StreamRequest, sink func(ModelEvent) error) error {
+	var lastErr error
+	for attempt := 0; attempt < firstTokenRetryAttempts; attempt++ {
+		emitted := false
+		wrappedSink := func(event ModelEvent) error {
+			emitted = true
+			return sink(event)
+		}
+		lastErr = adapter.Stream(ctx, req, wrappedSink)
+		if lastErr == nil || emitted || !IsProviderFirstTokenTimeout(lastErr) || ctx.Err() != nil {
+			return lastErr
+		}
+		if attempt < firstTokenRetryAttempts-1 {
+			select {
+			case <-ctx.Done():
+				return lastErr
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}
+	return lastErr
 }
 
 // sanitizeProviderMessages removes replay-only placeholders and trims trailing

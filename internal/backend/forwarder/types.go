@@ -22,7 +22,9 @@ type ConversationFile struct {
 	ParentConversationID            string                                `json:"parent_conversation_id"`
 	ParentToolCallID                string                                `json:"parent_tool_call_id"`
 	SubagentTypeName                string                                `json:"subagent_type_name,omitempty"`
-	Mode                            string                                `json:"mode"`
+	// Name 是客户端通过 UpdateConversationMetadata 提交的会话标题。
+	Name string `json:"name,omitempty"`
+	Mode string `json:"mode"`
 	ContextVersion                  int64                                 `json:"context_version,omitempty"`
 	CurrentLoopID                   string                                `json:"current_loop_id,omitempty"`
 	CurrentLoopStatus               string                                `json:"current_loop_status,omitempty"`

@@ -368,6 +368,7 @@ export function createEmptyModelAdapter() {
     modelID: "",
     clientProfile: CLIENT_PROFILE_GENERIC,
     anthropic1MContextEnabled: false,
+    textOnlyEnabled: false,
     reasoningEffort: "medium",
     openAIEndpoint: OPENAI_ENDPOINT_RESPONSES,
     openAIExtraParamsEnabled: false,
@@ -488,6 +489,7 @@ export function normalizeModelAdapter(source) {
     modelID,
     clientProfile: normalizedClientProfile || CLIENT_PROFILE_GENERIC,
     anthropic1MContextEnabled,
+    textOnlyEnabled: asBoolean(raw.textOnlyEnabled ?? raw.text_only_enabled),
     reasoningEffort: SUPPORTED_REASONING_EFFORTS.has(normalizedReasoningEffort)
       ? normalizedReasoningEffort
       : "medium",

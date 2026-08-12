@@ -66,6 +66,54 @@ func normalizeContentPartType(value string) string {
 	}
 }
 
+// downgradeImageContentParts 把消息里的图片内容块替换为确定性文本占位，供纯文本
+// 模型渠道使用。占位对同一图片在每轮回放中保持一致，不破坏 prefix cache，且不再
+// 重复上传 base64 图片数据。降级后消息折叠为纯文本形态，对所有 provider 语义一致。
+func downgradeImageContentParts(messages []Message) []Message {
+	for index := range messages {
+		parts := messages[index].ContentParts
+		if !hasImageContentParts(parts) {
+			continue
+		}
+		texts := make([]string, 0, len(parts)+1)
+		hasTextPart := false
+		for _, part := range parts {
+			switch normalizeContentPartType(part.Type) {
+			case contentPartTypeText:
+				if strings.TrimSpace(part.Text) != "" {
+					hasTextPart = true
+					texts = append(texts, part.Text)
+				}
+			case contentPartTypeImage:
+				texts = append(texts, imagePlaceholderText(part.Image))
+			}
+		}
+		// 某些构造形态把文本放在 Content 而 ContentParts 只有图片，此时要保住文本。
+		if !hasTextPart {
+			if content := strings.TrimSpace(messages[index].Content); content != "" {
+				texts = append([]string{content}, texts...)
+			}
+		}
+		messages[index].Content = strings.Join(texts, "\n\n")
+		messages[index].ContentParts = nil
+	}
+	return messages
+}
+
+func imagePlaceholderText(image *ImageContent) string {
+	if image != nil {
+		if path := strings.TrimSpace(image.Path); path != "" {
+			if name := strings.TrimSpace(filepath.Base(path)); name != "" && name != "." {
+				return "[image: " + name + "]"
+			}
+		}
+		if mimeType := strings.TrimSpace(strings.ToLower(image.MIMEType)); mimeType != "" {
+			return "[image: " + mimeType + "]"
+		}
+	}
+	return "[image]"
+}
+
 func openAIContentValue(message Message) (any, error) {
 	if !hasImageContentParts(message.ContentParts) {
 		content := message.Content

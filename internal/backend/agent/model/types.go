@@ -89,6 +89,8 @@ type StreamRequest struct {
 	ClientProfile string
 	// Anthropic1MContextEnabled 表示是否为 Claude Code 兼容请求派生 [1m] wire model。
 	Anthropic1MContextEnabled bool
+	// TextOnlyEnabled 表示该渠道为纯文本模型，消息中的图片内容块降级为文本占位。
+	TextOnlyEnabled bool
 	// ResolvedChannelID 表示本次请求实际命中的 adapter 渠道 ID。
 	ResolvedChannelID string
 	// ResolvedChannelName 表示本次请求实际命中的 adapter 展示名。
@@ -139,6 +141,9 @@ type StreamRequest struct {
 	RequestBodyOverride map[string]any
 	// ProviderStreamIdleTimeout 表示 provider 流式响应无有效内容时的空闲超时。
 	ProviderStreamIdleTimeout time.Duration
+	// ProviderFirstTokenTimeout 表示首个有效内容前的独立超时；0 表示禁用，
+	// 用于把中转站排队黑洞尽早转化为可重试错误。
+	ProviderFirstTokenTimeout time.Duration
 	// ProviderRequestMaxAttempts 覆盖建立 HTTP 响应前的最大请求次数；零值保持默认重试策略。
 	ProviderRequestMaxAttempts int
 }

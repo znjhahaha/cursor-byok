@@ -115,6 +115,19 @@ func (manager *Manager) ProviderStreamIdleTimeout(ctx context.Context) time.Dura
 	return time.Duration(seconds) * time.Second
 }
 
+// ProviderFirstTokenTimeout 返回首个有效内容前的独立超时；0 表示禁用。
+func (manager *Manager) ProviderFirstTokenTimeout(ctx context.Context) time.Duration {
+	if manager == nil {
+		return time.Duration(DefaultProviderFirstTokenTimeoutSeconds) * time.Second
+	}
+	manager.reloadIfChanged(ctx)
+	seconds := normalizeProviderFirstTokenTimeout(manager.currentConfig().ProviderFirstTokenTimeout)
+	if seconds < 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 func (manager *Manager) IsObservabilityLogEnabled(ctx context.Context) bool {
 	if manager == nil {
 		return false
@@ -166,6 +179,7 @@ func (manager *Manager) LegacyRuntimeSnapshot(_ context.Context) (legacyruntime.
 			ModelID:                   item.ModelID,
 			ClientProfile:             item.ClientProfile,
 			Anthropic1MContextEnabled: item.Anthropic1MContextEnabled,
+			TextOnlyEnabled:           item.TextOnlyEnabled,
 			ReasoningEffort:           item.ReasoningEffort,
 			OpenAIEndpoint:            item.OpenAIEndpoint,
 			OpenAIExtraParamsEnabled:  item.OpenAIExtraParamsEnabled,

@@ -45,6 +45,7 @@ const fieldTips = {
   clientProfile: "选择出站请求的客户端兼容指纹。Claude Code 仅用于 Anthropic 路径；Codex 仅用于 OpenAI Responses 路径。",
   anthropic1MContext: "启用后本地上下文至少按 1,000,000 token 计算，并仅在发送请求时为模型 ID 追加 [1m]、发送 1M beta。自定义请求头仍可覆盖 beta 列表。",
   openAIExtraParams: "开启后会把 JSON 对象覆盖到 OpenAI 请求体。同名字段以这里为准。OpenAI service_tier 支持 auto、default、flex、scale、priority；priority 可用于高优先级/Fast 类场景。",
+  textOnly: "针对不支持图片的纯文本模型。启用后历史回放中的粘贴图片与 Read 工具图片降级为文本占位（如 [image: 文件名]），不再向该渠道发送 base64 图片数据。",
 };
 
 const props = defineProps({
@@ -309,6 +310,20 @@ function handleSave() {
                 <p class="mt-2 text-xs leading-5 text-[#cbbd91]">
                   仅 Claude Code 模式会在出站模型 ID 上追加 [1m] 并发送 1M beta；长上下文可能显著增加费用与等待时间。
                 </p>
+              </div>
+
+              <div class="mt-3 rounded-[8px] border border-[#343434] bg-[#252525] p-3">
+                <label class="flex items-center justify-between gap-3">
+                  <span class="flex items-center gap-1.5 text-sm text-[#d4d4d4]">
+                    <Tooltip :content="fieldTips.textOnly" />
+                    <span>纯文本模型（图片降级为文本占位）</span>
+                  </span>
+                  <input
+                    v-model="draft.textOnlyEnabled"
+                    type="checkbox"
+                    class="size-4 accent-[#10AD5D]"
+                  />
+                </label>
               </div>
 
               <label class="mt-3 flex flex-col gap-1">

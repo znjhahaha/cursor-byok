@@ -22,10 +22,21 @@ type usageLookupRecord struct {
 const (
 	dashboardServiceGetTokenUsageProcedure                  = "/aiserver.v1.DashboardService/GetTokenUsage"
 	dashboardServiceGetGlassEarlyPreviewEnrollmentProcedure = "/aiserver.v1.DashboardService/GetGlassEarlyPreviewEnrollment"
+	// AgentServiceUpdateConversationMetadataProcedure 是会话元数据 RPC 的完整路径；
+	// agent.v1 没有生成 connect 包，与 RunSSE 一样手写。
+	AgentServiceUpdateConversationMetadataProcedure = "/agent.v1.AgentService/UpdateConversationMetadata"
 )
 
 func newAIHandler(service *Service) http.Handler {
 	mux := http.NewServeMux()
+	mux.Handle(
+		aiserverv1connect.AiServiceNameTabProcedure,
+		connect.NewUnaryHandler(aiserverv1connect.AiServiceNameTabProcedure, service.NameTab),
+	)
+	mux.Handle(
+		AgentServiceUpdateConversationMetadataProcedure,
+		connect.NewUnaryHandler(AgentServiceUpdateConversationMetadataProcedure, service.UpdateConversationMetadata),
+	)
 	mux.Handle(
 		dashboardServiceGetTokenUsageProcedure,
 		connect.NewUnaryHandler(dashboardServiceGetTokenUsageProcedure, service.GetTokenUsage),

@@ -100,6 +100,11 @@ func isRetryableProviderTransportError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
+	// 中转站掐掉连接时 client.Do 会返回裸 io.EOF(例如 `Post ...: EOF`）。
+	// 此时请求没有收到任何响应字节，重试是安全的。
+	if errors.Is(err, io.EOF) {
+		return true
+	}
 	text := strings.ToLower(err.Error())
 	for _, token := range []string{
 		"tls: handshake failure",

@@ -59,6 +59,8 @@ type ModelAdapterConfig struct {
 	ClientProfile string `json:"clientProfile,omitempty"`
 	// Anthropic1MContextEnabled 表示是否启用 Claude Code 1M 上下文 wire 语义。
 	Anthropic1MContextEnabled bool `json:"anthropic1MContextEnabled,omitempty"`
+	// TextOnlyEnabled 表示该渠道为纯文本模型，历史回放中的图片降级为文本占位。
+	TextOnlyEnabled bool `json:"textOnlyEnabled,omitempty"`
 	// ReasoningEffort 表示当前声明中的 ReasoningEffort。
 	ReasoningEffort string `json:"reasoningEffort"`
 	// OpenAIEndpoint 表示 OpenAI 兼容适配器使用的 API 端点。
@@ -142,6 +144,7 @@ func NormalizeModelAdapterConfigs(input []ModelAdapterConfig) ([]ModelAdapterCon
 		}
 		next.CustomHeadersEnabled = item.CustomHeadersEnabled
 		next.CustomHeadersJSON = strings.TrimSpace(item.CustomHeadersJSON)
+		next.TextOnlyEnabled = item.TextOnlyEnabled
 		switch {
 		case next.DisplayName == "":
 			return nil, errors.New("模型适配器 displayName 不能为空")
@@ -311,6 +314,8 @@ type ResolvedChannel struct {
 	ClientProfile string
 	// Anthropic1MContextEnabled 表示是否启用 Claude Code 1M 上下文 wire 语义。
 	Anthropic1MContextEnabled bool
+	// TextOnlyEnabled 表示该渠道为纯文本模型，图片内容降级为文本占位。
+	TextOnlyEnabled bool
 	// TimeoutMS 表示当前声明中的 TimeoutMS。
 	TimeoutMS int
 	// ContextWindowTokens 表示当前声明中的 ContextWindowTokens。
@@ -451,6 +456,7 @@ func (s *FixedChannelService) SelectChannelForModel(ctx context.Context, modelID
 			Model:                       strings.TrimSpace(adapter.ModelID),
 			ClientProfile:               strings.TrimSpace(adapter.ClientProfile),
 			Anthropic1MContextEnabled:   adapter.Anthropic1MContextEnabled,
+			TextOnlyEnabled:             adapter.TextOnlyEnabled,
 			TimeoutMS:                   configurableChannelTimeoutMS,
 			ContextWindowTokens:         configurableChannelContextWindowTokens,
 			MaxTokens:                   configurableChannelMaxTokens,
