@@ -599,6 +599,9 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 	firstEventAt := time.Time{}
 	finishReason := ""
 	turnFinishedPending := false
+	terminalSeen := false
+	emittedText := false
+	hadToolActivity := false
 	thinkingStarted := time.Time{}
 	thinkingActive := false
 	reasoningSource := openAIReasoningSourceNone
@@ -652,6 +655,7 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 		if err := flushThinkingCompleted(); err != nil {
 			return err
 		}
+		emittedText = true
 		return sink(ModelEvent{
 			Kind:       ModelEventKindTextDelta,
 			OccurredAt: time.Now().UTC(),
@@ -783,6 +787,10 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 		}
 		payloadLine := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payloadLine == "[DONE]" {
+			terminalSeen = true
+			if !turnFinishedPending && strings.TrimSpace(finishReason) == "" {
+				turnFinishedPending = true
+			}
 			if err := flushTaggedContentTail(); err != nil {
 				return fail(err)
 			}
@@ -841,6 +849,7 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 		}
 
 		for _, item := range choice.Delta.ToolCalls {
+			hadToolActivity = true
 			streamIdle.MarkEffectiveContent()
 			accumulator, ok := tools[item.Index]
 			if !ok {
@@ -866,6 +875,7 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 		}
 
 		if choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" {
+			terminalSeen = true
 			if err := flushTaggedContentTail(); err != nil {
 				return fail(err)
 			}
@@ -893,6 +903,19 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 			turnFinishedPending = true
 		}
 	}
+	if err := scanner.Err(); err != nil && !terminalSeen {
+		if idleErr := streamIdle.Err(); idleErr != nil {
+			return fail(&IncompleteStreamError{Provider: "openai", HasText: emittedText, HasToolActivity: hadToolActivity || len(tools) > 0, Cause: idleErr})
+		}
+		return fail(&IncompleteStreamError{Provider: "openai", HasText: emittedText, HasToolActivity: hadToolActivity || len(tools) > 0, Cause: err})
+	}
+	if !terminalSeen {
+		return fail(&IncompleteStreamError{
+			Provider:        "openai",
+			HasText:         emittedText,
+			HasToolActivity: hadToolActivity || len(tools) > 0,
+		})
+	}
 	for _, accumulator := range tools {
 		if err := sink(ModelEvent{
 			Kind:       ModelEventKindToolLikeCompleted,
@@ -908,12 +931,6 @@ func (adapter *OpenAIAdapter) streamChatCompletions(ctx context.Context, req Str
 			return fail(err)
 		}
 		streamIdle.MarkEffectiveContent()
-	}
-	if err := scanner.Err(); err != nil {
-		if idleErr := streamIdle.Err(); idleErr != nil {
-			return fail(idleErr)
-		}
-		return fail(err)
 	}
 	if err := flushTaggedContentTail(); err != nil {
 		return fail(err)
@@ -1413,6 +1430,17 @@ func (adapter *OpenAIAdapter) streamResponses(ctx context.Context, req StreamReq
 		}
 		streamIdle.MarkEffectiveContent()
 		key := toolKey(firstNonEmptyString(item.ID, item.CallID), outputIndex)
+		completionAliases := []string{
+			key,
+			toolKey("", outputIndex),
+			namespaceToolCallID(req.ModelCallID, item.CallID),
+			namespaceToolCallID(req.ModelCallID, item.ID),
+		}
+		for _, alias := range completionAliases {
+			if _, ok := completedTools[strings.TrimSpace(alias)]; ok {
+				return nil
+			}
+		}
 		accumulator, ok := tools[key]
 		if !ok {
 			accumulator = &openAIToolAccumulator{}

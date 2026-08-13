@@ -114,7 +114,7 @@ func (projector *HistoryProjector) ProjectPromptReplay(conversation *Conversatio
 			if err := protojson.Unmarshal(entry.Payload, requestContext); err != nil {
 				return nil, fmt.Errorf("decode request_context entry: %w", err)
 			}
-			for _, replay := range promptengine.BuildRequestContextReplayMessages(requestContext) {
+			for _, replay := range promptengine.BuildRequestContextReplayMessagesAt(requestContext, entry.CreatedAt) {
 				messages = append(messages, toModelMessage(replay))
 			}
 		case "prompt_context":

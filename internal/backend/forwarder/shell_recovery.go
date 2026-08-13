@@ -35,9 +35,37 @@ func initializePendingExecForTracking(pending runtimecore.PendingExec) runtimeco
 	if pending.LastShellActivityAt.IsZero() {
 		pending.LastShellActivityAt = pending.OpenedAt
 	}
-	if pending.ShellForegroundDeadline.IsZero() {
+	if pending.ShellApprovalState == "" {
+		switch strings.TrimSpace(pending.StreamState) {
+		case "started", "streaming":
+			pending.ShellApprovalState = runtimecore.ShellApprovalStateRunning
+		default:
+			pending.ShellApprovalState = runtimecore.ShellApprovalStateAwaiting
+		}
+	}
+	// 审批框停留时间不属于命令执行预算：等待审批的 shell 不设前台回收 deadline，
+	// 等收到运行证据(markShellRunning)后才起算。
+	if pending.ShellApprovalState == runtimecore.ShellApprovalStateRunning && pending.ShellForegroundDeadline.IsZero() {
 		pending.ShellForegroundDeadline = shellForegroundRecoveryDeadline(pending)
 	}
+	return pending
+}
+
+// markShellRunning 在收到 start/stdout/stderr 等执行证据时，把 shell 从「等待审批」
+// 切换为「运行中」。审批等待期间不计前台预算，因此转换时把 OpenedAt 重锚到运行
+// 开始时刻，让空闲窗口与绝对上限都从命令真正启动后起算；否则用户在确认框停留
+// 过久时，命令一开始执行就会撞上已经过期的回收 deadline。
+func markShellRunning(pending runtimecore.PendingExec, startedAt time.Time) runtimecore.PendingExec {
+	if strings.TrimSpace(pending.ExecKind) != "shell" || pending.ShellApprovalState == runtimecore.ShellApprovalStateRunning {
+		return pending
+	}
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	pending.ShellApprovalState = runtimecore.ShellApprovalStateRunning
+	pending.OpenedAt = startedAt
+	pending.LastShellActivityAt = startedAt
+	pending.ShellForegroundDeadline = shellForegroundRecoveryDeadline(pending)
 	return pending
 }
 
@@ -97,7 +125,7 @@ func shellForegroundTimeoutMS(argsJSON []byte) int64 {
 }
 
 func (service *Service) scheduleShellForegroundRecovery(requestID string, pending runtimecore.PendingExec) {
-	if service == nil || strings.TrimSpace(requestID) == "" || strings.TrimSpace(pending.ExecKind) != "shell" || strings.TrimSpace(pending.ExecID) == "" {
+	if service == nil || strings.TrimSpace(requestID) == "" || strings.TrimSpace(pending.ExecKind) != "shell" || strings.TrimSpace(pending.ExecID) == "" || pending.ShellApprovalState != runtimecore.ShellApprovalStateRunning {
 		return
 	}
 	stream, ok := service.broker.Get(requestID)
@@ -178,6 +206,11 @@ func (service *Service) recoverShellWithoutTerminalIfNeeded(stream *ActiveStream
 	if !found || current.MessageID != messageID || strings.TrimSpace(current.ExecKind) != "shell" || isTerminalStreamStatus(status) {
 		return nil
 	}
+	// 命令还停在审批框、从未上报过执行证据时，不能伪造它的完成结果：
+	// 用户随后仍可能点 Run(正常执行)或 Skip(正常收口)。
+	if current.ShellApprovalState != runtimecore.ShellApprovalStateRunning {
+		return nil
+	}
 	switch strings.TrimSpace(current.StreamState) {
 	case "exited", "backgrounded", "rejected", "permission_denied":
 		return nil
@@ -223,6 +256,7 @@ func (service *Service) recoverShellWithoutTerminal(stream *ActiveStream, pendin
 			"message_id":               pending.MessageID,
 			"exec_id":                  pending.ExecID,
 			"exec_kind":                pending.ExecKind,
+			"approval_state":           pending.ShellApprovalState,
 			"reason":                   strings.TrimSpace(reason),
 			"abort_requested":          abortRequested,
 			"recent_stream_state":      pending.StreamState,

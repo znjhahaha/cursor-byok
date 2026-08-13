@@ -299,7 +299,9 @@ func (store *ConversationFileStore) UpdateConversationMeta(conversationID string
 // 这在长历史下是每次调用都要付的 O(历史长度) 成本。当调用方本身就握着
 // 权威快照时，这次读取纯属重复劳动，直接复用即可。
 // 语义与 UpdateConversationMeta 一致：只写 state.json，不触碰 context.json。
-// source 被视为只读，派生过程不会修改调用方持有的快照。
+// source 被视为只读，派生过程不会修改调用方持有的快照。会话标题由
+// UpdateConversationMetadata 独立更新，因此始终以锁内读到的磁盘值为准，
+// 避免运行中的旧 checkpoint 把新标题覆盖掉。
 func (store *ConversationFileStore) WriteConversationMetaFrom(conversationID string, source *ConversationFile) error {
 	if store == nil {
 		return fmt.Errorf("conversation file store is nil")
@@ -320,7 +322,22 @@ func (store *ConversationFileStore) WriteConversationMetaFrom(conversationID str
 	}
 	defer release()
 
-	return store.writeConversationMetaLocked(normalizedConversationID, borrowConversationForMeta(source))
+	conversation := borrowConversationForMeta(source)
+	var persisted struct {
+		Name string `json:"name"`
+	}
+	stateBody, err := os.ReadFile(store.statePath(normalizedConversationID))
+	switch {
+	case err == nil:
+		// state.json 损坏时沿用 source；writeConversationMetaLocked 会用完整快照修复它。
+		if json.Unmarshal(stateBody, &persisted) == nil {
+			conversation.Name = persisted.Name
+		}
+	case !errors.Is(err, os.ErrNotExist):
+		return fmt.Errorf("read conversation state: %w", err)
+	}
+
+	return store.writeConversationMetaLocked(normalizedConversationID, conversation)
 }
 
 // ReplaceEntries 原子替换 context.json，并同步 state.json 中的 sequence/version 状态。

@@ -2165,6 +2165,12 @@ func (service *Service) applyExecProgress(stream *ActiveStream, pending runtimec
 		return pending
 	}
 	now := time.Now().UTC()
+	// start/stdout/stderr 是命令已通过审批并真正开始执行的证据；
+	// 先切换审批态，后续的 deadline 刷新与前台回收调度才会生效。
+	switch shellStream.GetEvent().(type) {
+	case *agentv1.ShellStream_Start, *agentv1.ShellStream_Stdout, *agentv1.ShellStream_Stderr:
+		current = markShellRunning(current, now)
+	}
 	refreshForegroundRecovery := false
 	switch event := shellStream.GetEvent().(type) {
 	case *agentv1.ShellStream_Stdout:

@@ -236,11 +236,15 @@ func buildMessagesFromStructuredState(state *agentv1.ConversationStateStructure)
 
 // buildMessagesFromRequestContext 把 request_context 中的用户环境信息编译成上游可消费消息。
 func buildMessagesFromRequestContext(requestContext *agentv1.RequestContext) []Message {
+	return buildMessagesFromRequestContextAt(requestContext, time.Now())
+}
+
+func buildMessagesFromRequestContextAt(requestContext *agentv1.RequestContext, renderedAt time.Time) []Message {
 	if requestContext == nil {
 		return nil
 	}
 
-	sections := append(buildRequestContextStaticSections(requestContext), buildRequestContextRealtimeSections(requestContext)...)
+	sections := append(buildRequestContextStaticSections(requestContext, renderedAt), buildRequestContextRealtimeSections(requestContext)...)
 	if len(sections) == 0 {
 		return nil
 	}
@@ -255,12 +259,18 @@ func BuildRequestContextReplayMessages(requestContext *agentv1.RequestContext) [
 	return buildMessagesFromRequestContext(requestContext)
 }
 
-func buildRequestContextStaticSections(requestContext *agentv1.RequestContext) []string {
+// BuildRequestContextReplayMessagesAt 按条目写入时间渲染历史 request_context，
+// 确保跨天重放不会改写已发送给模型的稳定前缀。
+func BuildRequestContextReplayMessagesAt(requestContext *agentv1.RequestContext, createdAt time.Time) []Message {
+	return buildMessagesFromRequestContextAt(requestContext, createdAt)
+}
+
+func buildRequestContextStaticSections(requestContext *agentv1.RequestContext, renderedAt time.Time) []string {
 	if requestContext == nil {
 		return nil
 	}
 	sections := make([]string, 0, 5)
-	if userInfo := buildRequestContextUserInfoSection(requestContext); userInfo != "" {
+	if userInfo := buildRequestContextUserInfoSection(requestContext, renderedAt); userInfo != "" {
 		sections = append(sections, userInfo)
 	}
 	if transcripts := buildRequestContextAgentTranscriptsSection(requestContext); transcripts != "" {
@@ -302,7 +312,7 @@ func buildRequestContextRealtimeSections(requestContext *agentv1.RequestContext)
 }
 
 // buildRequestContextUserInfoSection 构造 <user_info> 片段。
-func buildRequestContextUserInfoSection(requestContext *agentv1.RequestContext) string {
+func buildRequestContextUserInfoSection(requestContext *agentv1.RequestContext, renderedAt time.Time) string {
 	if requestContext == nil || requestContext.GetEnv() == nil {
 		return ""
 	}
@@ -328,7 +338,7 @@ func buildRequestContextUserInfoSection(requestContext *agentv1.RequestContext) 
 		}
 	}
 	lines = append(lines, "Is directory a git repo: "+isGitRepo)
-	lines = append(lines, "Today's date: "+formatRequestContextDate())
+	lines = append(lines, "Today's date: "+formatRequestContextDate(requestContext, renderedAt))
 	if terminalsFolder := strings.TrimSpace(env.GetTerminalsFolder()); terminalsFolder != "" {
 		lines = append(lines, "Terminals folder: "+terminalsFolder)
 	}
@@ -681,9 +691,21 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// formatRequestContextDate 返回与主项目对齐的日期格式。
-func formatRequestContextDate() string {
-	return time.Now().Format("Monday Jan 2, 2006")
+// formatRequestContextDate 返回与主项目对齐的日期格式。历史条目使用持久化时间，
+// 并优先按客户端上报的时区换算，避免 UTC 日期在午夜附近偏移。
+func formatRequestContextDate(requestContext *agentv1.RequestContext, renderedAt time.Time) string {
+	if renderedAt.IsZero() {
+		renderedAt = time.Now()
+	}
+	location := time.Local
+	if requestContext != nil && requestContext.GetEnv() != nil {
+		if name := strings.TrimSpace(requestContext.GetEnv().GetTimeZone()); name != "" {
+			if loaded, err := time.LoadLocation(name); err == nil {
+				location = loaded
+			}
+		}
+	}
+	return renderedAt.In(location).Format("Monday Jan 2, 2006")
 }
 
 // buildMessagesFromPendingAssistantOutputs 把 `pending_tool_calls` 中的原始记录转换为安全的 assistant 文本消息。

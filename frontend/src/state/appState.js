@@ -149,6 +149,11 @@ function asPositiveInteger(value) {
   return Number(text);
 }
 
+function asInteger(value) {
+  const number = Number(value);
+  return Number.isInteger(number) ? number : 0;
+}
+
 function asNumber(value, fallback = 0) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -256,17 +261,17 @@ export function buildModelAdapterTestRequestHash(source) {
     asString(adapter.clientProfile),
     adapter.type === "openai" ? asString(adapter.reasoningEffort || "medium") : "",
     adapter.type === "openai" ? normalizeOpenAIEndpoint(adapter.openAIEndpoint) : "",
-    adapter.type === "openai" ? String(Boolean(adapter.openAIExtraParamsEnabled)) : "false",
+    adapter.type === "openai" && adapter.openAIExtraParamsEnabled ? "1" : "0",
     adapter.type === "openai" && adapter.openAIExtraParamsEnabled ? asString(adapter.openAIExtraParamsJSON) : "",
-    String(Boolean(adapter.customHeadersEnabled)),
+    adapter.customHeadersEnabled ? "1" : "0",
     adapter.customHeadersEnabled ? asString(adapter.customHeadersJSON) : "",
-    adapter.type === "anthropic" ? String(Boolean(adapter.anthropicExtraParamsEnabled)) : "false",
+    adapter.type === "anthropic" && adapter.anthropicExtraParamsEnabled ? "1" : "0",
     adapter.type === "anthropic" && adapter.anthropicExtraParamsEnabled ? asString(adapter.anthropicExtraParamsJSON) : "",
     String(asPositiveInteger(adapter.contextWindowTokens)),
     String(asPositiveInteger(adapter.maxCompletionTokens)),
     String(asPositiveInteger(adapter.anthropicMaxTokens)),
     adapter.type === "anthropic" ? asString(adapter.anthropicThinkingEffort || ANTHROPIC_THINKING_EFFORT_DEFAULT) : "",
-    adapter.type === "anthropic" ? String(Boolean(adapter.anthropic1MContextEnabled)) : "false",
+    adapter.type === "anthropic" && adapter.anthropic1MContextEnabled ? "1" : "0",
   ].join("\n"));
 }
 
@@ -803,6 +808,7 @@ function normalizeConfig(source) {
   return {
     log: asBoolean(raw.log),
     providerStreamIdleTimeout: asPositiveInteger(raw.providerStreamIdleTimeout),
+    providerFirstTokenTimeout: asInteger(raw.providerFirstTokenTimeout),
     backendListenAddr: asString(raw.configBackendListenAddr) || asString(raw.backendListenAddr),
     proxyListenAddr: asString(raw.configProxyListenAddr) || asString(raw.proxyListenAddr),
     providers,
@@ -872,6 +878,7 @@ function buildConfigPayload(source = appState) {
   return {
     log: normalized.log,
     providerStreamIdleTimeout: normalized.providerStreamIdleTimeout,
+    providerFirstTokenTimeout: normalized.providerFirstTokenTimeout,
     backendListenAddr: normalized.backendListenAddr,
     proxyListenAddr: normalized.proxyListenAddr,
     // 中转站的 id 是持久化引用键，与 adapter 的内容哈希 id 不同，不能剥离。
@@ -893,6 +900,7 @@ function applyConfigToState(config, { modelAdaptersOnly = false } = {}) {
   }
   appState.providers = normalized.providers;
   appState.modelAdapters = normalized.modelAdapters;
+  appState.providerFirstTokenTimeout = normalized.providerFirstTokenTimeout;
   appState.configBackendListenAddr = normalized.backendListenAddr;
   appState.configProxyListenAddr = normalized.proxyListenAddr;
   appState.routingMode = normalized.routing.mode;
@@ -1130,6 +1138,7 @@ const cachedConfig = normalizeConfig(cachedState);
 export const appState = reactive({
   appVersion: "",
   log: cachedConfig.log,
+  providerFirstTokenTimeout: cachedConfig.providerFirstTokenTimeout,
   detailedLoggingEffective: false,
   detailedLoggingStateKnown: false,
   providers: cachedConfig.providers,

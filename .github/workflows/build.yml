@@ -78,12 +78,22 @@ jobs:
       - name: Generate protocol code
         run: task common:generate:proto
 
-      - name: Run Go tests
-        run: go test ./internal/... ./scripts/...
-
       - name: Install frontend dependencies
         working-directory: frontend
         run: yarn install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: frontend
+        run: yarn build
+
+      - name: Build Go packages
+        run: go build ./...
+
+      - name: Vet Go packages
+        run: go vet ./...
+
+      - name: Run Go tests
+        run: go test ./internal/... ./scripts/...
 
       - name: Run frontend tests
         working-directory: frontend
