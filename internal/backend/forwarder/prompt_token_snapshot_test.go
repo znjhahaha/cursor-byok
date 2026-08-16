@@ -123,3 +123,61 @@ func TestCheckpointPromptTokenEstimateTracksHistoryGrowth(t *testing.T) {
 		t.Fatal("entries 减少后快照应当作废")
 	}
 }
+
+// 撤回重写历史后快照必须重基：System/Tools 沿用旧值，会话分类按撤回后的
+// entries 重新估算，ContextVersion 对齐重编号后的 Seq，否则 UI 显示 0 或单一分类。
+func TestRebasePromptTokenSnapshotAfterRewind(t *testing.T) {
+	service := &Service{}
+	stream := &ActiveStream{RequestID: "request-1", Mode: agentv1.AgentMode_AGENT_MODE_AGENT}
+	stream.PromptTokens = promptTokenSnapshot{
+		ContextVersion:     40,
+		EntryCount:         40,
+		SystemTokens:       3000,
+		ToolsTokens:        15000,
+		SummaryTokens:      800,
+		ConversationTokens: 30000,
+	}
+	stream.HasPromptTokens = true
+
+	rewound := promptTokenTestConversation(t, "kept question", "kept answer")
+
+	service.rebasePromptTokenSnapshotAfterRewind(stream, rewound)
+
+	snapshot, ok := checkpointPromptTokenEstimate(stream, rewound)
+	if !ok {
+		t.Fatal("重基后的快照必须继续可用于展示")
+	}
+	if snapshot.SystemTokens != 3000 || snapshot.ToolsTokens != 15000 {
+		t.Fatalf("system/tools 应沿用旧值，实际 system=%d tools=%d", snapshot.SystemTokens, snapshot.ToolsTokens)
+	}
+	if snapshot.ConversationTokens <= 0 {
+		t.Fatalf("conversation 分类应反映截断后的 entries，实际 %d", snapshot.ConversationTokens)
+	}
+	if snapshot.ContextVersion != int64(len(rewound.Entries)) {
+		t.Fatalf("ContextVersion = %d, want %d", snapshot.ContextVersion, len(rewound.Entries))
+	}
+	breakdown := snapshot.breakdown(uint32(snapshot.totalTokens()), 1000000)
+	if breakdown == nil || len(breakdown.GetCategories()) < 2 {
+		t.Fatalf("重基后必须保留真实分类，实际 %+v", breakdown)
+	}
+}
+
+// 撤回把 Seq 从 1 重新编号：即使条目数没有变少，版本倒退也必须作废旧快照，
+// 否则 estimateEntriesTokensAfter 统计不到任何新增，显示值冻结在撤回之前。
+func TestCheckpointPromptTokenEstimateInvalidatedByVersionBackwards(t *testing.T) {
+	stream := &ActiveStream{RequestID: "request-1", Mode: agentv1.AgentMode_AGENT_MODE_AGENT}
+	stream.PromptTokens = promptTokenSnapshot{
+		ContextVersion:     100,
+		EntryCount:         2,
+		SystemTokens:       10,
+		ToolsTokens:        10,
+		ConversationTokens: 10,
+	}
+	stream.HasPromptTokens = true
+
+	// 条目数 4 >= 旧快照 EntryCount 2（条目数守卫不会触发），但 Seq 只有 1..4。
+	conversation := promptTokenTestConversation(t, "a", "b", "c", "d")
+	if _, ok := checkpointPromptTokenEstimate(stream, conversation); ok {
+		t.Fatal("版本倒退（Seq 重新编号）后快照必须作废")
+	}
+}

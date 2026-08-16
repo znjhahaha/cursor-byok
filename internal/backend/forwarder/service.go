@@ -847,6 +847,11 @@ func (service *Service) handleRunIntent(intent InboundIntent) (runErr error) {
 	updateStreamRequestContextData(stream, intent.RequestContext)
 	service.updateStreamMCPToolServers(stream, intent.RequestContext)
 	clearPendingProviderCompletion(stream)
+	if rewindDecision.Apply {
+		// 重基估算要遍历撤回后的全部 payload，放在 stream.mu 外执行，
+		// 避免长历史下卡住心跳与 timer。
+		service.rebasePromptTokenSnapshotAfterRewind(stream, conversation)
+	}
 	stream.mu.Lock()
 	stream.RequestMetadata = intent.RequestMetadata
 	stream.ThinkingEffort = strings.TrimSpace(intent.ThinkingEffort)
@@ -2513,6 +2518,45 @@ func (service *Service) recordPromptTokenSnapshot(stream *ActiveStream, conversa
 	return snapshot
 }
 
+// rebasePromptTokenSnapshotAfterRewind 在撤回重写历史后重基 token 快照。
+// System/Tools 规模与对话长度无关，沿用旧值；Conversation/Summary 用撤回后
+// 实际会重放的 entries 重新估算，并刷新 ContextVersion/EntryCount。
+// 没有这一步，撤回后的 checkpoint 要么显示 0，要么退回兜底的单一 Conversation 分类，
+// 要么因 Seq 重新编号（新 Seq 全部低于旧快照的 ContextVersion）而冻结在撤回前的旧值。
+func (service *Service) rebasePromptTokenSnapshotAfterRewind(stream *ActiveStream, conversation *ConversationFile) {
+	if stream == nil || conversation == nil {
+		return
+	}
+	stream.mu.Lock()
+	previous := stream.PromptTokens
+	hasPrevious := stream.HasPromptTokens
+	stream.mu.Unlock()
+	if !hasPrevious {
+		return
+	}
+	conversationTokens := int64(0)
+	summaryTokens := int64(0)
+	for _, entry := range replayablePromptProjectionEntries(conversation.Entries) {
+		tokens := estimatedTokensPerMessageOverhead + estimateTextTokens(string(entry.Payload))
+		if isCompactionSummaryKind(entry.Kind) {
+			summaryTokens += tokens
+			continue
+		}
+		conversationTokens += tokens
+	}
+	stream.mu.Lock()
+	stream.PromptTokens = promptTokenSnapshot{
+		ContextVersion:     contextVersionForEntries(conversation.Entries),
+		EntryCount:         len(conversation.Entries),
+		SystemTokens:       previous.SystemTokens,
+		ToolsTokens:        previous.ToolsTokens,
+		SummaryTokens:      summaryTokens,
+		ConversationTokens: conversationTokens,
+	}
+	stream.HasPromptTokens = true
+	stream.mu.Unlock()
+}
+
 // checkpointPromptTokenEstimate 用最近一次真实编译的快照加上之后新增 entries 的估算，
 // 取代原先「为了在 UI 显示一个数字而把整个对话重新编译一遍」的做法：
 // 那次编译和真正调用模型等价，却每个工具结果都要跑一次。
@@ -2525,7 +2569,9 @@ func checkpointPromptTokenEstimate(stream *ActiveStream, conversation *Conversat
 	snapshot := stream.PromptTokens
 	hasSnapshot := stream.HasPromptTokens
 	stream.mu.Unlock()
-	if !hasSnapshot || len(conversation.Entries) < snapshot.EntryCount {
+	// 版本倒退只可能来自撤回重编号：此时快照与当前历史已无对应关系，必须作废。
+	versionWentBackwards := hasSnapshot && contextVersionForEntries(conversation.Entries) < snapshot.ContextVersion
+	if !hasSnapshot || versionWentBackwards || len(conversation.Entries) < snapshot.EntryCount {
 		return promptTokenSnapshot{}, false
 	}
 	return snapshot.withExtraConversationTokens(estimateEntriesTokensAfter(conversation.Entries, snapshot.ContextVersion)), true
