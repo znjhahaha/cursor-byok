@@ -3,6 +3,8 @@ import ModelListPanel from "@/components/config/ModelListPanel.vue";
 import ProviderListPanel from "@/components/config/ProviderListPanel.vue";
 import UsageStatsPanel from "@/components/config/UsageStatsPanel.vue";
 import DiagnosticsPanel from "@/components/config/DiagnosticsPanel.vue";
+import ConversationSearchPanel from "@/components/config/ConversationSearchPanel.vue";
+import SkillsPanel from "@/components/config/SkillsPanel.vue";
 import { showModal } from "@/composables/useModal";
 import { reloadUserConfig } from "@/state/appState";
 import { Events } from "@wailsio/runtime";
@@ -12,6 +14,8 @@ const mainTabs = [
   { label: "中转站", value: "providers", icon: "icon-[mdi--server-network]" },
   { label: "模型配置", value: "models", icon: "icon-[mdi--api]" },
   { label: "调用统计", value: "stats", icon: "icon-[mdi--chart-bar]" },
+  { label: "会话搜索", value: "conversations", icon: "icon-[mdi--message-text-outline]" },
+  { label: "Skills", value: "skills", icon: "icon-[mdi--puzzle-outline]" },
   { label: "日志与诊断", value: "diagnostics", icon: "icon-[mdi--text-box-search-outline]" },
 ];
 
@@ -21,6 +25,8 @@ const PANEL_COMPONENTS = {
   providers: ProviderListPanel,
   models: ModelListPanel,
   stats: UsageStatsPanel,
+  conversations: ConversationSearchPanel,
+  skills: SkillsPanel,
   diagnostics: DiagnosticsPanel,
 };
 

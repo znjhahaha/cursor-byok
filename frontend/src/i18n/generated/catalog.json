@@ -106,6 +106,18 @@
         }
       ]
     },
+    "0347c9680f680873": {
+      "source": "过滤已安装 skill",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 540,
+          "column": 11
+        }
+      ]
+    },
     "036c1bb8dcab93fb": {
       "source": "暂无调用数据",
       "kind": "text",
@@ -265,6 +277,54 @@
         }
       ]
     },
+    "064799886db9c2d9": {
+      "source": "还没有安装任何 skill，去「浏览安装」页挑选",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 567,
+          "column": 115
+        }
+      ]
+    },
+    "06bc14b60f3598a3": {
+      "source": "卸载",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 609,
+          "column": 15
+        }
+      ]
+    },
+    "07eb730af89936bf": {
+      "source": "时间范围",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 366,
+          "column": 79
+        }
+      ]
+    },
+    "088244d118869fd0": {
+      "source": "会话模式",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 367,
+          "column": 73
+        }
+      ]
+    },
     "089b0dd6c9b9fb88": {
       "source": "导入所选 ({0})",
       "kind": "template",
@@ -383,6 +443,30 @@
         }
       ]
     },
+    "0d0e1a86b3aa7877": {
+      "source": "用户",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 318,
+          "column": 14
+        }
+      ]
+    },
+    "0d2839fbf7a5e304": {
+      "source": "用户 ·",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 482,
+          "column": 68
+        }
+      ]
+    },
     "0d9876e816b26638": {
       "source": "克隆失败",
       "kind": "text",
@@ -440,6 +524,23 @@
           "file": "src/views/ProviderEditor.vue",
           "line": 76,
           "column": 10
+        }
+      ]
+    },
+    "0ef703f76a8da8f6": {
+      "source": "个会话",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 381,
+          "column": 58
+        },
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 382,
+          "column": 45
         }
       ]
     },
@@ -503,6 +604,18 @@
         }
       ]
     },
+    "129439f3223ad439": {
+      "source": "支持格式：owner/repo、owner/repo@branch、GitHub 仓库链接",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 637,
+          "column": 67
+        }
+      ]
+    },
     "12a283e5aad1e1dc": {
       "source": "按小时分布 · 调用次数",
       "kind": "text",
@@ -524,6 +637,23 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 145,
           "column": 64
+        }
+      ]
+    },
+    "12fdc4742e2388dc": {
+      "source": "没有匹配过滤条件的 skill",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 503,
+          "column": 104
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 570,
+          "column": 107
         }
       ]
     },
@@ -744,6 +874,18 @@
         }
       ]
     },
+    "18fa1f662fee8036": {
+      "source": "删除仓库失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 178,
+          "column": 53
+        }
+      ]
+    },
     "19e7c0223eb5a57b": {
       "source": "按模型",
       "kind": "text",
@@ -773,7 +915,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 51,
+          "line": 57,
           "column": 46
         }
       ]
@@ -838,6 +980,18 @@
         }
       ]
     },
+    "1cbfdd21d7d525cb": {
+      "source": "添加 Skills 仓库",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 625,
+          "column": 60
+        }
+      ]
+    },
     "1e238093b79b3165": {
       "source": "留空时默认 65536",
       "kind": "text",
@@ -852,6 +1006,18 @@
           "file": "src/components/ModelAdapterModal.vue",
           "line": 281,
           "column": 21
+        }
+      ]
+    },
+    "1f2f912c992b735e": {
+      "source": "会话搜索失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 72,
+          "column": 53
         }
       ]
     },
@@ -891,6 +1057,18 @@
         }
       ]
     },
+    "1ffe969953041838": {
+      "source": "移除仓库",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 485,
+          "column": 92
+        }
+      ]
+    },
     "206ec922c4cbd398": {
       "source": "确定删除中转站「{0}」？",
       "kind": "template",
@@ -898,7 +1076,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 50,
+          "line": 56,
           "column": 7
         }
       ]
@@ -949,6 +1127,18 @@
         }
       ]
     },
+    "21c04b2eeeb431f7": {
+      "source": "摘要",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 324,
+          "column": 14
+        }
+      ]
+    },
     "21e5277cea062679": {
       "source": "新增中转站",
       "kind": "text",
@@ -973,7 +1163,7 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 15,
+          "line": 19,
           "column": 12
         }
       ]
@@ -1147,6 +1337,18 @@
         }
       ]
     },
+    "283dcb3d42b876e6": {
+      "source": "{0}月{1}日 {2}",
+      "kind": "template",
+      "placeholders": 3,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 294,
+          "column": 56
+        }
+      ]
+    },
     "28aeffc70ceb4267": {
       "source": "切换当前界面显示语言，设置会立即生效并保存在本机",
       "kind": "text",
@@ -1156,6 +1358,18 @@
           "file": "src/views/Config.vue",
           "line": 89,
           "column": 48
+        }
+      ]
+    },
+    "2901f893f992e4ac": {
+      "source": "将从备份 zip 恢复 skill，同名 skill 会被覆盖为备份中的版本，确定继续？",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 322,
+          "column": 14
         }
       ]
     },
@@ -1201,9 +1415,26 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 39,
+          "column": 12
+        },
+        {
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 15,
           "column": 12
+        }
+      ]
+    },
+    "2c0158ecbaa5125d": {
+      "source": "添加仓库",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 494,
+          "column": 17
         }
       ]
     },
@@ -1212,6 +1443,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 642,
+          "column": 59
+        },
         {
           "file": "src/components/ModelAdapterModal.vue",
           "line": 346,
@@ -1307,6 +1543,18 @@
         }
       ]
     },
+    "2eb73d2d20a5347f": {
+      "source": "卸载失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 358,
+          "column": 19
+        }
+      ]
+    },
     "2ec7a0cf6cf58348": {
       "source": "基础连接",
       "kind": "text",
@@ -1316,6 +1564,18 @@
           "file": "src/views/ProviderEditor.vue",
           "line": 381,
           "column": 58
+        }
+      ]
+    },
+    "2f0ea3b1fd468d83": {
+      "source": "按来源仓库重新安装到最新版本",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 600,
+          "column": 15
         }
       ]
     },
@@ -1337,6 +1597,11 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 405,
+          "column": 17
+        },
+        {
           "file": "src/components/config/ModelListPanel.vue",
           "line": 588,
           "column": 94
@@ -1355,6 +1620,23 @@
         }
       ]
     },
+    "3055a035f0eb7a8b": {
+      "source": "更新",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 528,
+          "column": 16
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 602,
+          "column": 15
+        }
+      ]
+    },
     "30bb57a50caedc38": {
       "source": "例如：用于日常代码补全与问答",
       "kind": "text",
@@ -1364,6 +1646,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 801,
           "column": 13
+        }
+      ]
+    },
+    "31a7b8f9479f57b2": {
+      "source": "第 {0} / {1} 条命中",
+      "kind": "template",
+      "placeholders": 2,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 119,
+          "column": 40
         }
       ]
     },
@@ -1478,6 +1772,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 194,
           "column": 13
+        }
+      ]
+    },
+    "3375b419ba2b928a": {
+      "source": "没有可检查的 skill：仅支持由本面板安装的 skill",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 278,
+          "column": 22
         }
       ]
     },
@@ -1705,6 +2011,18 @@
         }
       ]
     },
+    "38167c3991878201": {
+      "source": "已备份到 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 310,
+          "column": 22
+        }
+      ]
+    },
     "38ad616b5d1eee3e": {
       "source": "请先获取该站点的模型列表",
       "kind": "text",
@@ -1753,6 +2071,11 @@
           "file": "src/components/charts/CacheHitRateChart.vue",
           "line": 76,
           "column": 12
+        },
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 381,
+          "column": 37
         }
       ]
     },
@@ -1867,6 +2190,18 @@
         }
       ]
     },
+    "3b5110664aa4cadb": {
+      "source": "条消息",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 465,
+          "column": 60
+        }
+      ]
+    },
     "3bf8512aa520ed21": {
       "source": "本地服务模式",
       "kind": "text",
@@ -1951,6 +2286,18 @@
           "file": "src/components/CursorAccountCard.vue",
           "line": 57,
           "column": 10
+        }
+      ]
+    },
+    "3d87b6f4ba593764": {
+      "source": "点击定位到这条消息",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 419,
+          "column": 13
         }
       ]
     },
@@ -2098,6 +2445,18 @@
         }
       ]
     },
+    "43a937d227a074bb": {
+      "source": "没有匹配的会话",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 385,
+          "column": 117
+        }
+      ]
+    },
     "44219ca2a1e78d5c": {
       "source": "自定义天数，{0} 到 {1} 天",
       "kind": "template",
@@ -2143,6 +2502,42 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 281,
           "column": 77
+        }
+      ]
+    },
+    "44ce7ae909bbb28b": {
+      "source": "搜索",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 369,
+          "column": 73
+        }
+      ]
+    },
+    "45231694511c5ccf": {
+      "source": "{0}（内置）",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 51,
+          "column": 27
+        }
+      ]
+    },
+    "453ad482ccefc23e": {
+      "source": "重新安装",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 528,
+          "column": 16
         }
       ]
     },
@@ -2213,8 +2608,49 @@
       "refs": [
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 49,
+          "line": 55,
           "column": 7
+        }
+      ]
+    },
+    "48174e53d1c45ace": {
+      "source": "点击查看 SKILL.md",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 510,
+          "column": 11
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 577,
+          "column": 11
+        }
+      ]
+    },
+    "48540760a65dece1": {
+      "source": "标题命中",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 397,
+          "column": 115
+        }
+      ]
+    },
+    "48ae740bc3ea0984": {
+      "source": "没有发现可用更新（{0} 个检查失败）",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 276,
+          "column": 22
         }
       ]
     },
@@ -2448,6 +2884,18 @@
         }
       ]
     },
+    "4c2bebd5b1c19fd9": {
+      "source": "请输入仓库地址",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 147,
+          "column": 26
+        }
+      ]
+    },
     "4c471df78b3bd74b": {
       "source": "仅 Claude Code 模式会在出站模型 ID 上追加 [1m] 并发送 1M beta；长上下文可能显著增加费用与等待时间。",
       "kind": "text",
@@ -2525,11 +2973,28 @@
         }
       ]
     },
+    "4f6f06254d160f17": {
+      "source": "检查失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 588,
+          "column": 16
+        }
+      ]
+    },
     "507f3817561861d7": {
       "source": "已导出：",
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 453,
+          "column": 152
+        },
         {
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 155,
@@ -2570,6 +3035,18 @@
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 637,
           "column": 12
+        }
+      ]
+    },
+    "52f5208aaa2b10c1": {
+      "source": "读取仓库列表失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 94,
+          "column": 53
         }
       ]
     },
@@ -2662,6 +3139,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 680,
           "column": 21
+        }
+      ]
+    },
+    "572cf45ba43634b3": {
+      "source": "返回",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 433,
+          "column": 69
         }
       ]
     },
@@ -2771,6 +3260,18 @@
         }
       ]
     },
+    "5b06598fe8a125db": {
+      "source": "已安装「{0}」，Cursor 下次对话即可使用",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 191,
+          "column": 20
+        }
+      ]
+    },
     "5be0f95b6f3db8d4": {
       "source": "所选内置预设已不存在",
       "kind": "text",
@@ -2824,6 +3325,18 @@
         }
       ]
     },
+    "5ca6730d44152201": {
+      "source": "工具",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 322,
+          "column": 14
+        }
+      ]
+    },
     "5d1687a4a41883fd": {
       "source": "停止中...",
       "kind": "text",
@@ -2853,6 +3366,18 @@
         }
       ]
     },
+    "5e8d183e55523cac": {
+      "source": "按更新时间排序",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 383,
+          "column": 17
+        }
+      ]
+    },
     "5f646e383ebacf88": {
       "source": "模型列表与探测诊断",
       "kind": "text",
@@ -2874,6 +3399,30 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 620,
           "column": 23
+        }
+      ]
+    },
+    "5ff5e485b2487904": {
+      "source": "恢复 Skills 备份",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 321,
+          "column": 12
+        }
+      ]
+    },
+    "6016bf63b0ffc5a1": {
+      "source": "条记录",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 412,
+          "column": 68
         }
       ]
     },
@@ -2961,6 +3510,18 @@
         }
       ]
     },
+    "61fa60b7beae21a7": {
+      "source": "昨天 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 293,
+          "column": 29
+        }
+      ]
+    },
     "6309a3bb5ba4c714": {
       "source": "保存失败",
       "kind": "text",
@@ -3012,6 +3573,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 479,
+          "column": 18
+        },
         {
           "file": "src/components/config/ModelListPanel.vue",
           "line": 586,
@@ -3132,6 +3698,30 @@
         }
       ]
     },
+    "661c5879f9145f55": {
+      "source": "重新下载仓库",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 482,
+          "column": 60
+        }
+      ]
+    },
+    "66611600702b2653": {
+      "source": "搜索历史会话，多个关键词用空格分隔",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 363,
+          "column": 11
+        }
+      ]
+    },
     "66af574b8948fe83": {
       "source": "{0} 的访问密钥不能为空",
       "kind": "template",
@@ -3197,6 +3787,18 @@
         }
       ]
     },
+    "695704a261cbb9bb": {
+      "source": "展开全部",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 505,
+          "column": 20
+        }
+      ]
+    },
     "698ae0907a5bdb75": {
       "source": "缓存命中",
       "kind": "text",
@@ -3226,6 +3828,23 @@
         }
       ]
     },
+    "6aa27f14bff16faa": {
+      "source": "读取失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 379,
+          "column": 87
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 391,
+          "column": 87
+        }
+      ]
+    },
     "6aa8f49cc992dfd7": {
       "source": "测试",
       "kind": "text",
@@ -3249,6 +3868,11 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 204,
+          "column": 70
+        },
+        {
           "file": "src/components/config/ModelListPanel.vue",
           "line": 115,
           "column": 51
@@ -3267,6 +3891,16 @@
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 181,
           "column": 69
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 334,
+          "column": 70
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 366,
+          "column": 70
         },
         {
           "file": "src/state/appState.js",
@@ -3295,7 +3929,7 @@
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 70,
+          "line": 76,
           "column": 79
         }
       ]
@@ -3348,6 +3982,18 @@
         }
       ]
     },
+    "6dc9ae3ee29c9966": {
+      "source": "过滤列表",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 489,
+          "column": 11
+        }
+      ]
+    },
     "6dcbda80b49ef2d5": {
       "source": "排队检测",
       "kind": "text",
@@ -3369,6 +4015,18 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 163,
           "column": 101
+        }
+      ]
+    },
+    "6e4445df69575d79": {
+      "source": "导出失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 186,
+          "column": 53
         }
       ]
     },
@@ -3449,6 +4107,30 @@
         }
       ]
     },
+    "70e372abbae5f619": {
+      "source": "备份",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 559,
+          "column": 104
+        }
+      ]
+    },
+    "70e3de351887894e": {
+      "source": "将永久删除会话「{0}」的全部历史与调试记录，不可恢复。确定继续？",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 196,
+          "column": 14
+        }
+      ]
+    },
     "711b2950ef4656f0": {
       "source": "仅作用于模型的「排队检测」按钮；429 可持续等待，服务故障会有限重试，随时可以取消。",
       "kind": "text",
@@ -3470,6 +4152,18 @@
           "file": "src/views/ProviderEditor.vue",
           "line": 32,
           "column": 12
+        }
+      ]
+    },
+    "7153f0918a937aac": {
+      "source": "更新于",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 463,
+          "column": 19
         }
       ]
     },
@@ -3542,6 +4236,18 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 185,
           "column": 5
+        }
+      ]
+    },
+    "7377bad1b3791d39": {
+      "source": "安装到 ~/.claude/skills，Cursor 下次对话自动生效",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 465,
+          "column": 40
         }
       ]
     },
@@ -3707,8 +4413,32 @@
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 14,
+          "line": 16,
           "column": 12
+        }
+      ]
+    },
+    "7a8a11ead50742a2": {
+      "source": "添加",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 643,
+          "column": 76
+        }
+      ]
+    },
+    "7b3b5f9049cb789f": {
+      "source": "已添加仓库 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 160,
+          "column": 20
         }
       ]
     },
@@ -3772,6 +4502,11 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 133,
           "column": 62
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 466,
+          "column": 64
         }
       ]
     },
@@ -3840,6 +4575,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 556,
+          "column": 11
+        },
         {
           "file": "src/layouts/MainLayout.vue",
           "line": 247,
@@ -4083,6 +4823,18 @@
         }
       ]
     },
+    "86b6d0d63062ba81": {
+      "source": "正在读取…",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 658,
+          "column": 87
+        }
+      ]
+    },
     "86df7ec743047234": {
       "source": "服务运行中",
       "kind": "text",
@@ -4152,6 +4904,30 @@
           "file": "src/components/config/ProviderModelPicker.vue",
           "line": 409,
           "column": 1
+        }
+      ]
+    },
+    "89281a45e04f3407": {
+      "source": "恢复失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 323,
+          "column": 19
+        }
+      ]
+    },
+    "89798c6c22a42952": {
+      "source": "仅支持由本面板安装（有来源记录）的 skill；手工放入的无法检测",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 554,
+          "column": 11
         }
       ]
     },
@@ -4249,6 +5025,23 @@
         }
       ]
     },
+    "8cb47e4a228d647a": {
+      "source": "有更新",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 516,
+          "column": 138
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 583,
+          "column": 114
+        }
+      ]
+    },
     "8cbcf741e727dbf7": {
       "source": "模型配置",
       "kind": "text",
@@ -4271,12 +5064,12 @@
         },
         {
           "file": "src/views/Home.vue",
-          "line": 209,
+          "line": 210,
           "column": 68
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 13,
+          "line": 15,
           "column": 12
         }
       ]
@@ -4310,6 +5103,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 479,
+          "column": 18
+        },
         {
           "file": "src/components/ui/Tooltip.vue",
           "line": 118,
@@ -4362,6 +5160,18 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 127,
           "column": 24
+        }
+      ]
+    },
+    "9140df355b5cd8b8": {
+      "source": "全部 skill 已是最新",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 280,
+          "column": 22
         }
       ]
     },
@@ -4457,6 +5267,18 @@
         }
       ]
     },
+    "93ec5054d59f1805": {
+      "source": "卸载 Skill",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 356,
+          "column": 12
+        }
+      ]
+    },
     "93f137f76d47014c": {
       "source": "测试全部中转站",
       "kind": "text",
@@ -4466,6 +5288,18 @@
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 455,
           "column": 17
+        }
+      ]
+    },
+    "93f8176096de5ad8": {
+      "source": "重新扫描本地目录",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 561,
+          "column": 63
         }
       ]
     },
@@ -4599,6 +5433,18 @@
         }
       ]
     },
+    "97eb1c30b9eac01a": {
+      "source": "会话搜索",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/ModelConfig.vue",
+          "line": 17,
+          "column": 12
+        }
+      ]
+    },
     "986678eccf56dc28": {
       "source": "服务状态更新中，请稍后再试",
       "kind": "text",
@@ -4628,6 +5474,18 @@
         }
       ]
     },
+    "997a5e6e513f2a90": {
+      "source": "最近",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 382,
+          "column": 24
+        }
+      ]
+    },
     "99adaa07a90670b1": {
       "source": "诊断包导出失败",
       "kind": "text",
@@ -4649,6 +5507,18 @@
           "file": "src/state/appState.js",
           "line": 618,
           "column": 20
+        }
+      ]
+    },
+    "9a2e7d672077300b": {
+      "source": "结果过多已截断，可加关键词或缩小时间范围",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 375,
+          "column": 122
         }
       ]
     },
@@ -4825,6 +5695,18 @@
         }
       ]
     },
+    "9e957633228450d0": {
+      "source": "包含工具输出",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 368,
+          "column": 49
+        }
+      ]
+    },
     "a026f37e613cf48b": {
       "source": "输出 Token",
       "kind": "text",
@@ -4887,6 +5769,18 @@
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 36,
           "column": 12
+        }
+      ]
+    },
+    "a2f972d5ed4f3ff1": {
+      "source": "拉取 skill 列表失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 115,
+          "column": 55
         }
       ]
     },
@@ -5057,6 +5951,35 @@
         }
       ]
     },
+    "a8581cc00ff3c62e": {
+      "source": "安装失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 200,
+          "column": 53
+        }
+      ]
+    },
+    "a8b6c39dcabfc14b": {
+      "source": "已安装",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 460,
+          "column": 11
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 517,
+          "column": 118
+        }
+      ]
+    },
     "a8b7a4480407ac8a": {
       "source": "警告",
       "kind": "text",
@@ -5066,6 +5989,18 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 12,
           "column": 12
+        }
+      ]
+    },
+    "a9561207c13c595d": {
+      "source": "已更新「{0}」到仓库最新版本",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 218,
+          "column": 20
         }
       ]
     },
@@ -5195,6 +6130,18 @@
         }
       ]
     },
+    "ac8b027cc1e3a493": {
+      "source": "导出 Markdown",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 446,
+          "column": 112
+        }
+      ]
+    },
     "ad62ba0fb4af7131": {
       "source": "新增用量",
       "kind": "text",
@@ -5214,7 +6161,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 205,
+          "line": 206,
           "column": 47
         }
       ]
@@ -5308,11 +6255,28 @@
         }
       ]
     },
+    "afc22c9748b023d2": {
+      "source": "正在下载仓库…",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 499,
+          "column": 84
+        }
+      ]
+    },
     "afd4b783536b8297": {
       "source": "收起",
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 505,
+          "column": 20
+        },
         {
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 782,
@@ -5329,6 +6293,18 @@
           "file": "src/components/config/DiagnosticsPanel.vue",
           "line": 125,
           "column": 9
+        }
+      ]
+    },
+    "affde04bca5f2d8a": {
+      "source": "将删除「{0}」的本地目录，确定继续？",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 357,
+          "column": 14
         }
       ]
     },
@@ -5395,6 +6371,18 @@
         }
       ]
     },
+    "b24e85400e4e6dec": {
+      "source": "条命中",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 413,
+          "column": 95
+        }
+      ]
+    },
     "b24f669a428a37e2": {
       "source": "整体命中率",
       "kind": "text",
@@ -5404,6 +6392,18 @@
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 224,
           "column": 22
+        }
+      ]
+    },
+    "b28e2113fe3a14e6": {
+      "source": "全部时间",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 37,
+          "column": 12
         }
       ]
     },
@@ -5476,6 +6476,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 198,
           "column": 19
+        }
+      ]
+    },
+    "b79e0a6ff35ae0b0": {
+      "source": "读取已安装 skills 失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 80,
+          "column": 53
         }
       ]
     },
@@ -5604,6 +6616,18 @@
         }
       ]
     },
+    "bc22b6ed35db2509": {
+      "source": "全部模式",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 47,
+          "column": 14
+        }
+      ]
+    },
     "bc87a4121a0873b3": {
       "source": "刷新统计",
       "kind": "text",
@@ -5654,6 +6678,18 @@
           "file": "src/layouts/MainLayout.vue",
           "line": 74,
           "column": 12
+        }
+      ]
+    },
+    "bde1da567655101c": {
+      "source": "会话读取失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 141,
+          "column": 53
         }
       ]
     },
@@ -5723,6 +6759,11 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 197,
+          "column": 19
+        },
+        {
           "file": "src/components/config/ModelListPanel.vue",
           "line": 165,
           "column": 17
@@ -5734,7 +6775,7 @@
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 57,
+          "line": 63,
           "column": 30
         }
       ]
@@ -5804,7 +6845,7 @@
         },
         {
           "file": "src/views/ModelConfig.vue",
-          "line": 12,
+          "line": 14,
           "column": 12
         },
         {
@@ -5838,6 +6879,18 @@
         }
       ]
     },
+    "c509612898bddeb4": {
+      "source": "工具 ·",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 494,
+          "column": 68
+        }
+      ]
+    },
     "c5a845b025f2bfde": {
       "source": "模型已下发给 Cursor",
       "kind": "text",
@@ -5862,11 +6915,28 @@
         }
       ]
     },
+    "c5d9537469d917f1": {
+      "source": "全部更新（{0}）",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 549,
+          "column": 14
+        }
+      ]
+    },
     "c5f1c28c0d5f061d": {
       "source": "最近 30 天",
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 40,
+          "column": 12
+        },
         {
           "file": "src/components/config/UsageStatsPanel.vue",
           "line": 17,
@@ -5905,7 +6975,7 @@
       "refs": [
         {
           "file": "src/views/Home.vue",
-          "line": 208,
+          "line": 209,
           "column": 63
         }
       ]
@@ -6124,6 +7194,18 @@
         }
       ]
     },
+    "d07abfb11e7e0d48": {
+      "source": "检查更新失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 283,
+          "column": 53
+        }
+      ]
+    },
     "d08fd4224abcd69d": {
       "source": "切换失败",
       "kind": "text",
@@ -6184,6 +7266,18 @@
         }
       ]
     },
+    "d2b728cc189c7415": {
+      "source": "已恢复 {0} 个 skill",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 328,
+          "column": 26
+        }
+      ]
+    },
     "d3209b935ae86797": {
       "source": "模型配置不存在，无法删除",
       "kind": "text",
@@ -6198,6 +7292,30 @@
           "file": "src/state/appState.js",
           "line": 1587,
           "column": 14
+        }
+      ]
+    },
+    "d33b8d32c7e83fb7": {
+      "source": "今天 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 292,
+          "column": 29
+        }
+      ]
+    },
+    "d33ee3661a579988": {
+      "source": "Skills 仓库",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 480,
+          "column": 85
         }
       ]
     },
@@ -6283,6 +7401,18 @@
         }
       ]
     },
+    "d51250d14a5142e5": {
+      "source": "删除会话",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 195,
+          "column": 12
+        }
+      ]
+    },
     "d53d32f1a1211371": {
       "source": "自定义请求头 JSON",
       "kind": "text",
@@ -6302,6 +7432,18 @@
           "file": "src/views/ProviderEditor.vue",
           "line": 596,
           "column": 25
+        }
+      ]
+    },
+    "d54d9b601e63c2d2": {
+      "source": "从备份 zip 恢复，同名覆盖",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 560,
+          "column": 35
         }
       ]
     },
@@ -6498,6 +7640,18 @@
         }
       ]
     },
+    "db7cd8a3bd3cb603": {
+      "source": "把全部 skill 打包为 zip",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 559,
+          "column": 56
+        }
+      ]
+    },
     "dba45f363944d627": {
       "source": "日均",
       "kind": "text",
@@ -6531,6 +7685,18 @@
           "file": "src/state/appState.js",
           "line": 689,
           "column": 14
+        }
+      ]
+    },
+    "dc4d662d071eea52": {
+      "source": "创建于",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 461,
+          "column": 19
         }
       ]
     },
@@ -6630,6 +7796,18 @@
         }
       ]
     },
+    "dffd41cadde07f36": {
+      "source": "历史压缩摘要",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 490,
+          "column": 68
+        }
+      ]
+    },
     "e009c148d1890dac": {
       "source": "合计",
       "kind": "text",
@@ -6656,6 +7834,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 199,
           "column": 22
+        }
+      ]
+    },
+    "e0534b8a4e46a0cb": {
+      "source": "恢复",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 560,
+          "column": 83
         }
       ]
     },
@@ -6767,7 +7957,7 @@
         },
         {
           "file": "src/views/Home.vue",
-          "line": 204,
+          "line": 205,
           "column": 56
         }
       ]
@@ -6820,6 +8010,40 @@
         }
       ]
     },
+    "e57f592d5c203290": {
+      "source": "该仓库中没有发现 SKILL.md",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 111,
+          "column": 22
+        },
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 500,
+          "column": 96
+        }
+      ]
+    },
+    "e5ce5f6da7bd985e": {
+      "source": "助手",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 320,
+          "column": 14
+        },
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 486,
+          "column": 68
+        }
+      ]
+    },
     "e628f1c80e489262": {
       "source": "预览：",
       "kind": "text",
@@ -6865,6 +8089,18 @@
           "file": "src/views/ProviderEditor.vue",
           "line": 130,
           "column": 11
+        }
+      ]
+    },
+    "e76ca200e877535a": {
+      "source": "发现 {0} 个 skill 有更新",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 274,
+          "column": 22
         }
       ]
     },
@@ -6926,6 +8162,30 @@
         }
       ]
     },
+    "e8f88f51ccb085ea": {
+      "source": "安装",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 528,
+          "column": 16
+        }
+      ]
+    },
+    "ea9e465d5905de59": {
+      "source": "正在加载会话…",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 458,
+          "column": 88
+        }
+      ]
+    },
     "eaffd48cd2ea9f1a": {
       "source": "例如：https://api.anthropic.com",
       "kind": "text",
@@ -6984,6 +8244,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 223,
+          "column": 53
+        },
         {
           "file": "src/state/appState.js",
           "line": 1371,
@@ -7048,6 +8313,18 @@
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 822,
           "column": 34
+        }
+      ]
+    },
+    "f11f73af9e7ee5f0": {
+      "source": "添加仓库失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 162,
+          "column": 60
         }
       ]
     },
@@ -7161,6 +8438,30 @@
           "file": "src/components/charts/CacheHitRateChart.vue",
           "line": 76,
           "column": 18
+        }
+      ]
+    },
+    "f3b41489260df9ae": {
+      "source": "备份失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 313,
+          "column": 53
+        }
+      ]
+    },
+    "f3ccf45a415eeec5": {
+      "source": "24 小时内",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/ConversationSearchPanel.vue",
+          "line": 38,
+          "column": 12
         }
       ]
     },
@@ -7377,6 +8678,18 @@
           "file": "src/components/config/ProviderListPanel.vue",
           "line": 53,
           "column": 12
+        }
+      ]
+    },
+    "f84546bf726b87a4": {
+      "source": "浏览安装",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/config/SkillsPanel.vue",
+          "line": 452,
+          "column": 11
         }
       ]
     },

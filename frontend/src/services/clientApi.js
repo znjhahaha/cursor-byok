@@ -28,6 +28,27 @@ import {
   GetUsageSeries,
 } from "@bindings/cursor/internal/bridge/metricsservice.js";
 import {
+  DeleteConversation,
+  ExportConversationMarkdown,
+  GetConversationTranscript,
+  SearchConversations,
+} from "@bindings/cursor/internal/bridge/conversationsservice.js";
+import {
+  AddSkillRepo,
+  BackupSkillsToZip,
+  CheckSkillUpdates,
+  FetchRemoteSkills,
+  GetInstalledSkillContent,
+  GetRemoteSkillContent,
+  InstallSkill,
+  ListInstalledSkills,
+  ListSkillRepos,
+  OpenSkillsDirectory,
+  RemoveSkillRepo,
+  RestoreSkillsFromZip,
+  UninstallSkill,
+} from "@bindings/cursor/internal/bridge/skillsservice.js";
+import {
   CheckForUpdates,
   GetAppVersion,
   GetFooterAuthorInfo,
@@ -238,6 +259,86 @@ export function fetchModelAdapterModels(payload) {
 
 export function getUsageSeries(days) {
   return withApiLogging("GetUsageSeries", { days }, () => GetUsageSeries(days));
+}
+
+export function searchConversations(options) {
+  return withApiLogging("SearchConversations", options, () => SearchConversations(options));
+}
+
+export function getConversationTranscript(conversationID) {
+  return withApiLogging("GetConversationTranscript", { conversationID }, () =>
+    GetConversationTranscript(conversationID),
+  );
+}
+
+export function exportConversationMarkdown(conversationID) {
+  return withApiLogging("ExportConversationMarkdown", { conversationID }, () =>
+    ExportConversationMarkdown(conversationID),
+  );
+}
+
+export function deleteConversation(conversationID) {
+  return withApiLogging("DeleteConversation", { conversationID }, () =>
+    DeleteConversation(conversationID),
+  );
+}
+
+export function listInstalledSkills() {
+  return withApiLogging("ListInstalledSkills", undefined, () => ListInstalledSkills());
+}
+
+export function listSkillRepos() {
+  return withApiLogging("ListSkillRepos", undefined, () => ListSkillRepos());
+}
+
+export function addSkillRepo(spec) {
+  return withApiLogging("AddSkillRepo", { spec }, () => AddSkillRepo(spec));
+}
+
+export function removeSkillRepo(repoID) {
+  return withApiLogging("RemoveSkillRepo", { repoID }, () => RemoveSkillRepo(repoID));
+}
+
+export function fetchRemoteSkills(repoID, refresh) {
+  return withApiLogging("FetchRemoteSkills", { repoID, refresh }, () =>
+    FetchRemoteSkills(repoID, refresh),
+  );
+}
+
+export function installSkill(repoID, subdir) {
+  return withApiLogging("InstallSkill", { repoID, subdir }, () => InstallSkill(repoID, subdir));
+}
+
+export function uninstallSkill(dirName) {
+  return withApiLogging("UninstallSkill", { dirName }, () => UninstallSkill(dirName));
+}
+
+export function openSkillsDirectory() {
+  return withApiLogging("OpenSkillsDirectory", undefined, () => OpenSkillsDirectory());
+}
+
+export function getRemoteSkillContent(repoID, subdir) {
+  return withApiLogging("GetRemoteSkillContent", { repoID, subdir }, () =>
+    GetRemoteSkillContent(repoID, subdir),
+  );
+}
+
+export function getInstalledSkillContent(dirName) {
+  return withApiLogging("GetInstalledSkillContent", { dirName }, () =>
+    GetInstalledSkillContent(dirName),
+  );
+}
+
+export function backupSkillsToZip() {
+  return withApiLogging("BackupSkillsToZip", undefined, () => BackupSkillsToZip());
+}
+
+export function restoreSkillsFromZip() {
+  return withApiLogging("RestoreSkillsFromZip", undefined, () => RestoreSkillsFromZip());
+}
+
+export function checkSkillUpdates() {
+  return withApiLogging("CheckSkillUpdates", undefined, () => CheckSkillUpdates());
 }
 
 export function openProviderEditor(providerJSON) {

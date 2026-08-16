@@ -87,6 +87,8 @@ func Run(resources EmbeddedResources) error {
 	}
 	metricsService := bridge.NewMetricsService()
 	windowService := bridge.NewWindowService()
+	conversationsService := bridge.NewConversationsService()
+	skillsService := bridge.NewSkillsService()
 	adCore := ads.NewService(ads.Options{
 		StoreRoot:    appdata.AdsRootPath(),
 		HTTPClient:   netproxy.NewHTTPClient(30 * time.Second),
@@ -137,6 +139,8 @@ func Run(resources EmbeddedResources) error {
 			application.NewService(proxyService),
 			application.NewService(metricsService),
 			application.NewService(windowService),
+			application.NewService(conversationsService),
+			application.NewService(skillsService),
 			application.NewService(adService),
 		},
 		Assets: application.AssetOptions{
@@ -225,6 +229,8 @@ func Run(resources EmbeddedResources) error {
 
 	windowService.SetApp(app)
 	windowService.SetUpdater(updateManager)
+	conversationsService.SetApp(app)
+	skillsService.SetApp(app)
 
 	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:               appName,

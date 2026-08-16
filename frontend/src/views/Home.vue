@@ -148,6 +148,7 @@ async function handleOpenUsageStats() {
   await openModelConfigAtTab("stats");
 }
 
+
 onMounted(() => {
   unsubscribeAdUpdated = Events.On(AD_UPDATED_EVENT, handleAdUpdated);
   void syncAdRuntimeQuietly();
@@ -210,5 +211,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </Card>
+
   </div>
 </template>
