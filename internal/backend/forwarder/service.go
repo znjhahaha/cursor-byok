@@ -583,7 +583,7 @@ func (service *Service) decodeInboundIntent(requestID string, message *agentv1.A
 			intent.StartsRun = false
 			intent.HasExplicitMode = false
 			intent.ModeSource = ModeSourceUnknown
-			intent.IgnoredReason = "empty_resume_without_pending_continuation"
+			intent.IgnoredReason = ignoredReasonEmptyResume
 			return intent, nil
 		}
 		intent.Kind = "run"
@@ -1400,8 +1400,59 @@ func (service *Service) observeShellStreamClose(stream *ActiveStream, pending ru
 	service.scheduleShellTransportCloseRecovery(stream.RequestID, current)
 }
 
+// rehydrateIgnoredResume 处理被降级的空 resume：客户端（启动、切 tab）靠这次
+// resume 拿回 conversation_checkpoint_update 才能渲染会话面板。会话在服务端
+// 已完结时没有可续跑的内容，但仍要加载历史、初始化流并立即发布 checkpoint，
+// 否则客户端只剩心跳，面板空白，用户只能手动重新打开。
+// 服务端没有该会话的历史（含命名产生的 skeleton）时维持原行为：客户端会走
+// 正常的导入/新建路径。
+func (service *Service) rehydrateIgnoredResume(intent InboundIntent) error {
+	conversationID := strings.TrimSpace(intent.ConversationID)
+	if conversationID == "" || service.store == nil {
+		return nil
+	}
+	conversation, err := service.store.LoadConversation(conversationID)
+	if err != nil {
+		log.Printf("forwarder resume rehydrate load failed request_id=%s conversation_id=%s err=%v", strings.TrimSpace(intent.RequestID), conversationID, err)
+		return nil
+	}
+	if conversation == nil || len(conversation.Entries) == 0 {
+		return nil
+	}
+	mode, err := parseModeAlias(conversation.Mode)
+	if err != nil {
+		mode = agentv1.AgentMode_AGENT_MODE_AGENT
+	}
+	turnSeq := conversation.CurrentTurnSeq
+	if turnSeq <= 0 {
+		turnSeq = conversation.NextTurnSeq - 1
+	}
+	stream, err := service.broker.OpenStream(strings.TrimSpace(intent.RequestID), conversationID, turnSeq, "", "", mode, "")
+	if err != nil {
+		return err
+	}
+	if stream == nil {
+		return nil
+	}
+	if err := service.replaceCheckpointConversation(stream, conversation); err != nil {
+		return err
+	}
+	service.setTurnPhase(stream, TurnPhaseIdle)
+	if err := service.publishCheckpoint(strings.TrimSpace(intent.RequestID), conversationID); err != nil {
+		return err
+	}
+	service.debug.LogRuntime(context.Background(), strings.TrimSpace(intent.RequestID), conversationID, "resume_rehydrated_checkpoint", map[string]any{
+		"entry_count": len(conversation.Entries),
+		"turn_seq":    turnSeq,
+	})
+	return nil
+}
+
 // handleMetadataIntent 处理当前不驱动 provider 的轻量元数据上行。
 func (service *Service) handleMetadataIntent(intent InboundIntent) error {
+	if strings.TrimSpace(intent.IgnoredReason) == ignoredReasonEmptyResume {
+		return service.rehydrateIgnoredResume(intent)
+	}
 	stream, ok := service.broker.Get(intent.RequestID)
 	if !ok || stream == nil {
 		if intent.HasExplicitMode || intent.StartsRun {
@@ -3172,6 +3223,12 @@ func extractRequestContext(message *agentv1.AgentClientMessage) *agentv1.Request
 		return nil
 	}
 }
+
+// ignoredReasonEmptyResume 标记「空 resume 被降级为 metadata」的 intent：
+// 会话已在服务端完结、没有待续跑的内容，不该再驱动 provider。
+// 但客户端（尤其启动/切 tab 时）依赖这次 resume 拿回 checkpoint 渲染面板，
+// 降级路径必须转交 rehydrateIgnoredResume 回发会话状态，不能静默。
+const ignoredReasonEmptyResume = "empty_resume_without_pending_continuation"
 
 func (service *Service) shouldIgnoreEmptyResumeRunRequest(requestID string, runRequest *agentv1.AgentRunRequest, userMessage *agentv1.UserMessage, requestContext *agentv1.RequestContext) bool {
 	if runRequest == nil || !conversationActionIsResume(runRequest.GetAction()) {
