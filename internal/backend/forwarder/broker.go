@@ -63,6 +63,7 @@ func (broker *StreamBroker) OpenStream(requestID string, conversationID string, 
 		if newTurn {
 			existing.ProviderStreamRecoveryAttempts = 0
 			existing.ProviderRecoveryDirective = ""
+			existing.PlanAnnounceNudgeUsed = false
 			existing.PartialToolCallIDs = make(map[string]struct{})
 		}
 		if existing.Status == "" {

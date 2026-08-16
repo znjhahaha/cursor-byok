@@ -180,6 +180,7 @@ type ActiveStream struct {
 	ProviderTerminalToolInvocation              bool
 	ProviderStreamRecoveryAttempts              int
 	ProviderRecoveryDirective                   string
+	PlanAnnounceNudgeUsed                       bool
 	PendingCompaction                           *PendingCompaction
 	PendingCheckpointBlobWrites                 map[uint32]string
 	ConfirmedCheckpointBlobs                    map[string]struct{}

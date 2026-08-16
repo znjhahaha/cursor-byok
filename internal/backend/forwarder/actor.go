@@ -1012,6 +1012,16 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		return nil
 	}
 
+	if !terminalToolInvocation && service.maybeNudgeAnnouncedPlanCall(stream, hadToolInvocation, strings.TrimSpace(accumulatedText)) {
+		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
+			return service.failStreamIfNonTerminal(stream, "unknown", err)
+		}
+		if err := service.requestProviderAction(stream, providerActionResume); err != nil {
+			return service.failStreamIfNonTerminal(stream, "unknown", err)
+		}
+		return nil
+	}
+
 	clearPendingProviderCompletion(stream)
 	if err := service.completeSuccessfulTurn(stream, pendingTurnCompletion{
 		ConversationID: conversationID,
@@ -1025,6 +1035,32 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 		return service.failStreamIfNonTerminal(stream, "unknown", err)
 	}
 	return nil
+}
+
+// maybeNudgeAnnouncedPlanCall 补救「模型宣布要调用 CreatePlan 却直接结束回合」的
+// 间歇性模型行为（MiniMax-M3 在 plan 模式下偶发：输出思考 + “我把方案落实到
+// CreatePlan” 后 stop，不产生任何 tool_use 块，回合被当成正常完成，用户侧表现
+// 为对话中途停止）。条件收紧到：plan 模式、本 pass 零工具调用、最终可见文本点名
+// CreatePlan——此时注入一次恢复指令续跑一个 pass，让模型把宣布的计划真正落成
+// 工具调用。每回合至多补救一次，模型再次偷懒则照常收口。
+func (service *Service) maybeNudgeAnnouncedPlanCall(stream *ActiveStream, hadToolInvocation bool, finalText string) bool {
+	if stream == nil || hadToolInvocation || !strings.Contains(strings.TrimSpace(finalText), "CreatePlan") {
+		return false
+	}
+	stream.mu.Lock()
+	if stream.Mode != agentv1.AgentMode_AGENT_MODE_PLAN || stream.PlanAnnounceNudgeUsed || isTerminalStreamStatus(stream.Status) {
+		stream.mu.Unlock()
+		return false
+	}
+	stream.PlanAnnounceNudgeUsed = true
+	stream.ProviderRecoveryDirective = "Your previous response announced calling the CreatePlan tool but the turn ended without the tool call. Call the CreatePlan tool now with the complete plan content you announced. Do not repeat the announcement as text."
+	stream.UpdatedAt = time.Now().UTC()
+	stream.mu.Unlock()
+	log.Printf(
+		"forwarder plan announce nudge scheduled request_id=%s conversation_id=%s turn_seq=%d",
+		strings.TrimSpace(stream.RequestID), strings.TrimSpace(stream.ConversationID), stream.TurnSeq,
+	)
+	return true
 }
 
 func shouldRecoverIncompleteProviderStream(err error, hadToolInvocation bool, hadPartialToolCall bool, attempts int) (*modeladapter.IncompleteStreamError, bool) {
