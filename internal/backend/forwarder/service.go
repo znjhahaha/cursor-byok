@@ -1316,6 +1316,9 @@ func (service *Service) recoverNonStreamingExecAfterStreamClose(stream *ActiveSt
 	if stream == nil {
 		return nil
 	}
+	if service.staleRecoveryAppend(stream) {
+		return nil
+	}
 	markExecCompleted(stream, pending)
 	toolName := strings.TrimSpace(deriveToolNameFromPendingExec(pending))
 	resultPayload := fmt.Sprintf("%s transport closed before terminal result arrived", firstNonEmpty(toolName, pending.ExecKind, "tool"))
@@ -1350,6 +1353,9 @@ func (service *Service) recoverNonStreamingExecAfterStreamClose(stream *ActiveSt
 
 func (service *Service) observeShellStreamClose(stream *ActiveStream, pending runtimecore.PendingExec) {
 	if service == nil || stream == nil {
+		return
+	}
+	if service.staleRecoveryAppend(stream) {
 		return
 	}
 	current, ok := snapshotPendingExec(stream, pending.ExecID)

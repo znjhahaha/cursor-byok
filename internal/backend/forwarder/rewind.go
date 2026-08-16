@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"cursor/gen/agentv1"
 )
@@ -48,6 +49,11 @@ func (service *Service) decideRunRewind(intent InboundIntent, conversation *Conv
 	}
 	if conversation != nil {
 		decision.ServerTailTurnSeq = maxHistoryTurnSeq(conversation.Entries)
+		if decision.ServerTailTurnSeq == 0 && len(conversation.Entries) > 0 {
+			// 导入历史的 entry 可能全部没有 TurnSeq，此时用条目数当伪尾部，
+			// 让按位置截断的撤回也能通过尾部判断。
+			decision.ServerTailTurnSeq = int64(len(conversation.Entries))
+		}
 		decision.ServerNextTurnSeq = conversation.NextTurnSeq
 	}
 	if decision.IncomingMessageID == "" {
@@ -59,19 +65,40 @@ func (service *Service) decideRunRewind(intent InboundIntent, conversation *Conv
 		return decision
 	}
 
+	positional := false
 	matches := findUserMessageEntriesByMessageID(conversation.Entries, decision.IncomingMessageID)
 	decision.MatchCount = len(matches)
-	if len(matches) == 0 {
+	if len(matches) > 0 {
+		selected, selectReason := selectRunRewindMatch(matches, decision.ClientTurnCount, decision.HasClientTurnCount)
+		decision.TargetTurnSeq = selected.Entry.TurnSeq
+		decision.TargetEntrySeq = selected.Entry.Seq
+		decision.TargetRequestID = strings.TrimSpace(selected.Entry.RequestID)
+		decision.Reason = selectReason
+	} else if targetTurnSeq, targetRequestID, ok := alignRunRewindByConversationState(conversation.Entries, intent.ConversationState); ok {
+		// 客户端撤回后重发的是新 message_id（编辑重发场景），messageId 匹配不到：
+		// 用客户端 ConversationState 的回合结构与服务端 user_message entry 的
+		// request_id 对齐推断撤回点，否则整段被撤回的上下文会继续喂给模型。
+		decision.TargetTurnSeq = targetTurnSeq
+		decision.TargetRequestID = targetRequestID
+		decision.Reason = "conversation_state_aligned"
+	} else {
 		decision.SkipReason = "message_id_not_found"
 		return decision
 	}
-	selected, selectReason := selectRunRewindMatch(matches, decision.ClientTurnCount, decision.HasClientTurnCount)
-	decision.TargetTurnSeq = selected.Entry.TurnSeq
-	decision.TargetEntrySeq = selected.Entry.Seq
-	decision.TargetRequestID = strings.TrimSpace(selected.Entry.RequestID)
+
 	if decision.TargetTurnSeq <= 0 {
-		decision.SkipReason = "target_turn_seq_missing"
-		return decision
+		// 命中的 entry 没有有效 TurnSeq（例如从客户端 ConversationState 导入的历史）：
+		// 退回按 Seq 位置截断，而不是放弃撤回让旧上下文全部残留。
+		prefix, targetTurnSeq := prefixEntriesBeforeEntrySeq(conversation.Entries, decision.TargetEntrySeq)
+		if targetTurnSeq > 0 {
+			decision.TargetTurnSeq = targetTurnSeq
+			positional = true
+			decision.Reason = decision.Reason + "+positional"
+			decision.PrefixEntries = prefix
+		} else {
+			decision.SkipReason = "target_turn_seq_missing"
+			return decision
+		}
 	}
 
 	serverTailBeyondTarget := decision.ServerTailTurnSeq > decision.TargetTurnSeq
@@ -82,8 +109,9 @@ func (service *Service) decideRunRewind(intent InboundIntent, conversation *Conv
 	}
 
 	decision.Apply = true
-	decision.Reason = selectReason
-	decision.PrefixEntries = prefixEntriesBeforeTurn(conversation.Entries, decision.TargetTurnSeq)
+	if !positional {
+		decision.PrefixEntries = prefixEntriesBeforeTurn(conversation.Entries, decision.TargetTurnSeq)
+	}
 	decision.DroppedEntryCount, decision.DroppedTurnCount, decision.DroppedSeqStart, decision.DroppedSeqEnd = droppedEntryStats(conversation.Entries, decision.TargetTurnSeq)
 	return decision
 }
@@ -117,38 +145,75 @@ func findUserMessageEntriesByMessageID(entries []HistoryEntry, messageID string)
 	return matches
 }
 
+// selectRunRewindMatch 统一选最早匹配：messageId 出现多份只可能来自重发/regenerate，
+// 最早一份是原始位置。宁可撤回到更早的位置，也不能让对齐位置之前的旧回合
+// 继续留在模型上下文里。
 func selectRunRewindMatch(matches []runRewindMatch, clientTurnCount int, hasClientTurnCount bool) (runRewindMatch, string) {
 	if len(matches) == 0 {
 		return runRewindMatch{}, "no_match"
 	}
-	if hasClientTurnCount && clientTurnCount >= 0 {
-		targetTurnSeq := int64(clientTurnCount) + 1
-		for _, match := range matches {
-			if match.Entry.TurnSeq == targetTurnSeq {
-				return match, "client_turn_count_aligned"
-			}
-		}
-		var candidate *runRewindMatch
-		for index := range matches {
-			match := matches[index]
-			if match.Entry.TurnSeq <= int64(clientTurnCount) {
-				continue
-			}
-			if candidate == nil || earlierHistoryEntry(match.Entry, candidate.Entry) {
-				candidate = &match
-			}
-		}
-		if candidate != nil {
-			return *candidate, "first_match_after_client_turn_count"
-		}
+	earliest := earliestRunRewindMatch(matches)
+	if !hasClientTurnCount || clientTurnCount < 0 {
+		return earliest, "earliest_message_id_match"
 	}
-	selected := matches[0]
+	targetTurnSeq := int64(clientTurnCount) + 1
+	switch {
+	case earliest.Entry.TurnSeq == targetTurnSeq:
+		return earliest, "client_turn_count_aligned"
+	case earliest.Entry.TurnSeq > targetTurnSeq:
+		return earliest, "first_match_after_client_turn_count"
+	default:
+		return earliest, "earliest_duplicate_before_client_turn_count"
+	}
+}
+
+func earliestRunRewindMatch(matches []runRewindMatch) runRewindMatch {
+	earliest := matches[0]
 	for _, match := range matches[1:] {
-		if earlierHistoryEntry(match.Entry, selected.Entry) {
-			selected = match
+		if earlierHistoryEntry(match.Entry, earliest.Entry) {
+			earliest = match
 		}
 	}
-	return selected, "earliest_message_id_match"
+	return earliest
+}
+
+// alignRunRewindByConversationState 在 messageId 匹配失败时，用客户端回合结构与服务端
+// user_message entry 的 request_id 做对齐：客户端把对话撤回到第 k 回合后重发新消息，
+// 它携带的 turns 只剩 k 项，最后一项的 request_id 仍指向服务端第 k 回合的 user_message。
+// 仅当服务端尾部严格超出该对齐位置时才认定为撤回；正常新回合（尾部恰好对齐）不触发。
+func alignRunRewindByConversationState(entries []HistoryEntry, state *agentv1.ConversationStateStructure) (int64, string, bool) {
+	if state == nil {
+		return 0, "", false
+	}
+	turns := state.GetTurns()
+	if len(turns) == 0 {
+		return 0, "", false
+	}
+	clientTurnCount := int64(len(turns))
+	if maxHistoryTurnSeq(entries) <= clientTurnCount {
+		return 0, "", false
+	}
+	turn := &agentv1.ConversationTurnStructure{}
+	if err := proto.Unmarshal(turns[len(turns)-1], turn); err != nil {
+		return 0, "", false
+	}
+	agentTurn := turn.GetAgentConversationTurn()
+	if agentTurn == nil {
+		return 0, "", false
+	}
+	lastTurnRequestID := strings.TrimSpace(agentTurn.GetRequestId())
+	if lastTurnRequestID == "" {
+		return 0, "", false
+	}
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.Kind) != "user_message" || entry.TurnSeq != clientTurnCount {
+			continue
+		}
+		if strings.TrimSpace(entry.RequestID) == lastTurnRequestID {
+			return clientTurnCount + 1, lastTurnRequestID, true
+		}
+	}
+	return 0, "", false
 }
 
 func earlierHistoryEntry(left HistoryEntry, right HistoryEntry) bool {
@@ -182,6 +247,30 @@ func prefixEntriesBeforeTurn(entries []HistoryEntry, targetTurnSeq int64) []Hist
 		}
 	}
 	return prefix
+}
+
+// prefixEntriesBeforeEntrySeq 返回 Seq 小于 targetEntrySeq 的前缀，以及截断后
+// 新回合应使用的 TurnSeq（前缀中的最大 TurnSeq + 1）。用于导入历史这类
+// entry 没有有效 TurnSeq、只能按位置截断的场景。
+func prefixEntriesBeforeEntrySeq(entries []HistoryEntry, targetEntrySeq int64) ([]HistoryEntry, int64) {
+	if len(entries) == 0 || targetEntrySeq <= 0 {
+		return nil, 0
+	}
+	prefix := make([]HistoryEntry, 0, len(entries))
+	var maxTurnSeq int64
+	for _, entry := range entries {
+		if entry.Seq >= targetEntrySeq {
+			continue
+		}
+		prefix = append(prefix, entry)
+		if entry.TurnSeq > maxTurnSeq {
+			maxTurnSeq = entry.TurnSeq
+		}
+	}
+	if len(prefix) == len(entries) {
+		return nil, 0
+	}
+	return prefix, maxTurnSeq + 1
 }
 
 func droppedEntryStats(entries []HistoryEntry, targetTurnSeq int64) (int, int, int64, int64) {

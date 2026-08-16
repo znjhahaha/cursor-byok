@@ -1183,6 +1183,30 @@ func clearStreamTimer(stream *ActiveStream, key string) {
 	stream.mu.Unlock()
 }
 
+// streamSuperseded 报告该流对象是否已被同 request 的新流取代。
+// 撤回重发会在同一个 request_id 上轮转出新流（见 broker.OpenStream），
+// 旧流对象上迟到的恢复回调若继续落盘，会把已撤回回合的内容重新灌回 context.json。
+func (service *Service) streamSuperseded(stream *ActiveStream) bool {
+	if service == nil || service.broker == nil || stream == nil {
+		return false
+	}
+	current, ok := service.broker.Get(stream.RequestID)
+	return ok && current != stream
+}
+
+// staleRecoveryAppend 报告恢复类回调是否还应继续写会话历史。
+// transport close / 非流式 exec 恢复 / shell 恢复只服务当前回合：流一旦收口或被轮转，
+// 任何追加都是对已撤回历史的回灌。
+func (service *Service) staleRecoveryAppend(stream *ActiveStream) bool {
+	if stream == nil {
+		return true
+	}
+	stream.mu.Lock()
+	status := stream.Status
+	stream.mu.Unlock()
+	return isTerminalStreamStatus(status) || service.streamSuperseded(stream)
+}
+
 func (service *Service) handleTimerEvent(stream *ActiveStream, payload *streamTimerEvent) error {
 	if stream == nil || payload == nil {
 		return nil

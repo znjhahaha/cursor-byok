@@ -225,6 +225,9 @@ func (service *Service) recoverShellWithoutTerminal(stream *ActiveStream, pendin
 	if stream == nil {
 		return nil
 	}
+	if service.staleRecoveryAppend(stream) {
+		return nil
+	}
 	pending.ShellRecoveryScheduled = true
 	abortRequested := shellRecoveryRequestsAbort(reason)
 	if abortRequested {
