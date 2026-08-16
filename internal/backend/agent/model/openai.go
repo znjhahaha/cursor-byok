@@ -2022,6 +2022,7 @@ func normalizeOpenAIResponsesInput(messages []Message) (string, []map[string]any
 	instructionParts := make([]string, 0, 2)
 	items := make([]map[string]any, 0, len(messages))
 	responsesCallIDs := make(map[string]string)
+	emittedCallIDs := make(map[string]struct{})
 	activeAssistantReasoningKey := ""
 	for _, message := range messages {
 		role := strings.TrimSpace(message.Role)
@@ -2034,6 +2035,26 @@ func normalizeOpenAIResponsesInput(messages []Message) (string, []map[string]any
 		}
 		if role == "tool" && strings.TrimSpace(message.ToolCallID) != "" {
 			callID := openAIResponsesToolMessageCallID(message, responsesCallIDs)
+			if strings.TrimSpace(callID) != "" {
+				if _, ok := emittedCallIDs[callID]; !ok {
+					// 历史损坏时可能出现没有配对 function_call 的工具结果
+					// （例如旧版本回放逻辑剥离了 assistant 调用但保留了结果）。
+					// Responses API 会直接拒绝这种 input，这里补一个占位 function_call
+					// 让旧会话可以继续；无法补齐时丢弃该结果。
+					if name := strings.TrimSpace(message.Name); name != "" {
+						items = append(items, map[string]any{
+							"type":      "function_call",
+							"call_id":   callID,
+							"name":      name,
+							"arguments": "{}",
+							"status":    "completed",
+						})
+						emittedCallIDs[callID] = struct{}{}
+					} else {
+						continue
+					}
+				}
+			}
 			// 带图片时 output 用 input_text + input_image 的块数组，
 			// 否则保持纯字符串，不给只认字符串的端点添麻烦。
 			var output any = openAIResponsesMessageText(message)
@@ -2102,6 +2123,9 @@ func normalizeOpenAIResponsesInput(messages []Message) (string, []map[string]any
 					toolItem["status"] = "completed"
 				}
 				items = append(items, toolItem)
+				if strings.TrimSpace(callID) != "" {
+					emittedCallIDs[strings.TrimSpace(callID)] = struct{}{}
+				}
 			}
 		}
 	}
