@@ -43,6 +43,16 @@ func (broker *StreamBroker) OpenStream(requestID string, conversationID string, 
 	defer broker.mu.Unlock()
 	if existing, ok := broker.streams[normalizedRequestID]; ok {
 		existing.mu.Lock()
+		if isTerminalStreamStatus(existing.Status) {
+			// 同一 request_id 复用于新回合（Cursor 撤回后重发很常见）：
+			// 旧流已终态时若继续复用，Publish 会静默丢弃所有非 End 事件，
+			// RunSSE 也会把旧回合的积压连同旧 End 回放给新回合，表现为
+			// 撤回后新消息气泡消失、新内容串到上一条。这里原地重置成干净流，
+			// 已收口的订阅者读不到旧积压后会转入心跳等待，由客户端断开收尾。
+			broker.stopTerminalCleanupTimerLocked(existing)
+			existing.Backlog = make([]StreamEvent, 0, 64)
+			existing.Status = StreamStatusCreated
+		}
 		newTurn := turnSeq != 0 && turnSeq != existing.TurnSeq
 		existing.ConversationID = strings.TrimSpace(conversationID)
 		existing.TurnSeq = turnSeq
