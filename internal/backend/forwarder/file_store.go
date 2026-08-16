@@ -2,7 +2,6 @@
 package forwarder
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,6 +41,19 @@ type conversationProcessLock struct {
 
 type ConversationFileStore struct {
 	root string
+
+	// contextMu 保护 contextCache：磁盘状态与缓存的一致性由 lookupValidContextCache
+	// 在会话文件锁内用 size+modtime 校验，任何外部写入都会让缓存自然失效。
+	contextMu    sync.Mutex
+	contextCache map[string]*contextDiskCache
+}
+
+// contextDiskCache 记录上次由本进程写入后的 context.json 磁盘状态。
+// 命中时读路径跳过全量 JSON 解码，写路径只把新 entry 以 JSONL 行追加到尾部。
+type contextDiskCache struct {
+	conversation *ConversationFile
+	size         int64
+	modTime      time.Time
 }
 
 type conversationContextFile struct {
@@ -52,9 +64,24 @@ type conversationContextFile struct {
 	Items          []HistoryEntry `json:"items"`
 }
 
+// conversationContextFormatJSONL 是新版 context.json 格式：首行 header，
+// 其后每行一条 HistoryEntry。旧格式是单个 JSON 对象，读取时两者都支持。
+const conversationContextFormatJSONL = "jsonl"
+
+type conversationContextHeader struct {
+	SchemaVersion  int       `json:"schema_version"`
+	ConversationID string    `json:"conversation_id"`
+	Format         string    `json:"format"`
+	Version        int64     `json:"version"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 // NewConversationFileStore 创建 JSON history 文件存储。
 func NewConversationFileStore(historyRoot string) *ConversationFileStore {
-	return &ConversationFileStore{root: strings.TrimSpace(historyRoot)}
+	return &ConversationFileStore{
+		root:         strings.TrimSpace(historyRoot),
+		contextCache: make(map[string]*contextDiskCache),
+	}
 }
 
 // HistoryDir 返回 history 根路径。
@@ -119,6 +146,9 @@ func (store *ConversationFileStore) LoadConversation(conversationID string) (*Co
 }
 
 // AppendEntries 把已经发生的语义事件追加到 context.json，并同步 state.json。
+// 缓存命中（磁盘仍是本进程上次写入的状态）时走增量路径：只把新 entry 以
+// JSONL 行追加到文件尾部并 fsync，跳过全量重读与全量重写，这是长对话
+// 工具往返延迟随历史线性增长（整体 O(n^2)）的根治点。
 func (store *ConversationFileStore) AppendEntries(conversationID string, entries []HistoryEntry) (*ConversationFile, []HistoryEntry, error) {
 	if store == nil {
 		return nil, nil, fmt.Errorf("conversation file store is nil")
@@ -140,9 +170,15 @@ func (store *ConversationFileStore) AppendEntries(conversationID string, entries
 	}
 	defer release()
 
-	conversation, err := store.readConversationLocked(normalizedConversationID)
-	if err != nil {
-		return nil, nil, err
+	cached := store.lookupValidContextCache(normalizedConversationID)
+	var conversation *ConversationFile
+	if cached != nil {
+		conversation = store.conversationFromCache(normalizedConversationID, cached)
+	} else {
+		conversation, err = store.readConversationLocked(normalizedConversationID)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if conversation == nil {
 		conversation = &ConversationFile{
@@ -158,12 +194,39 @@ func (store *ConversationFileStore) AppendEntries(conversationID string, entries
 	}
 	assigned := appendEntriesInPlace(conversation, entries)
 	deriveConversationLoopState(conversation)
-	if err := store.writeConversationLocked(normalizedConversationID, conversation); err != nil {
-		return nil, nil, err
+	structuredDirty := entriesTouchStructuredState(assigned)
+	appended := false
+	if cached != nil {
+		if appendErr := store.appendContextEntries(normalizedConversationID, assigned); appendErr == nil {
+			appended = true
+			if err := store.writeConversationMetaAfterAppendLocked(normalizedConversationID, conversation, structuredDirty); err != nil {
+				return nil, nil, err
+			}
+			store.rememberContextWrite(normalizedConversationID, conversation)
+		}
+		// 增量追加失败（磁盘状态漂移、编码错误）时回退全量重写，磁盘语义保持完整。
+	}
+	if !appended {
+		if err := store.writeConversationLocked(normalizedConversationID, conversation, structuredDirty); err != nil {
+			return nil, nil, err
+		}
 	}
 	// conversation 是本函数从磁盘重建出来的局部对象，store 不再持有引用，
 	// 直接把所有权移交调用方即可；再深拷贝一遍整条历史是纯浪费。
 	return conversation, assigned, nil
+}
+
+// entriesTouchStructuredState 判断这批 entry 是否可能改变 plan/todo：
+// 只有 tool_result（CreatePlan/UpdateTodos）与 runtime_state 参与 structured state
+// 投影，普通追加（assistant_text/tool_call/metadata 等）无需触发全量 proto 解码。
+func entriesTouchStructuredState(entries []HistoryEntry) bool {
+	for _, entry := range entries {
+		switch strings.TrimSpace(entry.Kind) {
+		case "tool_result", "runtime_state":
+			return true
+		}
+	}
+	return false
 }
 
 func (store *ConversationFileStore) SaveConversationWithEntries(conversationID string, source *ConversationFile, entries []HistoryEntry) (*ConversationFile, error) {
@@ -217,7 +280,7 @@ func (store *ConversationFileStore) saveConversationWithEntries(conversationID s
 	mergeConversationMetadata(conversation, source)
 	assigned := appendEntriesInPlace(conversation, resetEntrySequences(entries))
 	deriveConversationLoopState(conversation)
-	if err := store.writeConversationLocked(normalizedConversationID, conversation); err != nil {
+	if err := store.writeConversationLocked(normalizedConversationID, conversation, true); err != nil {
 		return nil, nil, false, err
 	}
 	return cloneConversationFile(conversation), assigned, true, nil
@@ -287,7 +350,7 @@ func (store *ConversationFileStore) UpdateConversationMeta(conversationID string
 			return nil, err
 		}
 	}
-	if err := store.writeConversationMetaLocked(normalizedConversationID, conversation); err != nil {
+	if err := store.writeConversationMetaLocked(normalizedConversationID, conversation, true); err != nil {
 		return nil, err
 	}
 	return cloneConversationFile(conversation), nil
@@ -337,7 +400,9 @@ func (store *ConversationFileStore) WriteConversationMetaFrom(conversationID str
 		return fmt.Errorf("read conversation state: %w", err)
 	}
 
-	return store.writeConversationMetaLocked(normalizedConversationID, conversation)
+	// 纯 meta 写入：context.json 不变，磁盘 entries 与快照一致，
+	// 结构化状态在上次追加（structuredDirty）时已刷新，无需全量 proto 重算。
+	return store.writeConversationMetaLocked(normalizedConversationID, conversation, false)
 }
 
 // ReplaceEntries 原子替换 context.json，并同步 state.json 中的 sequence/version 状态。
@@ -384,7 +449,7 @@ func (store *ConversationFileStore) ReplaceEntries(conversationID string, entrie
 		}
 	}
 	deriveConversationLoopState(conversation)
-	if err := store.writeConversationLocked(normalizedConversationID, conversation); err != nil {
+	if err := store.writeConversationLocked(normalizedConversationID, conversation, true); err != nil {
 		return nil, err
 	}
 	return cloneConversationFile(conversation), nil
@@ -476,7 +541,7 @@ func (store *ConversationFileStore) mutateConversation(conversationID string, cr
 		return nil, err
 	}
 	deriveConversationLoopState(conversation)
-	if err := store.writeConversationLocked(normalizedConversationID, conversation); err != nil {
+	if err := store.writeConversationLocked(normalizedConversationID, conversation, true); err != nil {
 		return nil, err
 	}
 	return cloneConversationFile(conversation), nil
@@ -486,6 +551,9 @@ func (store *ConversationFileStore) mutateConversation(conversationID string, cr
 // state.json 中的字段都能从 entries 反推，因此它缺失或损坏时只丢失元数据，
 // 不能让 context.json 里完好的历史一起变得不可见。
 func (store *ConversationFileStore) readConversationLocked(conversationID string) (*ConversationFile, error) {
+	if cached := store.lookupValidContextCache(conversationID); cached != nil {
+		return store.conversationFromCache(conversationID, cached), nil
+	}
 	var conversation ConversationFile
 	stateUsable := false
 	stateBody, err := os.ReadFile(store.statePath(conversationID))
@@ -516,7 +584,20 @@ func (store *ConversationFileStore) readConversationLocked(conversationID string
 	}
 	conversation.Entries = context
 	normalizeLoadedConversation(conversationID, &conversation)
+	store.rememberContextWrite(conversationID, &conversation)
 	return &conversation, nil
+}
+
+// conversationFromCache 用缓存条目拼装会话：entries 直接复用缓存副本，
+// meta 仍以 state.json 为准（小文件，且可能刚被 UpdateConversationMeta 更新）。
+func (store *ConversationFileStore) conversationFromCache(conversationID string, cached *contextDiskCache) *ConversationFile {
+	var conversation ConversationFile
+	if stateBody, err := os.ReadFile(store.statePath(conversationID)); err == nil {
+		_ = json.Unmarshal(stateBody, &conversation)
+	}
+	conversation.Entries = append([]HistoryEntry(nil), cached.conversation.Entries...)
+	normalizeLoadedConversation(conversationID, &conversation)
+	return &conversation
 }
 
 func (store *ConversationFileStore) readContextLocked(conversationID string) ([]HistoryEntry, error) {
@@ -527,25 +608,51 @@ func (store *ConversationFileStore) readContextLocked(conversationID string) ([]
 		}
 		return nil, fmt.Errorf("read conversation context: %w", err)
 	}
-	var context conversationContextFile
-	if err := json.Unmarshal(body, &context); err != nil {
+	entries, err := parseConversationContextBody(body)
+	if err != nil {
 		return nil, fmt.Errorf("decode conversation context %q: %w", conversationID, err)
 	}
-	return append([]HistoryEntry(nil), context.Items...), nil
+	return entries, nil
 }
 
-func (store *ConversationFileStore) writeConversationLocked(conversationID string, conversation *ConversationFile) error {
+// writeConversationLocked 落盘 context.json 与 state.json。
+// 前置条件：调用方（AppendEntries / ReplaceEntries / saveConversationWithEntries /
+// mutateConversation）都必须先跑过 deriveConversationLoopState——normalize 的全历史
+// 扫描在这里再跑一遍是纯重复，长对话下每次追加都付三遍。
+// structuredDirty 表示这次写入是否可能改变 plan/todo 等结构化状态；
+// false 时跳过 refreshConversationRuntimeState 的全量 proto 解码。
+func (store *ConversationFileStore) writeConversationLocked(conversationID string, conversation *ConversationFile, structuredDirty bool) error {
 	if conversation == nil {
 		return fmt.Errorf("conversation is nil")
 	}
-	normalizeLoadedConversation(conversationID, conversation)
 	if err := store.writeContextLocked(conversationID, conversation); err != nil {
 		return err
 	}
-	return store.writeConversationMetaLocked(conversationID, conversation)
+	return store.writeConversationMetaAfterAppendLocked(conversationID, conversation, structuredDirty)
 }
 
-func (store *ConversationFileStore) writeConversationMetaLocked(conversationID string, conversation *ConversationFile) error {
+// writeConversationMetaAfterAppendLocked 是已 normalize/derive 会话的 state.json 快路径。
+func (store *ConversationFileStore) writeConversationMetaAfterAppendLocked(conversationID string, conversation *ConversationFile, structuredDirty bool) error {
+	if conversation == nil {
+		return fmt.Errorf("conversation is nil")
+	}
+	if structuredDirty {
+		if err := refreshConversationRuntimeState(conversation); err != nil {
+			return err
+		}
+	}
+	metadata := cloneConversationMeta(conversation)
+	metadata.SchemaVersion = conversationSchemaVersion
+	metadata.ContextVersion = contextVersionForEntries(conversation.Entries)
+	// state.json 是 context.json 的派生投影：readConversationLocked 在它缺失或损坏时
+	// 会退回零值并从 entries 重建，因此这里不需要为它支付 fsync。
+	return writeJSONFileAtomicWithoutSync(store.statePath(conversationID), metadata)
+}
+
+// writeConversationMetaLocked 写 state.json，供 UpdateConversationMeta 这类
+// 「update 回调可能改动任意字段」的路径使用：normalize 全量重算，并在
+// structuredDirty 时重算 plan/todo 等结构化状态。
+func (store *ConversationFileStore) writeConversationMetaLocked(conversationID string, conversation *ConversationFile, structuredDirty bool) error {
 	if conversation == nil {
 		return fmt.Errorf("conversation is nil")
 	}
@@ -560,8 +667,10 @@ func (store *ConversationFileStore) writeConversationMetaLocked(conversationID s
 		conversation.CurrentRequestID = currentRequestID
 		conversation.CurrentTurnSeq = currentTurnSeq
 	}
-	if err := refreshConversationRuntimeState(conversation); err != nil {
-		return err
+	if structuredDirty {
+		if err := refreshConversationRuntimeState(conversation); err != nil {
+			return err
+		}
 	}
 	metadata := cloneConversationMeta(conversation)
 	metadata.SchemaVersion = conversationSchemaVersion
@@ -571,15 +680,18 @@ func (store *ConversationFileStore) writeConversationMetaLocked(conversationID s
 	return writeJSONFileAtomicWithoutSync(store.statePath(conversationID), metadata)
 }
 
+// writeContextLocked 全量重写 context.json（JSONL 格式）。撤回、压缩、快照保存
+// 与旧格式迁移走这里；常规追加由 AppendEntries 的增量路径处理。
 func (store *ConversationFileStore) writeContextLocked(conversationID string, conversation *ConversationFile) error {
-	context := conversationContextFile{
-		SchemaVersion:  conversationSchemaVersion,
-		ConversationID: strings.TrimSpace(conversationID),
-		Version:        contextVersionForEntries(conversation.Entries),
-		UpdatedAt:      time.Now().UTC(),
-		Items:          append([]HistoryEntry(nil), conversation.Entries...),
+	data, err := encodeConversationContextJSONL(conversationID, conversation)
+	if err != nil {
+		return err
 	}
-	return writeJSONFileAtomic(store.contextPath(conversationID), context)
+	if err := writeFileAtomic(store.contextPath(conversationID), data, true); err != nil {
+		return err
+	}
+	store.rememberContextWrite(conversationID, conversation)
+	return nil
 }
 
 func contextVersionForEntries(entries []HistoryEntry) int64 {
@@ -890,16 +1002,20 @@ func writeJSONFileAtomicWithoutSync(path string, payload any) error {
 }
 
 func writeJSONFile(path string, payload any, durable bool) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create parent directory: %w", err)
-	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal json: %w", err)
 	}
-	var pretty bytes.Buffer
-	if err := json.Indent(&pretty, data, "", "  "); err == nil {
-		data = pretty.Bytes()
+	// 机器读写的文件不做美化：json.Indent 会把整份 context.json 再分配再拷贝一遍，
+	// 这是每次追加都要付的纯展示成本。
+	return writeFileAtomic(path, append(data, '\n'), durable)
+}
+
+// writeFileAtomic 原子替换文件内容。durable 时为内容做 fsync，用于崩溃后
+// 必须可恢复的权威数据；否则只依赖 rename 的原子性，供可重建的派生文件使用。
+func writeFileAtomic(path string, data []byte, durable bool) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create parent directory: %w", err)
 	}
 	file, tempPath, err := openUniqueArtifactTempFile(path)
 	if err != nil {
@@ -911,7 +1027,7 @@ func writeJSONFile(path string, payload any, durable bool) error {
 			_ = os.Remove(tempPath)
 		}
 	}()
-	if _, err := file.Write(append(data, '\n')); err != nil {
+	if _, err := file.Write(data); err != nil {
 		file.Close()
 		return fmt.Errorf("write temp file: %w", err)
 	}

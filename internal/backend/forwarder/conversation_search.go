@@ -212,16 +212,17 @@ func readConversationMetaForSearch(store *ConversationFileStore, conversationID 
 }
 
 // readConversationEntriesForSearch 无锁读取 context.json 的全部条目。
+// 兼容旧版单 JSON 对象与新版 JSONL 两种格式。
 func readConversationEntriesForSearch(store *ConversationFileStore, conversationID string) ([]HistoryEntry, bool) {
 	body, err := os.ReadFile(store.contextPath(conversationID))
 	if err != nil {
 		return nil, false
 	}
-	var context conversationContextFile
-	if err := json.Unmarshal(body, &context); err != nil {
+	entries, err := parseConversationContextBody(body)
+	if err != nil {
 		return nil, false
 	}
-	return context.Items, true
+	return entries, true
 }
 
 func searchSingleConversation(store *ConversationFileStore, conversationID string, keywords []string, includeTools bool, modeFilter string, updatedAfter time.Time) (ConversationSearchHit, bool) {

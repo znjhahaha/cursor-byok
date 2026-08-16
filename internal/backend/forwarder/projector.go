@@ -5,7 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"strconv"
 	"strings"
+	"sync"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -18,7 +21,72 @@ import (
 
 const projectedConversationMaxTokens = 130000
 
+// replayProjectionCacheSize 限制缓存槽数：Compile 会交替投影完整历史与
+// 「当前回合之前」的前缀，槽位数必须同时容纳两者，否则会互相驱逐反复失效。
+const replayProjectionCacheSize = 4
+
+// HistoryProjector 持有按 entries 指纹缓存的 replay 投影。
+// 一次 provider 回合里 Compile、DerivePromptContexts、stableReplayMessageCount、
+// publishCheckpoint 会对同一份历史反复做全量 JSON/proto 解码，缓存后只付一次。
 type HistoryProjector struct {
+	replayMu    sync.Mutex
+	replayCache map[uint64][]modeladapter.Message
+}
+
+func (projector *HistoryProjector) lookupReplayCache(entries []HistoryEntry) ([]modeladapter.Message, bool) {
+	if projector == nil {
+		return nil, false
+	}
+	fingerprint := historyEntriesFingerprint(entries)
+	projector.replayMu.Lock()
+	defer projector.replayMu.Unlock()
+	messages, ok := projector.replayCache[fingerprint]
+	return messages, ok
+}
+
+func (projector *HistoryProjector) storeReplayCache(entries []HistoryEntry, messages []modeladapter.Message) {
+	if projector == nil {
+		return
+	}
+	fingerprint := historyEntriesFingerprint(entries)
+	projector.replayMu.Lock()
+	defer projector.replayMu.Unlock()
+	if projector.replayCache == nil {
+		projector.replayCache = make(map[uint64][]modeladapter.Message, replayProjectionCacheSize)
+	}
+	if len(projector.replayCache) >= replayProjectionCacheSize {
+		for key := range projector.replayCache {
+			delete(projector.replayCache, key)
+			break
+		}
+	}
+	projector.replayCache[fingerprint] = messages
+}
+
+// historyEntriesFingerprint 对全部 entry 的结构性字段做 FNV 指纹。
+// 只遍历字段、不解码 payload，比一次 JSON 解码便宜三个数量级；
+// 撤回重编号、压缩、任意追加都会改变指纹。返回的消息列表跨调用方共享，
+// 调用方只读；需要修改时必须自行拷贝（normalize/trim 系列已经是这样做的）。
+func historyEntriesFingerprint(entries []HistoryEntry) uint64 {
+	hash := fnv.New64a()
+	var scratch []byte
+	appendInt := func(value int64) {
+		scratch = strconv.AppendInt(scratch[:0], value, 10)
+		hash.Write(scratch)
+		hash.Write([]byte{0})
+	}
+	for _, entry := range entries {
+		appendInt(entry.Seq)
+		appendInt(entry.TurnSeq)
+		hash.Write([]byte(entry.Kind))
+		hash.Write([]byte{0})
+		hash.Write([]byte(entry.RequestID))
+		hash.Write([]byte{0})
+		hash.Write([]byte(entry.IdempotencyKey))
+		hash.Write([]byte{0})
+		appendInt(int64(len(entry.Payload)))
+	}
+	return hash.Sum64()
 }
 
 type CheckpointBlob struct {
@@ -72,10 +140,23 @@ func NewHistoryProjector() *HistoryProjector {
 }
 
 // ProjectPromptReplay 把 conversation history 还原为 provider 可消费的消息列表。
+// 结果按 entries 指纹缓存并跨调用方共享：一次回合内多处调用免重复解码。
 func (projector *HistoryProjector) ProjectPromptReplay(conversation *ConversationFile) ([]modeladapter.Message, error) {
 	if conversation == nil {
 		return nil, nil
 	}
+	if cached, ok := projector.lookupReplayCache(conversation.Entries); ok {
+		return cached, nil
+	}
+	messages, err := projector.projectPromptReplayUncached(conversation)
+	if err != nil {
+		return nil, err
+	}
+	projector.storeReplayCache(conversation.Entries, messages)
+	return messages, nil
+}
+
+func (projector *HistoryProjector) projectPromptReplayUncached(conversation *ConversationFile) ([]modeladapter.Message, error) {
 	entries := replayablePromptProjectionEntries(conversation.Entries)
 	messages := make([]modeladapter.Message, 0, len(entries)*2)
 	seenToolCalls := make(map[string]struct{})
