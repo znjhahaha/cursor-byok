@@ -25,12 +25,15 @@ const projectedConversationMaxTokens = 130000
 // 「当前回合之前」的前缀，槽位数必须同时容纳两者，否则会互相驱逐反复失效。
 const replayProjectionCacheSize = 4
 
-// HistoryProjector 持有按 entries 指纹缓存的 replay 投影。
+// HistoryProjector 持有按 entries 指纹缓存的 replay 与 checkpoint 投影。
 // 一次 provider 回合里 Compile、DerivePromptContexts、stableReplayMessageCount、
 // publishCheckpoint 会对同一份历史反复做全量 JSON/proto 解码，缓存后只付一次。
 type HistoryProjector struct {
 	replayMu    sync.Mutex
 	replayCache map[uint64][]modeladapter.Message
+
+	checkpointMu    sync.Mutex
+	checkpointCache map[uint64]*CheckpointProjection
 }
 
 func (projector *HistoryProjector) lookupReplayCache(entries []HistoryEntry) ([]modeladapter.Message, bool) {
@@ -61,6 +64,36 @@ func (projector *HistoryProjector) storeReplayCache(entries []HistoryEntry, mess
 		}
 	}
 	projector.replayCache[fingerprint] = messages
+}
+
+func (projector *HistoryProjector) lookupCheckpointCache(entries []HistoryEntry) (*CheckpointProjection, bool) {
+	if projector == nil {
+		return nil, false
+	}
+	fingerprint := historyEntriesFingerprint(entries)
+	projector.checkpointMu.Lock()
+	defer projector.checkpointMu.Unlock()
+	projection, ok := projector.checkpointCache[fingerprint]
+	return projection, ok
+}
+
+func (projector *HistoryProjector) storeCheckpointCache(entries []HistoryEntry, projection *CheckpointProjection) {
+	if projector == nil || projection == nil {
+		return
+	}
+	fingerprint := historyEntriesFingerprint(entries)
+	projector.checkpointMu.Lock()
+	defer projector.checkpointMu.Unlock()
+	if projector.checkpointCache == nil {
+		projector.checkpointCache = make(map[uint64]*CheckpointProjection, replayProjectionCacheSize)
+	}
+	if len(projector.checkpointCache) >= replayProjectionCacheSize {
+		for key := range projector.checkpointCache {
+			delete(projector.checkpointCache, key)
+			break
+		}
+	}
+	projector.checkpointCache[fingerprint] = projection
 }
 
 // historyEntriesFingerprint 对全部 entry 的结构性字段做 FNV 指纹。
@@ -677,7 +710,29 @@ func (projector *HistoryProjector) ProjectLegacyCheckpoint(conversation *Convers
 }
 
 // ProjectCheckpointProjection 同时返回 checkpoint 状态及其引用的内容寻址 Blob。
+// ProjectCheckpointProjection 投影出 checkpoint（按 entries 指纹缓存）。
+// 每次工具往返会发布 3-5 次 checkpoint，缓存前每次都要全量重算：
+// 结构化状态 proto 解码全部 tool_result、全部回合 blob 重新编码、整个 replay
+// 的 JSON 编码——长对话下每次数百毫秒，直接把 actor 卡住。
+//
+// 共享约束：返回的 State 与 Blobs 跨调用方共享。Blobs 只读；
+// State 必须先 proto.Clone 再修改（publishCheckpointWithCompletion 已经这样做）。
 func (projector *HistoryProjector) ProjectCheckpointProjection(conversation *ConversationFile) (*CheckpointProjection, error) {
+	if conversation == nil {
+		return projector.projectCheckpointProjectionUncached(nil)
+	}
+	if cached, ok := projector.lookupCheckpointCache(conversation.Entries); ok {
+		return cached, nil
+	}
+	projection, err := projector.projectCheckpointProjectionUncached(conversation)
+	if err != nil {
+		return nil, err
+	}
+	projector.storeCheckpointCache(conversation.Entries, projection)
+	return projection, nil
+}
+
+func (projector *HistoryProjector) projectCheckpointProjectionUncached(conversation *ConversationFile) (*CheckpointProjection, error) {
 	blobs := newCheckpointBlobGraph()
 	state := &agentv1.ConversationStateStructure{
 		TokenDetails: &agentv1.ConversationTokenDetails{

@@ -266,6 +266,13 @@ type Service struct {
 	interactionBridge  interactionbridge.InteractionBridge
 	appendSeq          *appendSequenceTracker
 	runDispatchMu      sync.Mutex
+
+	// ackedConversationBlobs 记录客户端已确认写入 KV 的 checkpoint blob（按会话）。
+	// 客户端 KV 内容寻址且持久；不跨流记录的话，每个新回合的新流都会把整个会话的
+	// 全量 blob 图（长对话下数百个、几十 MB）重推一遍，FIFO backlog 会把
+	// thinking/exec delta 压在后面，且 5s 应答超时引发下一轮全量重发。
+	ackedBlobsMu           sync.Mutex
+	ackedConversationBlobs map[string]map[string]struct{}
 }
 
 type agentModelMemory interface {
@@ -476,22 +483,29 @@ func (service *Service) RunSSE(ctx context.Context, req *connect.Request[aiserve
 			return nil
 		}
 		if len(backlog) > 0 {
+			payloadLogEnabled := service.debug.RunSSELogEnabled(ctx)
 			for _, event := range backlog {
 				if event.Message != nil {
-					if err := stream.Send(event.Message); err != nil {
-						service.debug.LogRunSSE(ctx, requestID, "", "send_error", map[string]any{
+					sendErr := stream.Send(event.Message)
+					if payloadLogEnabled {
+						payload := protoJSONDebugPayload(event.Message)
+						if sendErr != nil {
+							service.debug.LogRunSSE(ctx, requestID, "", "send_error", map[string]any{
+								"cursor":       cursor,
+								"message_case": agentServerMessageCase(event.Message),
+								"message":      payload,
+								"error":        sendErr.Error(),
+							})
+							return sendErr
+						}
+						service.debug.LogRunSSE(ctx, requestID, "", "send_message", map[string]any{
 							"cursor":       cursor,
 							"message_case": agentServerMessageCase(event.Message),
-							"message":      protoJSONDebugPayload(event.Message),
-							"error":        err.Error(),
+							"message":      payload,
 						})
-						return err
+					} else if sendErr != nil {
+						return sendErr
 					}
-					service.debug.LogRunSSE(ctx, requestID, "", "send_message", map[string]any{
-						"cursor":       cursor,
-						"message_case": agentServerMessageCase(event.Message),
-						"message":      protoJSONDebugPayload(event.Message),
-					})
 				}
 				cursor++
 				if event.End {
@@ -540,19 +554,23 @@ func (service *Service) RunSSE(ctx context.Context, req *connect.Request[aiserve
 		}
 		heartbeat := buildHeartbeatMessage()
 		if err := stream.Send(heartbeat); err != nil {
-			service.debug.LogRunSSE(ctx, requestID, "", "heartbeat_error", map[string]any{
+			if service.debug.RunSSELogEnabled(ctx) {
+				service.debug.LogRunSSE(ctx, requestID, "", "heartbeat_error", map[string]any{
+					"cursor":       cursor,
+					"message_case": agentServerMessageCase(heartbeat),
+					"message":      protoJSONDebugPayload(heartbeat),
+					"error":        err.Error(),
+				})
+			}
+			return err
+		}
+		if service.debug.RunSSELogEnabled(ctx) {
+			service.debug.LogRunSSE(ctx, requestID, "", "heartbeat", map[string]any{
 				"cursor":       cursor,
 				"message_case": agentServerMessageCase(heartbeat),
 				"message":      protoJSONDebugPayload(heartbeat),
-				"error":        err.Error(),
 			})
-			return err
 		}
-		service.debug.LogRunSSE(ctx, requestID, "", "heartbeat", map[string]any{
-			"cursor":       cursor,
-			"message_case": agentServerMessageCase(heartbeat),
-			"message":      protoJSONDebugPayload(heartbeat),
-		})
 	}
 }
 
@@ -2528,9 +2546,15 @@ func (service *Service) publishCheckpointWithCompletion(requestID string, _ stri
 	if projection == nil || projection.State == nil {
 		return fmt.Errorf("checkpoint projection is empty")
 	}
-	projection.State.PendingToolCalls = buildPendingToolCalls(pendingExecs, pendingInteractions)
-	service.rewriteCheckpointTokenDetailsForClient(stream, conversation, projection.State)
-	return service.queueCheckpointProjection(stream, projection, completion)
+	// 投影按指纹缓存跨调用共享：State 必须先克隆再叠加运行态字段
+	// （PendingToolCalls、展示用 token 明细），否则会污染缓存。
+	state, ok := proto.Clone(projection.State).(*agentv1.ConversationStateStructure)
+	if !ok || state == nil {
+		return fmt.Errorf("clone checkpoint state")
+	}
+	state.PendingToolCalls = buildPendingToolCalls(pendingExecs, pendingInteractions)
+	service.rewriteCheckpointTokenDetailsForClient(stream, conversation, state)
+	return service.queueCheckpointProjection(stream, &CheckpointProjection{State: state, Blobs: projection.Blobs}, completion)
 }
 
 func (service *Service) rewriteCheckpointTokenDetailsForClient(stream *ActiveStream, conversation *ConversationFile, state *agentv1.ConversationStateStructure) {

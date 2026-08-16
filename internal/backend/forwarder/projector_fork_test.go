@@ -468,3 +468,45 @@ func checkpointProjectionSteps(t *testing.T, projection *CheckpointProjection) [
 	}
 	return steps
 }
+
+// 同一 fingerprints 的 checkpoint 投影必须共享同一份结果：
+// 每次工具往返发布 3-5 次 checkpoint，不缓存的话每次都全量重算（结构化状态
+// proto 解码 + 全部回合 blob 重编码），长对话下直接把 actor 卡住。
+func TestCheckpointProjectionCacheSharesIdenticalResult(t *testing.T) {
+	conversation := &ConversationFile{
+		ConversationID: "conversation-1",
+		Mode:           "agent",
+		NextTurnSeq:    2,
+		Entries: []HistoryEntry{
+			testCheckpointUserEntry(t),
+			newAssistantTextEntry(1, "request-1", "answer", "", ""),
+		},
+	}
+	projector := NewHistoryProjector()
+
+	first, err := projector.ProjectCheckpointProjection(conversation)
+	if err != nil {
+		t.Fatalf("first projection: %v", err)
+	}
+	second, err := projector.ProjectCheckpointProjection(conversation)
+	if err != nil {
+		t.Fatalf("second projection: %v", err)
+	}
+	if first != second {
+		t.Fatal("同一份 entries 的两次投影应命中缓存共享同一结果")
+	}
+
+	appendEntriesInPlace(conversation, []HistoryEntry{
+		newAssistantTextEntry(1, "request-1", "more activity", "", ""),
+	})
+	third, err := projector.ProjectCheckpointProjection(conversation)
+	if err != nil {
+		t.Fatalf("third projection: %v", err)
+	}
+	if third == first {
+		t.Fatal("entries 变化后必须重新投影")
+	}
+	if len(third.Blobs) <= len(first.Blobs) {
+		t.Fatalf("追加内容后 blob 应增多: first=%d third=%d", len(first.Blobs), len(third.Blobs))
+	}
+}

@@ -97,6 +97,14 @@ func (recorder *debugRecorder) LogRuntime(ctx context.Context, requestID string,
 	recorder.appendJSONL(ctx, requestID, conversationID, "runtime.jsonl", event)
 }
 
+// RunSSELogEnabled 报告 RunSSE 载荷日志是否启用。
+// RunSSE 的发送/心跳热路径必须在构造 protojson 载荷之前先查这个开关：
+// 载荷是作为参数在 LogRunSSE 调用前求值的，不查开关的话调试关闭时
+// 每条消息（含几十 MB 的 blob）仍要在 SSE 单协程上白付一次全量序列化。
+func (recorder *debugRecorder) RunSSELogEnabled(ctx context.Context) bool {
+	return recorder.enabled(ctx)
+}
+
 func (recorder *debugRecorder) LogRunSSE(ctx context.Context, requestID string, conversationID string, eventName string, fields map[string]any) {
 	if !recorder.enabled(ctx) {
 		return

@@ -27,6 +27,35 @@ func clonePendingTurnCompletion(completion *pendingTurnCompletion) *pendingTurnC
 	return &cloned
 }
 
+// markConversationBlobAcked 登记客户端已确认写入 KV 的 blob。
+// 注册表按会话、跨流存活：内容寻址的 blob 确认一次即永久有效。
+func (service *Service) markConversationBlobAcked(conversationID string, key string) {
+	if service == nil || strings.TrimSpace(conversationID) == "" || strings.TrimSpace(key) == "" {
+		return
+	}
+	service.ackedBlobsMu.Lock()
+	defer service.ackedBlobsMu.Unlock()
+	if service.ackedConversationBlobs == nil {
+		service.ackedConversationBlobs = make(map[string]map[string]struct{})
+	}
+	keys := service.ackedConversationBlobs[conversationID]
+	if keys == nil {
+		keys = make(map[string]struct{})
+		service.ackedConversationBlobs[conversationID] = keys
+	}
+	keys[key] = struct{}{}
+}
+
+func (service *Service) conversationBlobAcked(conversationID string, key string) bool {
+	if service == nil || strings.TrimSpace(conversationID) == "" || key == "" {
+		return false
+	}
+	service.ackedBlobsMu.Lock()
+	defer service.ackedBlobsMu.Unlock()
+	_, ok := service.ackedConversationBlobs[conversationID][key]
+	return ok
+}
+
 func (service *Service) queueCheckpointProjection(stream *ActiveStream, projection *CheckpointProjection, completion *pendingTurnCompletion) error {
 	if service == nil || stream == nil || projection == nil || projection.State == nil {
 		return nil
@@ -52,9 +81,16 @@ func (service *Service) queueCheckpointProjection(stream *ActiveStream, projecti
 		pendingKeys[key] = struct{}{}
 	}
 	toWrite := make([]pendingCheckpointBlobWrite, 0, len(projection.Blobs))
+	conversationID := strings.TrimSpace(stream.ConversationID)
 	for _, blob := range projection.Blobs {
 		key := string(blob.ID)
 		if key == "" {
+			continue
+		}
+		if service.conversationBlobAcked(conversationID, key) {
+			// 客户端在之前的回合已确认过这个 blob（KV 内容寻址且持久），无需重推：
+			// 长对话每个新流重推全量 blob 图会把 thinking/exec delta 压在 FIFO
+			// backlog 后面，还会因 5s 应答超时引发下一轮全量重发。
 			continue
 		}
 		required[key] = struct{}{}
@@ -168,6 +204,7 @@ func (service *Service) handleCheckpointBlobResult(stream *ActiveStream, message
 	if ok && stream.PendingCheckpoint != nil {
 		_, required = stream.PendingCheckpoint.Required[key]
 	}
+	conversationID := strings.TrimSpace(stream.ConversationID)
 	if ok && message.GetSetBlobResult().GetError() == nil {
 		stream.ConfirmedCheckpointBlobs[key] = struct{}{}
 	}
@@ -182,6 +219,10 @@ func (service *Service) handleCheckpointBlobResult(stream *ActiveStream, message
 			hex.EncodeToString([]byte(key)),
 			firstNonEmpty(strings.TrimSpace(blobErr.GetMessage()), "unknown error"),
 		))
+	}
+	if message.GetSetBlobResult().GetError() == nil {
+		// 跨流登记：同会话后续回合的新流不再重推这个 blob。
+		service.markConversationBlobAcked(conversationID, key)
 	}
 	if service.checkpointProjectionReady(stream) {
 		return service.publishReadyCheckpoint(stream)
@@ -243,7 +284,6 @@ func (service *Service) finishAfterCheckpointSyncFailure(stream *ActiveStream, c
 	}
 	stream.mu.Lock()
 	pending := stream.PendingCheckpoint
-	stream.PendingCheckpoint = nil
 	stream.PendingCheckpointBlobWrites = make(map[uint32]string)
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
@@ -251,7 +291,19 @@ func (service *Service) finishAfterCheckpointSyncFailure(stream *ActiveStream, c
 	if cause != nil {
 		log.Printf("forwarder checkpoint blob sync skipped request_id=%s conversation_id=%s err=%v", stream.RequestID, stream.ConversationID, cause)
 	}
-	if pending != nil && pending.Completion != nil {
+	if pending == nil {
+		return nil
+	}
+	// 应答超时只说明 blob 没有全部确认，不说明会话状态不能发布：
+	// 直接丢掉最终 checkpoint 会让客户端错过整个回合（新气泡不渲染、
+	// 思考/文本停在半路）。这里尽力发布，缺的 blob 由客户端已有内容兜底。
+	if err := service.publishPendingCheckpoint(stream); err != nil {
+		log.Printf("forwarder checkpoint best-effort publish failed request_id=%s err=%v", stream.RequestID, err)
+	}
+	stream.mu.Lock()
+	stream.PendingCheckpoint = nil
+	stream.mu.Unlock()
+	if pending.Completion != nil {
 		return service.finishSuccessfulTurnAfterCheckpoint(stream, *pending.Completion)
 	}
 	return nil

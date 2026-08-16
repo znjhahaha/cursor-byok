@@ -93,7 +93,9 @@ func TestCheckpointBlobTimeoutDoesNotFailSuccessfulTurn(t *testing.T) {
 		turnEnded = turnEnded || event.Message.GetInteractionUpdate().GetTurnEnded() != nil
 		successfulEnd = successfulEnd || event.End && event.TerminalErrorCode == ""
 	}
-	if checkpoint || !turnEnded || !successfulEnd {
+	// 超时只说明 blob 没有全部确认：终态 checkpoint 仍要尽力发布，
+	// 否则客户端错过整个回合（新气泡不渲染），且回合照常成功收口。
+	if !checkpoint || !turnEnded || !successfulEnd {
 		t.Fatalf("timeout events checkpoint=%v turn_ended=%v successful_end=%v", checkpoint, turnEnded, successfulEnd)
 	}
 }
@@ -232,4 +234,53 @@ func readCheckpointTestEvents(t *testing.T, service *Service, stream *ActiveStre
 		t.Fatalf("ReadFromCursor() error = %v", err)
 	}
 	return events
+}
+
+// 客户端 KV 内容寻址且持久：同会话已确认的 blob 在后续回合的新流上不得重推，
+// 否则长对话每个新流都会重传全量 blob 图，把 thinking/exec delta 压在 FIFO 后面。
+func TestAckedConversationBlobsAreNotResentOnNewStreams(t *testing.T) {
+	service, stream, projection := testCheckpointBlobProjection(t)
+	if err := service.queueCheckpointProjection(stream, projection, nil); err != nil {
+		t.Fatalf("queueCheckpointProjection() error = %v", err)
+	}
+	acknowledgeCheckpointBlobs(t, service, stream)
+
+	stream2, err := service.broker.OpenStream("request-2", stream.ConversationID, 2, "", "", agentv1.AgentMode_AGENT_MODE_AGENT, "")
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	if err := service.queueCheckpointProjection(stream2, projection, nil); err != nil {
+		t.Fatalf("queueCheckpointProjection() on new stream error = %v", err)
+	}
+
+	checkpointSeen := false
+	for _, event := range readCheckpointTestEvents(t, service, stream2) {
+		if event.Message.GetKvServerMessage().GetSetBlobArgs() != nil {
+			t.Fatal("已确认的 blob 不应在新流上重推")
+		}
+		if event.Message.GetConversationCheckpointUpdate() != nil {
+			checkpointSeen = true
+		}
+	}
+	if !checkpointSeen {
+		t.Fatal("跳过已确认 blob 后 checkpoint 仍必须发布")
+	}
+}
+
+func TestConversationBlobRegistryIsPerConversation(t *testing.T) {
+	service := &Service{}
+	service.markConversationBlobAcked("conversation-1", "key-1")
+	if !service.conversationBlobAcked("conversation-1", "key-1") {
+		t.Fatal("登记后的 key 必须命中")
+	}
+	if service.conversationBlobAcked("conversation-2", "key-1") {
+		t.Fatal("注册表必须按会话隔离")
+	}
+	if service.conversationBlobAcked("", "key-1") {
+		t.Fatal("空会话 id 必须永不命中")
+	}
+	service.markConversationBlobAcked("conversation-1", "")
+	if service.conversationBlobAcked("conversation-1", "") {
+		t.Fatal("空 blob key 不允许登记")
+	}
 }
