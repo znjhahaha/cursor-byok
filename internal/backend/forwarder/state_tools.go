@@ -34,10 +34,23 @@ type structuredConversationState struct {
 }
 
 func projectConversationStructuredState(conversation *ConversationFile) (structuredConversationState, error) {
+	return foldConversationStructuredState(nil, conversation)
+}
+
+// projectConversationStructuredState 在投影器上做同样的折叠，并对已判定
+// 「与 plan/todo 无关」的 tool_result 做按 Seq 记忆：这些 payload 常是几十 KB
+// 的 shell/read 输出，长对话里每次 checkpoint 投影全量 JSON+proto 解码纯属浪费。
+// entries 按 Seq 追加且不可变，判定结果永久有效。
+func (projector *HistoryProjector) projectConversationStructuredState(conversation *ConversationFile) (structuredConversationState, error) {
+	return foldConversationStructuredState(projector, conversation)
+}
+
+func foldConversationStructuredState(projector *HistoryProjector, conversation *ConversationFile) (structuredConversationState, error) {
 	state := structuredConversationState{}
 	if conversation == nil {
 		return state, nil
 	}
+	conversationID := strings.TrimSpace(conversation.ConversationID)
 	for _, entry := range checkpointProjectionEntries(conversation.Entries) {
 		switch strings.TrimSpace(entry.Kind) {
 		case "runtime_state":
@@ -61,58 +74,109 @@ func projectConversationStructuredState(conversation *ConversationFile) (structu
 		default:
 			continue
 		}
+		if entry.Seq > 0 && structuredToolResultIrrelevant(projector, conversationID, entry.Seq) {
+			continue
+		}
 		var payload toolResultEntryPayload
 		if err := json.Unmarshal(entry.Payload, &payload); err != nil {
 			return structuredConversationState{}, fmt.Errorf("decode structured state tool_result: %w", err)
 		}
 		if len(payload.ToolCall) == 0 {
+			markStructuredToolResultIrrelevant(projector, conversationID, entry.Seq)
 			continue
 		}
 		toolCall := &agentv1.ToolCall{}
 		if err := protojson.Unmarshal(payload.ToolCall, toolCall); err != nil {
 			return structuredConversationState{}, fmt.Errorf("decode structured state tool_call: %w", err)
 		}
-		entryTime := entry.CreatedAt
-		switch item := toolCall.GetTool().(type) {
-		case *agentv1.ToolCall_CreatePlanToolCall:
-			createPlanToolCall := item.CreatePlanToolCall
-			if createPlanToolCall == nil || createPlanToolCall.GetResult().GetSuccess() == nil {
-				continue
-			}
-			planURI := strings.TrimSpace(createPlanToolCall.GetResult().GetPlanUri())
-			if planURI == "" {
-				continue
-			}
-			state.PlanText = strings.TrimSpace(createPlanToolCall.GetArgs().GetPlan())
-			state.HasPlan = true
-			state.Plans = upsertCurrentPlanRegistryEntry(state.Plans, planURI)
-			todos, err := normalizeTodoItems(flattenCreatePlanTodos(createPlanToolCall.GetArgs()), entryTime, false)
-			if err != nil {
-				return structuredConversationState{}, err
-			}
-			state.Todos = todos
-			state.HasTodos = true
-		case *agentv1.ToolCall_UpdateTodosToolCall:
-			updateTodosToolCall := item.UpdateTodosToolCall
-			if updateTodosToolCall == nil || updateTodosToolCall.GetResult().GetSuccess() == nil {
-				continue
-			}
-			success := updateTodosToolCall.GetResult().GetSuccess()
-			todos, err := normalizeTodoItems(success.GetTodos(), entryTime, false)
-			if err != nil {
-				return structuredConversationState{}, err
-			}
-			if !success.GetWasMerge() && len(missingActiveTodoReplacementIDs(state.Todos, todos)) > 0 {
-				todos, err = mergeTodoItems(state.Todos, todos, entryTime)
-				if err != nil {
-					return structuredConversationState{}, err
-				}
-			}
-			state.Todos = todos
-			state.HasTodos = true
+		changed, err := applyStructuredToolResultToState(&state, toolCall, entry.CreatedAt)
+		if err != nil {
+			return structuredConversationState{}, err
+		}
+		if !changed {
+			markStructuredToolResultIrrelevant(projector, conversationID, entry.Seq)
 		}
 	}
 	return state, nil
+}
+
+func applyStructuredToolResultToState(state *structuredConversationState, toolCall *agentv1.ToolCall, entryTime time.Time) (bool, error) {
+	switch item := toolCall.GetTool().(type) {
+	case *agentv1.ToolCall_CreatePlanToolCall:
+		createPlanToolCall := item.CreatePlanToolCall
+		if createPlanToolCall == nil || createPlanToolCall.GetResult().GetSuccess() == nil {
+			return false, nil
+		}
+		planURI := strings.TrimSpace(createPlanToolCall.GetResult().GetPlanUri())
+		if planURI == "" {
+			return false, nil
+		}
+		state.PlanText = strings.TrimSpace(createPlanToolCall.GetArgs().GetPlan())
+		state.HasPlan = true
+		state.Plans = upsertCurrentPlanRegistryEntry(state.Plans, planURI)
+		todos, err := normalizeTodoItems(flattenCreatePlanTodos(createPlanToolCall.GetArgs()), entryTime, false)
+		if err != nil {
+			return false, err
+		}
+		state.Todos = todos
+		state.HasTodos = true
+		return true, nil
+	case *agentv1.ToolCall_UpdateTodosToolCall:
+		updateTodosToolCall := item.UpdateTodosToolCall
+		if updateTodosToolCall == nil || updateTodosToolCall.GetResult().GetSuccess() == nil {
+			return false, nil
+		}
+		success := updateTodosToolCall.GetResult().GetSuccess()
+		todos, err := normalizeTodoItems(success.GetTodos(), entryTime, false)
+		if err != nil {
+			return false, err
+		}
+		if !success.GetWasMerge() && len(missingActiveTodoReplacementIDs(state.Todos, todos)) > 0 {
+			todos, err = mergeTodoItems(state.Todos, todos, entryTime)
+			if err != nil {
+				return false, err
+			}
+		}
+		state.Todos = todos
+		state.HasTodos = true
+		return true, nil
+	}
+	return false, nil
+}
+
+const structuredIrrelevantConversationLimit = 32
+
+func structuredToolResultIrrelevant(projector *HistoryProjector, conversationID string, seq int64) bool {
+	if projector == nil || conversationID == "" {
+		return false
+	}
+	projector.structuredMu.Lock()
+	defer projector.structuredMu.Unlock()
+	_, ok := projector.structuredIrrelevant[conversationID][seq]
+	return ok
+}
+
+func markStructuredToolResultIrrelevant(projector *HistoryProjector, conversationID string, seq int64) {
+	if projector == nil || conversationID == "" || seq <= 0 {
+		return
+	}
+	projector.structuredMu.Lock()
+	defer projector.structuredMu.Unlock()
+	if projector.structuredIrrelevant == nil {
+		projector.structuredIrrelevant = make(map[string]map[int64]struct{})
+	}
+	seqs := projector.structuredIrrelevant[conversationID]
+	if seqs == nil {
+		if len(projector.structuredIrrelevant) >= structuredIrrelevantConversationLimit {
+			for key := range projector.structuredIrrelevant {
+				delete(projector.structuredIrrelevant, key)
+				break
+			}
+		}
+		seqs = make(map[int64]struct{})
+		projector.structuredIrrelevant[conversationID] = seqs
+	}
+	seqs[seq] = struct{}{}
 }
 
 func refreshConversationRuntimeState(conversation *ConversationFile) error {

@@ -93,13 +93,15 @@ func (service *Service) queueCheckpointProjection(stream *ActiveStream, projecti
 			// backlog 后面，还会因 5s 应答超时引发下一轮全量重发。
 			continue
 		}
-		required[key] = struct{}{}
 		if _, confirmed := stream.ConfirmedCheckpointBlobs[key]; confirmed {
 			continue
 		}
 		if _, pending := pendingKeys[key]; pending {
+			// 本流已发送过（ack 未回或曾在超时窗口外迟到）：不重发，也不计入
+			// Required——否则终态 checkpoint 会被已超时的 blob 卡满 5s 才落盘。
 			continue
 		}
+		required[key] = struct{}{}
 		stream.NextCheckpointBlobRequestID++
 		if stream.NextCheckpointBlobRequestID == 0 {
 			stream.NextCheckpointBlobRequestID++
@@ -284,7 +286,9 @@ func (service *Service) finishAfterCheckpointSyncFailure(stream *ActiveStream, c
 	}
 	stream.mu.Lock()
 	pending := stream.PendingCheckpoint
-	stream.PendingCheckpointBlobWrites = make(map[uint32]string)
+	// 保留 PendingCheckpointBlobWrites 的 requestID→key 映射：迟到的成功 ack 仍要
+	// 登记进会话级注册表，且同流后续 checkpoint 借此跳过已发 blob——清空映射会让
+	// 注册表永远填不上，下个 checkpoint 全量重推，形成 30MB 级风暴死循环。
 	stream.UpdatedAt = time.Now().UTC()
 	stream.mu.Unlock()
 	clearStreamTimer(stream, providerTimerKey(streamTimerCheckpointBlobs, ""))

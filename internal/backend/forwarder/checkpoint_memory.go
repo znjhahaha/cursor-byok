@@ -55,7 +55,15 @@ func (service *Service) snapshotCheckpointConversation(stream *ActiveStream) (*C
 	if stream.CheckpointConversation == nil {
 		return nil, nil, nil, fmt.Errorf("checkpoint conversation is not initialized")
 	}
-	conversation := cloneConversationFile(stream.CheckpointConversation)
+	// 快照只读、entries 追加不可变：共享底层数组并把容量封顶到 len，
+	// 避免 O(历史长度) 的深拷贝长时间占住 stream.mu（会连带卡住 exec 输出与心跳）。
+	// 后续对权威副本的 append 只会写到各自的新数组上。
+	conversation := cloneConversationMeta(stream.CheckpointConversation)
+	if conversation == nil {
+		return nil, nil, nil, fmt.Errorf("checkpoint conversation is not initialized")
+	}
+	entries := stream.CheckpointConversation.Entries
+	conversation.Entries = entries[:len(entries):len(entries)]
 	pendingExecs := make([]runtimecore.PendingExec, 0, len(stream.PendingExecs))
 	for _, pending := range stream.PendingExecs {
 		pendingExecs = append(pendingExecs, pending)

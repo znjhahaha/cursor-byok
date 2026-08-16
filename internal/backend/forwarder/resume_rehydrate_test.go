@@ -37,6 +37,8 @@ func TestIgnoredEmptyResumeRehydratesCheckpoint(t *testing.T) {
 	if err := service.handleMetadataIntent(intent); err != nil {
 		t.Fatalf("handleMetadataIntent() error = %v", err)
 	}
+	// 中间 checkpoint 已改为异步发布（checkpoint worker），断言前先排空队列。
+	service.flushCheckpointWork()
 
 	events, err := service.broker.ReadFromCursor("request-resume", 0)
 	if err != nil {

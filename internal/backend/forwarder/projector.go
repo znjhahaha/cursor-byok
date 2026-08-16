@@ -34,6 +34,21 @@ type HistoryProjector struct {
 
 	checkpointMu    sync.Mutex
 	checkpointCache map[uint64]*CheckpointProjection
+
+	// turnCache 缓存已完结逻辑回合的 checkpoint blob 编码（见 projectCheckpointTurnBlobs）。
+	turnMu    sync.Mutex
+	turnCache map[string]map[int64]cachedCheckpointTurn
+
+	// structuredIrrelevant 记录已判定与计划/待办无关的 tool_result（会话→Seq 集合）。
+	// 这些 payload 往往是几十 KB 的 shell/read 输出，每次投影全量 JSON 解码纯属浪费。
+	structuredMu         sync.Mutex
+	structuredIrrelevant map[string]map[int64]struct{}
+}
+
+type cachedCheckpointTurn struct {
+	fingerprint uint64
+	turnID      []byte
+	blobs       []CheckpointBlob
 }
 
 func (projector *HistoryProjector) lookupReplayCache(entries []HistoryEntry) ([]modeladapter.Message, bool) {
@@ -153,15 +168,31 @@ func (graph *checkpointBlobGraph) add(data []byte) []byte {
 	return append([]byte(nil), id[:]...)
 }
 
+// addKnown 按 ID 直插内容寻址 blob（跳过重新哈希）。data 必须与 ID 匹配且
+// 插入后不再修改——缓存共享的回合 blob 满足该约束。
+func (graph *checkpointBlobGraph) addKnown(id [sha256.Size]byte, data []byte) []byte {
+	if graph == nil || len(data) == 0 {
+		return nil
+	}
+	if _, exists := graph.blobs[id]; !exists {
+		graph.blobs[id] = data
+		graph.order = append(graph.order, id)
+	}
+	return append([]byte(nil), id[:]...)
+}
+
 func (graph *checkpointBlobGraph) list() []CheckpointBlob {
 	if graph == nil || len(graph.order) == 0 {
 		return nil
 	}
+	// blob 在插入后不再被修改（add 已做防御性拷贝、addKnown 的缓存字节共享且
+	// 不可变），这里直接共享底层数组：长对话 blob 图几十 MB，每次投影深拷贝
+	// 会把 worker 卡在纯 memcpy 上。
 	blobs := make([]CheckpointBlob, 0, len(graph.order))
 	for _, id := range graph.order {
 		blobs = append(blobs, CheckpointBlob{
 			ID:   append([]byte(nil), id[:]...),
-			Data: append([]byte(nil), graph.blobs[id]...),
+			Data: graph.blobs[id],
 		})
 	}
 	return blobs
@@ -754,7 +785,7 @@ func (projector *HistoryProjector) projectCheckpointProjectionUncached(conversat
 		return nil, err
 	}
 	state.Mode = &mode
-	structuredState, err := projectConversationStructuredState(conversation)
+	structuredState, err := projector.projectConversationStructuredState(conversation)
 	if err != nil {
 		return nil, err
 	}
@@ -765,7 +796,7 @@ func (projector *HistoryProjector) projectCheckpointProjectionUncached(conversat
 	if structuredState.HasTodos {
 		state.Todos = encodeConversationTodoBytes(structuredState.Todos)
 	}
-	turnIDs, err := projectCheckpointTurnBlobs(conversation, blobs)
+	turnIDs, err := projector.projectCheckpointTurnBlobs(conversation, blobs)
 	if err != nil {
 		return nil, err
 	}
@@ -800,7 +831,12 @@ func (projector *HistoryProjector) projectCheckpointProjectionUncached(conversat
 	return &CheckpointProjection{State: state, Blobs: blobs.list()}, nil
 }
 
-func projectCheckpointTurnBlobs(conversation *ConversationFile, blobs *checkpointBlobGraph) ([][]byte, error) {
+// projectCheckpointTurnBlobs 为每个逻辑回合编码内容寻址的 turn blob。
+// 已完结回合按（会话 → 首组 TurnSeq → 回合 entries 结构指纹）缓存：entries
+// 追加后不可变，指纹一致即编码字节一致；只有最后一个（追加中的）回合现算。
+// 撤回重编号 / 压缩重写都会改变指纹自动失效。缓存命中时按原插入顺序回放到
+// blob 图，保证 projection.Blobs 与无缓存路径逐字节一致。
+func (projector *HistoryProjector) projectCheckpointTurnBlobs(conversation *ConversationFile, blobs *checkpointBlobGraph) ([][]byte, error) {
 	if conversation == nil || blobs == nil {
 		return nil, nil
 	}
@@ -829,146 +865,236 @@ func projectCheckpointTurnBlobs(conversation *ConversationFile, blobs *checkpoin
 		logicalTurns[last] = append(logicalTurns[last], entries...)
 	}
 
+	conversationID := strings.TrimSpace(conversation.ConversationID)
 	turnIDs := make([][]byte, 0, len(logicalTurns))
-	for _, entries := range logicalTurns {
-		completedToolCalls, err := collectCheckpointCompletedToolCalls(entries)
-		if err != nil {
-			return nil, err
-		}
-		var userMessageID []byte
-		var turnRequestID string
-		steps := make([]*agentv1.ConversationStep, 0, len(entries))
-		seenToolCalls := make(map[string]struct{})
-		openToolCalls := make(map[string]struct{})
-		for _, entry := range entries {
-			if turnRequestID == "" {
-				turnRequestID = strings.TrimSpace(entry.RequestID)
+	for index, entries := range logicalTurns {
+		if index < len(logicalTurns)-1 && len(entries) > 0 && projector != nil && conversationID != "" {
+			turnSeq := entries[0].TurnSeq
+			fingerprint := historyEntriesFingerprint(entries)
+			if cached, ok := projector.lookupCheckpointTurn(conversationID, turnSeq, fingerprint); ok {
+				for _, blob := range cached.blobs {
+					blobs.addKnown(checkpointBlobIDFromBytes(blob.ID), blob.Data)
+				}
+				turnIDs = append(turnIDs, cached.turnID)
+				continue
 			}
-			switch strings.TrimSpace(entry.Kind) {
-			case "user_message":
-				userMessage := &agentv1.UserMessage{}
-				if err := protojson.Unmarshal(entry.Payload, userMessage); err != nil {
-					return nil, fmt.Errorf("decode checkpoint user_message: %w", err)
-				}
-				payload, err := proto.Marshal(userMessage)
-				if err != nil {
-					return nil, err
-				}
-				userMessageID = blobs.add(payload)
-			case "assistant_text":
-				var payload assistantTextPayload
-				if err := json.Unmarshal(entry.Payload, &payload); err != nil {
-					return nil, err
-				}
-				if strings.TrimSpace(payload.Text) == "" && strings.TrimSpace(payload.ReasoningContent) != "" && len(openToolCalls) > 0 {
-					continue
-				}
-				if strings.TrimSpace(payload.ReasoningContent) != "" {
-					steps = append(steps, &agentv1.ConversationStep{
-						Message: &agentv1.ConversationStep_ThinkingMessage{
-							ThinkingMessage: &agentv1.ThinkingMessage{Text: payload.ReasoningContent},
-						},
-					})
-				}
-				if strings.TrimSpace(payload.Text) == "" {
-					continue
-				}
-				steps = append(steps, &agentv1.ConversationStep{
-					Message: &agentv1.ConversationStep_AssistantMessage{
-						AssistantMessage: &agentv1.AssistantMessage{Text: strings.TrimSpace(payload.Text)},
-					},
-				})
-			case "tool_call":
-				var payload toolCallEntryPayload
-				if err := json.Unmarshal(entry.Payload, &payload); err != nil {
-					return nil, err
-				}
-				if strings.TrimSpace(payload.ReasoningContent) != "" {
-					steps = append(steps, &agentv1.ConversationStep{
-						Message: &agentv1.ConversationStep_ThinkingMessage{
-							ThinkingMessage: &agentv1.ThinkingMessage{Text: payload.ReasoningContent},
-						},
-					})
-				}
-				toolCall := &agentv1.ToolCall{}
-				toolCallID := strings.TrimSpace(payload.ToolCallID)
-				if err := protojson.Unmarshal(payload.ToolCall, toolCall); err != nil {
-					return nil, err
-				}
-				if completedPayload := completedToolCalls[toolCallID]; len(completedPayload) > 0 {
-					completedToolCall := &agentv1.ToolCall{}
-					if err := protojson.Unmarshal(completedPayload, completedToolCall); err != nil {
-						return nil, err
-					}
-					proto.Merge(toolCall, completedToolCall)
-				}
-				steps = append(steps, &agentv1.ConversationStep{
-					Message: &agentv1.ConversationStep_ToolCall{ToolCall: toolCall},
-				})
-				if toolCallID != "" {
-					seenToolCalls[toolCallID] = struct{}{}
-					openToolCalls[toolCallID] = struct{}{}
-				}
-			case "tool_result":
-				var payload toolResultEntryPayload
-				if err := json.Unmarshal(entry.Payload, &payload); err != nil {
-					return nil, err
-				}
-				toolCallID := strings.TrimSpace(payload.ToolCallID)
-				if toolCallID != "" {
-					delete(openToolCalls, toolCallID)
-				}
-				if _, ok := seenToolCalls[toolCallID]; ok {
-					continue
-				}
-				if strings.TrimSpace(payload.ReasoningContent) != "" {
-					steps = append(steps, &agentv1.ConversationStep{
-						Message: &agentv1.ConversationStep_ThinkingMessage{
-							ThinkingMessage: &agentv1.ThinkingMessage{Text: payload.ReasoningContent},
-						},
-					})
-				}
-				if len(payload.ToolCall) == 0 {
-					continue
-				}
-				toolCall := &agentv1.ToolCall{}
-				if err := protojson.Unmarshal(payload.ToolCall, toolCall); err != nil {
-					return nil, err
-				}
-				steps = append(steps, &agentv1.ConversationStep{
-					Message: &agentv1.ConversationStep_ToolCall{ToolCall: toolCall},
-				})
-			}
-		}
-		if len(userMessageID) == 0 {
-			continue
-		}
-		stepIDs := make([][]byte, 0, len(steps))
-		for _, step := range steps {
-			stepID, err := addCheckpointStepBlob(blobs, step)
+			addedFrom := len(blobs.order)
+			turnID, err := encodeCheckpointLogicalTurn(entries, blobs)
 			if err != nil {
 				return nil, err
 			}
-			stepIDs = append(stepIDs, stepID)
+			projector.storeCheckpointTurn(conversationID, turnSeq, cachedCheckpointTurn{
+				fingerprint: fingerprint,
+				turnID:      append([]byte(nil), turnID...),
+				blobs:       blobs.sliceFrom(addedFrom),
+			})
+			turnIDs = append(turnIDs, turnID)
+			continue
 		}
-		agentTurn := &agentv1.AgentConversationTurnStructure{
-			UserMessage: userMessageID,
-			Steps:       stepIDs,
-		}
-		if turnRequestID != "" {
-			agentTurn.RequestId = &turnRequestID
-		}
-		turnPayload, err := proto.Marshal(&agentv1.ConversationTurnStructure{
-			Turn: &agentv1.ConversationTurnStructure_AgentConversationTurn{
-				AgentConversationTurn: agentTurn,
-			},
-		})
+		turnID, err := encodeCheckpointLogicalTurn(entries, blobs)
 		if err != nil {
 			return nil, err
 		}
-		turnIDs = append(turnIDs, blobs.add(turnPayload))
+		turnIDs = append(turnIDs, turnID)
 	}
 	return turnIDs, nil
+}
+
+func (projector *HistoryProjector) lookupCheckpointTurn(conversationID string, turnSeq int64, fingerprint uint64) (cachedCheckpointTurn, bool) {
+	if projector == nil {
+		return cachedCheckpointTurn{}, false
+	}
+	projector.turnMu.Lock()
+	defer projector.turnMu.Unlock()
+	cached, ok := projector.turnCache[conversationID][turnSeq]
+	if !ok || cached.fingerprint != fingerprint {
+		return cachedCheckpointTurn{}, false
+	}
+	return cached, true
+}
+
+const checkpointTurnCacheConversationLimit = 8
+
+func (projector *HistoryProjector) storeCheckpointTurn(conversationID string, turnSeq int64, cached cachedCheckpointTurn) {
+	if projector == nil || conversationID == "" {
+		return
+	}
+	projector.turnMu.Lock()
+	defer projector.turnMu.Unlock()
+	if projector.turnCache == nil {
+		projector.turnCache = make(map[string]map[int64]cachedCheckpointTurn)
+	}
+	turns := projector.turnCache[conversationID]
+	if turns == nil {
+		if len(projector.turnCache) >= checkpointTurnCacheConversationLimit {
+			for key := range projector.turnCache {
+				delete(projector.turnCache, key)
+				break
+			}
+		}
+		turns = make(map[int64]cachedCheckpointTurn)
+		projector.turnCache[conversationID] = turns
+	}
+	turns[turnSeq] = cached
+}
+
+func checkpointBlobIDFromBytes(id []byte) [sha256.Size]byte {
+	var fixed [sha256.Size]byte
+	copy(fixed[:], id)
+	return fixed
+}
+
+func (graph *checkpointBlobGraph) sliceFrom(index int) []CheckpointBlob {
+	if graph == nil || index < 0 || index >= len(graph.order) {
+		return nil
+	}
+	blobs := make([]CheckpointBlob, 0, len(graph.order)-index)
+	for _, id := range graph.order[index:] {
+		blobs = append(blobs, CheckpointBlob{
+			ID:   append([]byte(nil), id[:]...),
+			Data: graph.blobs[id],
+		})
+	}
+	return blobs
+}
+
+func encodeCheckpointLogicalTurn(entries []HistoryEntry, blobs *checkpointBlobGraph) ([]byte, error) {
+	completedToolCalls, err := collectCheckpointCompletedToolCalls(entries)
+	if err != nil {
+		return nil, err
+	}
+	var userMessageID []byte
+	var turnRequestID string
+	steps := make([]*agentv1.ConversationStep, 0, len(entries))
+	seenToolCalls := make(map[string]struct{})
+	openToolCalls := make(map[string]struct{})
+	for _, entry := range entries {
+		if turnRequestID == "" {
+			turnRequestID = strings.TrimSpace(entry.RequestID)
+		}
+		switch strings.TrimSpace(entry.Kind) {
+		case "user_message":
+			userMessage := &agentv1.UserMessage{}
+			if err := protojson.Unmarshal(entry.Payload, userMessage); err != nil {
+				return nil, fmt.Errorf("decode checkpoint user_message: %w", err)
+			}
+			payload, err := proto.Marshal(userMessage)
+			if err != nil {
+				return nil, err
+			}
+			userMessageID = blobs.add(payload)
+		case "assistant_text":
+			var payload assistantTextPayload
+			if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+				return nil, err
+			}
+			if strings.TrimSpace(payload.Text) == "" && strings.TrimSpace(payload.ReasoningContent) != "" && len(openToolCalls) > 0 {
+				continue
+			}
+			if strings.TrimSpace(payload.ReasoningContent) != "" {
+				steps = append(steps, &agentv1.ConversationStep{
+					Message: &agentv1.ConversationStep_ThinkingMessage{
+						ThinkingMessage: &agentv1.ThinkingMessage{Text: payload.ReasoningContent},
+					},
+				})
+			}
+			if strings.TrimSpace(payload.Text) == "" {
+				continue
+			}
+			steps = append(steps, &agentv1.ConversationStep{
+				Message: &agentv1.ConversationStep_AssistantMessage{
+					AssistantMessage: &agentv1.AssistantMessage{Text: strings.TrimSpace(payload.Text)},
+				},
+			})
+		case "tool_call":
+			var payload toolCallEntryPayload
+			if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+				return nil, err
+			}
+			if strings.TrimSpace(payload.ReasoningContent) != "" {
+				steps = append(steps, &agentv1.ConversationStep{
+					Message: &agentv1.ConversationStep_ThinkingMessage{
+						ThinkingMessage: &agentv1.ThinkingMessage{Text: payload.ReasoningContent},
+					},
+				})
+			}
+			toolCall := &agentv1.ToolCall{}
+			toolCallID := strings.TrimSpace(payload.ToolCallID)
+			if err := protojson.Unmarshal(payload.ToolCall, toolCall); err != nil {
+				return nil, err
+			}
+			if completedPayload := completedToolCalls[toolCallID]; len(completedPayload) > 0 {
+				completedToolCall := &agentv1.ToolCall{}
+				if err := protojson.Unmarshal(completedPayload, completedToolCall); err != nil {
+					return nil, err
+				}
+				proto.Merge(toolCall, completedToolCall)
+			}
+			steps = append(steps, &agentv1.ConversationStep{
+				Message: &agentv1.ConversationStep_ToolCall{ToolCall: toolCall},
+			})
+			if toolCallID != "" {
+				seenToolCalls[toolCallID] = struct{}{}
+				openToolCalls[toolCallID] = struct{}{}
+			}
+		case "tool_result":
+			var payload toolResultEntryPayload
+			if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+				return nil, err
+			}
+			toolCallID := strings.TrimSpace(payload.ToolCallID)
+			if toolCallID != "" {
+				delete(openToolCalls, toolCallID)
+			}
+			if _, ok := seenToolCalls[toolCallID]; ok {
+				continue
+			}
+			if strings.TrimSpace(payload.ReasoningContent) != "" {
+				steps = append(steps, &agentv1.ConversationStep{
+					Message: &agentv1.ConversationStep_ThinkingMessage{
+						ThinkingMessage: &agentv1.ThinkingMessage{Text: payload.ReasoningContent},
+					},
+				})
+			}
+			if len(payload.ToolCall) == 0 {
+				continue
+			}
+			toolCall := &agentv1.ToolCall{}
+			if err := protojson.Unmarshal(payload.ToolCall, toolCall); err != nil {
+				return nil, err
+			}
+			steps = append(steps, &agentv1.ConversationStep{
+				Message: &agentv1.ConversationStep_ToolCall{ToolCall: toolCall},
+			})
+		}
+	}
+	if len(userMessageID) == 0 {
+		return nil, nil
+	}
+	stepIDs := make([][]byte, 0, len(steps))
+	for _, step := range steps {
+		stepID, err := addCheckpointStepBlob(blobs, step)
+		if err != nil {
+			return nil, err
+		}
+		stepIDs = append(stepIDs, stepID)
+	}
+	agentTurn := &agentv1.AgentConversationTurnStructure{
+		UserMessage: userMessageID,
+		Steps:       stepIDs,
+	}
+	if turnRequestID != "" {
+		agentTurn.RequestId = &turnRequestID
+	}
+	turnPayload, err := proto.Marshal(&agentv1.ConversationTurnStructure{
+		Turn: &agentv1.ConversationTurnStructure_AgentConversationTurn{
+			AgentConversationTurn: agentTurn,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return blobs.add(turnPayload), nil
 }
 
 func checkpointTurnHasUserMessage(entries []HistoryEntry) bool {

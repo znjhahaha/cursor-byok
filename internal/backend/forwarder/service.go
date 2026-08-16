@@ -273,6 +273,10 @@ type Service struct {
 	// thinking/exec delta 压在后面，且 5s 应答超时引发下一轮全量重发。
 	ackedBlobsMu           sync.Mutex
 	ackedConversationBlobs map[string]map[string]struct{}
+
+	// checkpointWorker 在独立协程上执行 O(历史长度) 的 checkpoint 投影，
+	// 中间请求可被更新请求吸收，终态请求由调用方阻塞等待（见 checkpoint_worker.go）。
+	checkpointWorker checkpointWorker
 }
 
 type agentModelMemory interface {
@@ -2530,31 +2534,21 @@ func (service *Service) publishCheckpoint(requestID string, conversationID strin
 	return service.publishCheckpointWithCompletion(requestID, conversationID, nil)
 }
 
+// publishCheckpointWithCompletion 把发布请求交给 checkpoint worker：
+// 中间 checkpoint 异步合并（actor 不再被 O(历史) 投影卡住），终态 checkpoint
+// 阻塞等待，保证 turn_ended 之前的终态顺序与错误语义不变。
 func (service *Service) publishCheckpointWithCompletion(requestID string, _ string, completion *pendingTurnCompletion) error {
-	stream, ok := service.broker.Get(requestID)
-	if !ok || stream == nil {
-		return fmt.Errorf("request is not active: %s", requestID)
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return fmt.Errorf("request id is required")
 	}
-	conversation, pendingExecs, pendingInteractions, err := service.snapshotCheckpointConversation(stream)
-	if err != nil {
-		return err
+	if completion != nil {
+		done := make(chan error, 1)
+		service.enqueueCheckpointWork(requestID, checkpointWorkRequest{completion: completion, done: done})
+		return <-done
 	}
-	projection, err := service.projector.ProjectCheckpointProjection(conversation)
-	if err != nil {
-		return err
-	}
-	if projection == nil || projection.State == nil {
-		return fmt.Errorf("checkpoint projection is empty")
-	}
-	// 投影按指纹缓存跨调用共享：State 必须先克隆再叠加运行态字段
-	// （PendingToolCalls、展示用 token 明细），否则会污染缓存。
-	state, ok := proto.Clone(projection.State).(*agentv1.ConversationStateStructure)
-	if !ok || state == nil {
-		return fmt.Errorf("clone checkpoint state")
-	}
-	state.PendingToolCalls = buildPendingToolCalls(pendingExecs, pendingInteractions)
-	service.rewriteCheckpointTokenDetailsForClient(stream, conversation, state)
-	return service.queueCheckpointProjection(stream, &CheckpointProjection{State: state, Blobs: projection.Blobs}, completion)
+	service.enqueueCheckpointWork(requestID, checkpointWorkRequest{})
+	return nil
 }
 
 func (service *Service) rewriteCheckpointTokenDetailsForClient(stream *ActiveStream, conversation *ConversationFile, state *agentv1.ConversationStateStructure) {
